@@ -10,7 +10,83 @@
   >
     <el-tabs v-if="draft" v-model="activeTab" class="node-config-tabs">
       <el-tab-pane label="基础配置" name="basic">
-        <el-form label-width="90px">
+        <!-- UI 节点：浏览器操作表单（step_type='ui'） -->
+        <el-form v-if="isUiNode" label-width="90px">
+          <el-form-item label="节点ID">
+            <el-input :model-value="draft.node_id" disabled />
+          </el-form-item>
+          <el-form-item label="页面动作">
+            <div class="steps-wrap">
+              <!-- 工具行：计数 + 过滤定位 + 添加 -->
+              <div class="steps-toolbar">
+                <span class="steps-count">共 {{ uiSteps.length }} 个动作</span>
+                <el-input
+                  v-model="filterText"
+                  size="small"
+                  clearable
+                  style="width: 200px"
+                  placeholder="按动作/参数过滤定位"
+                >
+                  <template #prefix><el-icon><Search /></el-icon></template>
+                </el-input>
+                <el-dropdown trigger="click" @command="addStep">
+                  <el-button size="small" type="primary" plain>+ 添加动作</el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu class="action-add-menu">
+                      <el-dropdown-item v-for="a in UI_ACTIONS" :key="a.action" :command="a.action">
+                        {{ a.name }}（{{ a.action }}）
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+              <!-- 紧凑动作行：单行摘要，点击展开编辑（手风琴，同时只展开一个） -->
+              <div class="steps-list">
+                <div
+                  v-for="(st, i) in uiSteps"
+                  :key="i"
+                  v-show="matchStep(st)"
+                  class="step-row"
+                  :class="{ open: openIdx === i }"
+                >
+                  <div class="step-line" :title="`${uiActionName(st.action)}：${stepBrief(st)}`" @click="toggleStep(i)">
+                    <span class="step-no">{{ i + 1 }}</span>
+                    <span class="step-tag">{{ uiActionName(st.action) }}</span>
+                    <span class="step-brief">{{ stepBrief(st) || '— 未配置 —' }}</span>
+                    <span class="step-ops" @click.stop>
+                      <el-button link size="small" :disabled="i === 0" @click="moveStep(i, -1)">↑</el-button>
+                      <el-button link size="small" :disabled="i === uiSteps.length - 1" @click="moveStep(i, 1)">↓</el-button>
+                      <el-button link type="danger" size="small" :disabled="uiSteps.length <= 1" @click="removeStep(i)">删</el-button>
+                    </span>
+                    <el-icon class="step-arrow" :class="{ expanded: openIdx === i }"><ArrowDown /></el-icon>
+                  </div>
+                  <div v-if="openIdx === i" class="step-edit">
+                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" />
+                  </div>
+                </div>
+                <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
+              </div>
+              <p class="tip steps-tip">
+                单行摘要点击展开编辑；几十个动作建议配合上方过滤框定位。
+                <a class="action-doc-link" @click.prevent="store.openCoreCapability('actions')">查看动作解析 →</a>
+              </p>
+            </div>
+          </el-form-item>
+          <el-form-item label="等待时间">
+            <el-input-number
+              v-model="waitAfterMs"
+              :min="0"
+              :step="500"
+              :step-strict="false"
+              controls-position="right"
+              style="width: 180px"
+            />
+            <span class="wait-unit">ms</span>
+            <p class="tip wait-tip">本节点全部动作完成后、下一节点前的等待间隔。默认 0（不等待）。</p>
+          </el-form-item>
+        </el-form>
+        <!-- API 节点：原有接口绑定表单 -->
+        <el-form v-else label-width="90px">
           <el-form-item label="节点ID">
             <el-input :model-value="draft.node_id" disabled />
           </el-form-item>
@@ -41,13 +117,15 @@
 
       <el-tab-pane label="后置提取" name="extract">
         <PostExtractTable v-model="draft.post_extract" :ref-groups="refGroups" />
-        <p class="tip">提取的变量存入本节点命名空间，供后续节点按 <code>{{ SQL_BRACE }}</code>（SQL 内）或引用来源（参数取值）引用。</p>
+        <p v-if="isUiNode" class="tip">UI 步骤的提取对页面事实（facts）求值：<code>source=response</code> + JSONPath，如 <code>$.url</code>、<code>$.text</code>、<code>$.title</code>。</p>
+        <p v-else class="tip">提取的变量存入本节点命名空间，供后续节点按 <code>{{ SQL_BRACE }}</code>（SQL 内）或引用来源（参数取值）引用。</p>
       </el-tab-pane>
 
       <el-tab-pane label="断言规则" name="assert">
         <AssertionTable v-model="draft.assertions" :ref-groups="refGroups" />
         <div class="tip-with-help">
-          <p class="tip">DB 断言 SQL 可用 <code>{{ SQL_BRACE }}</code> 引用已提取变量；期望值支持四来源。</p>
+          <p v-if="isUiNode" class="tip">UI 步骤断言对 facts 求值（如 <code>$.url</code> contains、<code>$.text</code> equals）；DB 断言可直接使用。</p>
+          <p v-else class="tip">DB 断言 SQL 可用 <code>{{ SQL_BRACE }}</code> 引用已提取变量；期望值支持四来源。</p>
           <el-button text size="small" class="help-link" @click="store.openCoreCapability('assertion')">
             <el-icon><QuestionFilled /></el-icon> 查看断言规则
           </el-button>
@@ -64,14 +142,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { QuestionFilled, Search, ArrowDown } from '@element-plus/icons-vue'
 import PostExtractTable from './PostExtractTable.vue'
 import AssertionTable from './AssertionTable.vue'
+import UiActionForm from './UiActionForm.vue'
 import { useAppStore } from '@/stores'
-import type { ApiDef, NodeConfig } from '@/api'
+import { elementApi, customActionApi, uiActionDocApi, type ApiDef, type NodeConfig, type ApiField, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
 import type { RefVarGroup } from './VarRefSelect.vue'
+import { UI_ACTIONS, uiActionName, validateUiStepData } from '@/utils/ui'
 
 const store = useAppStore()
 
@@ -94,11 +174,161 @@ const activeTab = ref('basic')
 // 编辑草稿：打开抽屉时深拷贝一份，避免直接 mutate 父组件引用导致
 // 「关闭即生效、保存按钮无实义」的假保存语义；取消即丢弃草稿。
 const draft = ref<NodeConfig | null>(null)
+const isUiNode = computed(() => draft.value?.step_type === 'ui')
+// 动作序列（打开抽屉时已规范化保证 steps 存在）
+const uiSteps = computed<UiStep[]>(() => draft.value!.ui_params!.steps!)
+// 各步骤表单实例（collect 收敛校验；手风琴只挂载展开中的步骤）
+const stepFormRefs = ref<any[]>([])
+// 手风琴：当前展开编辑的步骤下标（-1 全折叠）；过滤定位关键字
+const openIdx = ref(-1)
+const filterText = ref('')
+
+// 元素库数据（一次全量加载，组内各步骤共享）
+const uiElements = ref<UiElement[]>([])
+let uiElementsLoaded = false
+// 自定义动作模板（一次加载，custom 步骤下拉用）
+const customActions = ref<CustomAction[]>([])
+let customActionsLoaded = false
+// 动作描述覆盖（动作库管理 → 编辑描述；wrapped 动作下拉提示显示覆盖文本）
+const actionDocs = ref<UiActionDoc[]>([])
+let actionDocsLoaded = false
+
+async function loadUiElements() {
+  if (uiElementsLoaded || !store.currentProjectId) return
+  try {
+    uiElements.value = await elementApi.list(store.currentProjectId)
+    uiElementsLoaded = true
+  } catch (e: any) {
+    ElMessage.warning(`元素库加载失败：${e.message || '请稍后重试'}（可切「自定义」定位）`)
+  }
+}
+
+async function loadCustomActions() {
+  if (customActionsLoaded || !store.currentProjectId) return
+  try {
+    customActions.value = await customActionApi.list(store.currentProjectId)
+    customActionsLoaded = true
+  } catch {
+    customActions.value = []  // 自定义动作加载失败仅影响 custom 步骤选择，静默降级
+  }
+}
+
+async function loadActionDocs() {
+  if (actionDocsLoaded || !store.currentProjectId) return
+  try {
+    actionDocs.value = await uiActionDocApi.list(store.currentProjectId)
+    actionDocsLoaded = true
+  } catch {
+    actionDocs.value = []  // 覆盖描述加载失败回落内置文案，静默降级
+  }
+}
+
+/** 步骤单行摘要：定位目标 + 关键参数（列表行展示，tooltip 看全文） */
+function stepBrief(st: UiStep): string {
+  const el = st.element
+  const elTxt = el?.element_id
+    ? (uiElements.value.find((x) => x.id === el.element_id)?.element_key ?? `元素#${el.element_id}`)
+    : (el?.value ? `${el.strategy || 'css'}=${el.value}` : '')
+  const v = st.value
+  switch (st.action) {
+    case 'goto': return String(st.url ?? '')
+    case 'save': return String(v || '保存成功')
+    case 'wait': return elTxt ? `等元素 ${elTxt}` : `${Number(v ?? 1000)}ms`
+    case 'press': return String(v || 'Enter')
+    case 'select_option': return (st.values?.length ? st.values.join(',') : String(v ?? ''))
+    case 'custom': {
+      const ca = customActions.value.find((x) => x.id === st.custom_id)
+      return [ca?.name ?? `模板#${st.custom_id ?? '?'}`, v != null ? String(v) : ''].filter(Boolean).join(' → ')
+    }
+    default: return [elTxt, v != null ? String(v) : ''].filter(Boolean).join(' → ')
+  }
+}
+
+/** 过滤匹配：动作中文名/标识/参数摘要含关键字（不区分大小写） */
+function matchStep(st: UiStep): boolean {
+  const kw = filterText.value.trim().toLowerCase()
+  if (!kw) return true
+  const hay = [uiActionName(st.action), st.action, stepBrief(st)].join(' ').toLowerCase()
+  return hay.includes(kw)
+}
+
+/** 展开/折叠步骤：切换前先把旧展开步骤的局部状态收敛回数据（表单即将卸载） */
+function toggleStep(i: number) {
+  if (openIdx.value === i) {
+    stepFormRefs.value[i]?.collect?.()
+    openIdx.value = -1
+  } else {
+    if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+    openIdx.value = i
+    nextTick(() => {
+      document.querySelectorAll<HTMLElement>('.step-row')[i]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+  }
+}
+
+/** 添加动作（下拉点选）：追加并展开滚动到新步骤 */
+function addStep(action: UiStep['action']) {
+  if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+  uiSteps.value.push({ action })
+  openIdx.value = uiSteps.value.length - 1
+  filterText.value = ''
+  nextTick(() => {
+    document.querySelectorAll<HTMLElement>('.step-row')[openIdx.value]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+}
+
+/** 删除步骤：折叠态下操作，展开态先收敛再删 */
+function removeStep(i: number) {
+  if (openIdx.value === i) {
+    openIdx.value = -1
+  } else if (openIdx.value > i) {
+    openIdx.value -= 1
+  }
+  uiSteps.value.splice(i, 1)
+  stepFormRefs.value.splice(i, 1)
+}
+
+/** 上移/下移步骤 */
+function moveStep(i: number, delta: number) {
+  const j = i + delta
+  if (j < 0 || j >= uiSteps.value.length) return
+  const wasOpen = openIdx.value
+  if (wasOpen === i) stepFormRefs.value[i]?.collect?.()
+  const [item] = uiSteps.value.splice(i, 1)
+  uiSteps.value.splice(j, 0, item)
+  stepFormRefs.value.splice(i, 1)
+  openIdx.value = wasOpen === i ? j : (wasOpen === j ? i : wasOpen)
+}
+
 watch(
   () => props.visible,
-  (v) => {
-    if (v) {
-      const d = JSON.parse(JSON.stringify(props.config))
+  async (v) => {
+    if (!v) return
+    const d: NodeConfig = JSON.parse(JSON.stringify(props.config))
+    // UI 节点规范化：统一为动作序列 steps；旧单动作节点（顶层 action）迁移为单步组
+    if (d.step_type === 'ui') {
+      if (!d.ui_params) d.ui_params = { steps: [{ action: 'goto' }] }
+      if (!Array.isArray(d.ui_params.steps) || !d.ui_params.steps.length) {
+        const single: UiStep = {
+          action: (d.ui_params.action as UiStep['action']) || 'click',
+          ...(d.ui_params.url != null ? { url: d.ui_params.url } : {}),
+          ...(d.ui_params.element ? { element: d.ui_params.element } : {}),
+          ...(d.ui_params.value != null ? { value: d.ui_params.value } : {}),
+          ...(d.ui_params.values != null ? { values: d.ui_params.values } : {}),
+          ...(d.ui_params.timeout_ms != null ? { timeout_ms: d.ui_params.timeout_ms } : {}),
+          ...(d.ui_params.wait_for ? { wait_for: d.ui_params.wait_for } : {}),
+          ...(d.ui_params.force != null ? { force: d.ui_params.force } : {}),
+          ...(d.ui_params.files ? { files: d.ui_params.files } : {}),
+          ...(d.ui_params.index != null ? { index: d.ui_params.index } : {}),
+        }
+        d.ui_params = { steps: [single] }
+      }
+      draft.value = d
+      stepFormRefs.value = []
+      openIdx.value = -1
+      filterText.value = ''
+      await Promise.all([loadUiElements(), loadCustomActions(), loadActionDocs()])
+    } else {
       draft.value = d
     }
   },
@@ -115,7 +345,30 @@ const waitAfterMs = computed<number>({
 
 function onSave() {
   if (!draft.value) return
-  if (!draft.value.api_id) {
+  if (isUiNode.value) {
+    const steps = draft.value.ui_params!.steps!
+    if (!steps.length) {
+      ElMessage.warning('动作组至少需要一个动作')
+      return
+    }
+    // 展开中的步骤先收敛局部状态（elementMode/多值/时长等写回数据）
+    if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+    // 全量数据校验（折叠步骤无表单实例，走数据级校验兜底）
+    for (let i = 0; i < steps.length; i++) {
+      const err = validateUiStepData(steps[i])
+      if (err) {
+        ElMessage.warning(`步骤 ${i + 1}（${uiActionName(steps[i].action)}）：${err}`)
+        openIdx.value = i
+        nextTick(() => {
+          document.querySelectorAll<HTMLElement>('.step-row')[i]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        })
+        return
+      }
+    }
+    // 固化为组形态：顶层仅保留 steps（后端 steps 优先）
+    draft.value.ui_params = { steps: JSON.parse(JSON.stringify(steps)) }
+  } else if (!draft.value.api_id) {
+    // api 节点仍要求绑定接口（UI 节点不绑 api_id）
     ElMessage.warning('请先绑定接口，未绑定接口的节点不会执行')
     return
   }
@@ -170,6 +423,144 @@ function onSave() {
 .wait-tip {
   margin-top: 6px;
   margin-bottom: 0;
+}
+/* 表单项内的行内提示/动作说明（紧贴控件，不占独立段距） */
+.action-tip {
+  margin-top: 4px;
+  margin-bottom: 0;
+  width: 100%;
+}
+/* 跳转帮助中心「动作解析」tab 的链接 */
+.action-doc-link {
+  margin-left: 8px;
+  color: var(--app-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.action-doc-link:hover {
+  text-decoration: underline;
+}
+/* 动作序列编辑器（紧凑行 + 手风琴展开 + 局部滚动） */
+.steps-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.steps-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.steps-count {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  flex-shrink: 0;
+}
+.steps-list {
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card);
+}
+.step-row {
+  border-bottom: 1px solid var(--app-border);
+}
+.step-row:last-child {
+  border-bottom: none;
+}
+.step-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.step-line:hover {
+  background: var(--app-hover);
+}
+.step-row.open .step-line {
+  background: var(--app-active);
+}
+.step-no {
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 9px;
+  background: var(--app-hover);
+  font-size: 11px;
+  color: var(--app-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.step-row.open .step-no {
+  background: var(--app-primary);
+  color: #fff;
+}
+.step-tag {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-brief {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--app-font-mono);
+  font-size: 11px;
+  color: var(--app-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-ops {
+  display: flex;
+  gap: 0;
+  flex-shrink: 0;
+  opacity: 0.25;
+  transition: opacity 0.15s;
+}
+.step-line:hover .step-ops,
+.step-row.open .step-ops {
+  opacity: 1;
+}
+.step-arrow {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--app-text-faint);
+  transition: transform 0.2s;
+}
+.step-arrow.expanded {
+  transform: rotate(180deg);
+}
+.step-edit {
+  padding: 8px 12px 6px;
+  border-top: 1px dashed var(--app-border);
+  background: var(--app-hover);
+}
+.steps-empty {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--app-text-faint);
+}
+.steps-tip {
+  margin: 2px 0 0;
+}
+.action-add-menu {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.inline-tip {
+  margin: 0 0 0 10px;
+  display: inline;
 }
 </style>
 

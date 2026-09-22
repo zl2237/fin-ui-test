@@ -32,6 +32,7 @@ from .json_safe import BigintSafeJSONResponse
 from .routers import (
     apis,
     auth,
+    custom_actions,
     datasets,
     environments,
     executions,
@@ -43,6 +44,8 @@ from .routers import (
     reports,
     schedules,
     testcases,
+    ui_action_docs,
+    ui_elements,
     users,
     versions,
 )
@@ -159,10 +162,14 @@ _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 _HAS_FRONTEND = (_FRONTEND_DIST / "index.html").is_file()
 
 
+# index.html 禁启发式缓存：每次校验（304 协商），避免 dist 重建后浏览器仍用旧入口页
+_HTML_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", include_in_schema=_HAS_FRONTEND is False)
 def root():
     if _HAS_FRONTEND:
-        return FileResponse(_FRONTEND_DIST / "index.html")
+        return FileResponse(_FRONTEND_DIST / "index.html", headers=_HTML_CACHE_HEADERS)
     return {"name": "fin-api-test 平台", "docs": "/docs"}
 
 
@@ -182,6 +189,9 @@ app.include_router(executions.router)
 app.include_router(home.router)
 app.include_router(reports.router)
 app.include_router(field_dictionaries.router)
+app.include_router(ui_elements.router)
+app.include_router(custom_actions.router)
+app.include_router(ui_action_docs.router)
 app.include_router(files.router)
 app.include_router(files.category_router)
 
@@ -200,7 +210,7 @@ if _HAS_FRONTEND:
             # 防路径穿越：解析后必须仍在 dist 目录内
             if candidate.is_file() and _FRONTEND_DIST in candidate.resolve().parents:
                 return FileResponse(candidate)
-        return FileResponse(_FRONTEND_DIST / "index.html")
+        return FileResponse(_FRONTEND_DIST / "index.html", headers=_HTML_CACHE_HEADERS)
 
 
 if __name__ == "__main__":

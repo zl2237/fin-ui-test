@@ -96,6 +96,9 @@ class Environment(Base):
     notify_config: Mapped[Any] = mapped_column(JSON, default=dict, comment="通知配置：{wecom_webhook, enable_on_failure, enable_on_success}")
     variables: Mapped[Any] = mapped_column(JSON, default=dict, comment="已退役：原业务变量（测试数据来源已统一为数据集变量池，不再注入执行变量池）")
     common_headers: Mapped[Any] = mapped_column(JSON, default=dict, comment="公共请求头，每个接口请求都会携带")
+    browser_config: Mapped[Any] = mapped_column(JSON, default=dict,
+                        comment="UI 执行浏览器配置：{headless, viewport:{width,height}, slow_mo_ms, timeout_ms, "
+                                "screenshot: on_failure|always|off, inject_token_cookie, launch_args}")
     timeout: Mapped[int] = mapped_column(Integer, default=15, comment="接口请求超时时间（秒）")
     node_retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0",
                         comment="节点请求层失败自动重试次数（0=不重试；仅 HTTP 状态码/业务码失败、超时、连接异常触发，断言失败不重试）")
@@ -291,6 +294,15 @@ class CaseNodeConfig(Base):
     case_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("test_cases.id"), comment="所属用例ID")
     node_id: Mapped[str] = mapped_column(String(100), nullable=False, comment="DAG 节点唯一ID")
     api_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("api_definitions.id"), comment="关联接口ID")
+<<<<<<< HEAD
+=======
+    step_type: Mapped[str] = mapped_column(String(20), default="api", server_default="api",
+                       comment="节点类型：api 接口调用 / ui 浏览器操作（ui 节点无需绑定接口，配置走 ui_params）")
+    ui_params: Mapped[Any] = mapped_column(JSON, default=dict,
+                     comment="UI 节点参数：{action: goto|click|fill|select_option|check|press|wait|screenshot|evaluate, "
+                             "url, element:{strategy,value|element_id}, value, values, timeout_ms, wait_for, files}")
+    pre_process: Mapped[Any] = mapped_column(JSON, default=list, comment="前置处理动作列表：[{type, path, value}]")
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: Mapped[Any] = mapped_column(JSON, default=list, comment="后置提取规则列表：[{name, source, jsonpath, sql, field}]")
     assertions: Mapped[Any] = mapped_column(JSON, default=list, comment="断言规则列表：[{type, path, expected, sql, ...}]")
     wait_after_ms: Mapped[int] = mapped_column(Integer, default=0, comment="当前节点执行完后到下一节点请求前的等待毫秒数，默认0")
@@ -352,8 +364,16 @@ class StepRecord(Base):
     replay_passed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
                     comment="重放验证通过时间：手改请求体重放断言全过时打点，报告页显示「已重放通过」徽标；不改变步骤内容")
     status: Mapped[str | None] = mapped_column(String(20), comment="步骤状态：success 成功 / failed 失败")
+<<<<<<< HEAD
     pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照（历史遗留列：前置动作已废止，"
                       "新步骤不再写入，仅老报告回显）")
+=======
+    step_kind: Mapped[str] = mapped_column(String(20), default="api", server_default="api",
+                     comment="步骤类型：api 接口调用 / ui 浏览器操作（历史行 NULL 视为 api）")
+    screenshot_file_id: Mapped[int | None] = mapped_column(Integer, nullable=True,
+                            comment="UI 步骤截图的文件中心 test_files.id（失败截图/全程截图），NULL 表示无截图")
+    pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照：[{type, path, value}]")
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: Mapped[Any] = mapped_column(JSON, comment="后置提取规则快照：[{name, source, jsonpath, sql, field}]")
     extracted_vars: Mapped[Any] = mapped_column(JSON, comment="后置提取实际结果：{name: value}")
 
@@ -424,6 +444,85 @@ class FieldDictionary(Base):
     label: Mapped[str] = mapped_column(String(100), nullable=False, comment="字段中文名：如 订单ID / 提单号")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, comment="最近更新时间")
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
+
+    project: Mapped["Project"] = relationship("Project")
+
+
+class UiElement(Base):
+    """UI 元素库：项目级页面元素定位器（承接 autotest-playwright 的 locator JSON）。
+
+    页面元素 = page_scope（页面/模块域，如 ordermanage/business_order_add）+
+    element_key（元素英文键，如 bl_no_input）；strategies 为定位策略字典，
+    保留原 locator JSON 的多策略字段（full_xpath/text/label/for/button/...），
+    UI 管线按优先级链解析，首个命中即用。
+    """
+    __tablename__ = "ui_elements"
+    __table_args__ = (
+        UniqueConstraint("project_id", "page_scope", "element_key", name="uq_ui_element_scope_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, comment="主键ID")
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True, comment="所属项目ID")
+    page_scope: Mapped[str] = mapped_column(String(200), nullable=False, index=True,
+                    comment="页面域：模块/页面标识，如 ordermanage/business_order_add")
+    element_key: Mapped[str] = mapped_column(String(200), nullable=False,
+                      comment="元素键名：如 bl_no_input / save_draft_button")
+    strategies: Mapped[Any] = mapped_column(JSON, default=dict,
+                     comment="定位策略字典：{full_xpath, text, label, for, placeholder, button, checkbox, toast, css, xpath, ...}，按优先级链解析")
+    description: Mapped[str | None] = mapped_column(String(200), comment="元素中文说明（日志/报告用）")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, comment="最近更新时间")
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
+
+    project: Mapped["Project"] = relationship("Project")
+
+
+class CustomAction(Base):
+    """自定义 UI 动作：项目级 JS 动作模板（编排时像预设动作一样选用）。
+
+    script 为 JS 函数体（入参 args = 步骤 value 求值结果），返回值进 facts.result；
+    页面上下文即 Playwright page.evaluate 环境（可访问 document/window）。
+    """
+    __tablename__ = "custom_actions"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_custom_action_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, comment="主键ID")
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True, comment="所属项目ID")
+    name: Mapped[str] = mapped_column(String(100), nullable=False, comment="动作名（编排下拉显示）")
+    description: Mapped[str | None] = mapped_column(String(500), comment="用法说明（多行，帮助中心与编排下拉展示）")
+    script: Mapped[str] = mapped_column(Text, nullable=False,
+                    comment="JS 函数体：入参 args（步骤 value），return 值进 facts.result")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, comment="最近更新")
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
+
+    project: Mapped["Project"] = relationship("Project")
+
+
+class UiActionDoc(Base):
+    """UI 动作用法文档（项目级）：非原生动作的项目内补充说明。
+
+    action_key 为预设动作名（如 toast_watch/save）或自定义动作引用（custom:{id}）；
+    usage_text 为多行用法文本（何时用/参数实践/项目内示例），帮助中心「UI 动作解析」
+    tab 合并展示给团队——预设动作内置 desc 仍展示，本表文本作为「项目用法」追加。
+    """
+    __tablename__ = "ui_action_docs"
+    __table_args__ = (
+        UniqueConstraint("project_id", "action_key", name="uq_ui_action_doc_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, comment="主键ID")
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True, comment="所属项目ID")
+    action_key: Mapped[str] = mapped_column(String(80), nullable=False, comment="动作标识：预设动作名 / custom:{custom_action_id}")
+    usage_text: Mapped[str] = mapped_column(Text, nullable=False, comment="项目级用法文本（多行）")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, comment="最近更新")
     created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
     updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
 

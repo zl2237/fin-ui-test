@@ -234,3 +234,150 @@ class TestExportReportHtml:
         # 步骤名与导航项同样有 title 悬浮
         assert '<span class="sp-name" title="下单">下单</span>' in html
         assert 'title="下单&#10;POST /order"' in html
+
+
+class _UiStep(_Step):
+    """UI 步骤替身：step_kind='ui'，request=ui_params(steps)，response=facts(steps)"""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.step_kind = kw.get("step_kind", "ui")
+        self.screenshot_file_id = kw.get("screenshot_file_id", None)
+        self.api_method = kw.get("api_method", "UI")
+        self.api_path = kw.get("api_path", "/development/order/create")
+
+
+_UI_PARAMS = {
+    "steps": [
+        {"action": "goto", "url": "/development/order/create"},
+        {"action": "fill", "element": "提单号输入框", "value": "UITEST001"},
+        {"action": "click", "element": "保存按钮"},
+    ]
+}
+_UI_FACTS_OK = {
+    "action": "steps",
+    "url": "/development/order/create",
+    "title": "新增订单",
+    "steps": [
+        {"action": "goto", "url": "/development/order/create", "title": "新增订单"},
+        {"action": "fill", "value": "UITEST001"},
+        {"action": "click", "count": 1},
+    ],
+}
+
+
+class TestExportReportHtmlUi:
+    """UI 步骤（step_kind='ui'）专项渲染：动作链表 / 截图 / 页面事实 / 失败现场"""
+
+    def test_ui_pane_meta_and_tab_labels(self):
+        """meta 行显示动作组规模+终态页面+标题；Tab 换成 动作链/页面截图"""
+        html = export_report_html(_Record(), [_UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK)])
+        assert '<span class="sp-kind">UI</span>' in html          # 头部类型徽标
+        assert "UI · 动作组 3 步" in html
+        assert "/development/order/create" in html                 # 终态页面
+        assert "新增订单" in html                                   # 页面标题
+        assert "动作链（3）" in html                                # Tab 标签
+        assert "页面 / 截图" in html
+
+    def test_ui_steps_table_param_result_alignment(self):
+        """动作链表逐步对齐：参数侧 element/value + 结果侧 facts；请求/响应 Tab 的 API 原文不渲染"""
+        html = export_report_html(_Record(), [_UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK)])
+        assert "动作链（3 步）" in html
+        assert "提单号输入框" in html and "UITEST001" in html       # 参数摘要
+        assert "保存按钮" in html
+        assert "count=1" in html                                   # 结果摘要（facts 非 action 键值）
+        assert "请求头" not in html and "请求体" not in html          # API 面板文案不出现
+        assert "状态码" not in html
+
+    def test_ui_failed_group_marks_failed_step_and_remaining(self):
+        """失败组（partial 现场）：失败步显示错误、其后标未执行；失败摘要卡透出 UI 错误"""
+        resp = {
+            "action": "steps", "error": "[步骤2·fill] Timeout 30000ms",
+            "steps": [{"action": "goto", "url": "/development/order/create"}],
+        }
+        html = export_report_html(_Record(), [_UiStep(status="failed", request_body=_UI_PARAMS, response_body=resp)])
+        assert "row-fail" in html
+        assert "[步骤2·fill] Timeout 30000ms" in html              # 失败步错误（title + 摘要）
+        assert "未执行" in html                                     # 步骤3 中止
+        assert "✗" in html
+        assert "UI 动作执行失败" not in html                          # 有 error 时失败卡显示 error 原文
+        assert "[步骤2·fill] Timeout 30000ms</span>" in html or "Timeout 30000ms" in html
+
+    def test_ui_fail_card_without_assertions_shows_error(self):
+        """UI 失败且无断言失败时，失败摘要卡显示 response.error 而非裸状态"""
+        resp = {"action": "steps", "error": "页面崩溃", "steps": []}
+        html = export_report_html(_Record(), [_UiStep(status="failed", request_body=_UI_PARAMS, response_body=resp)])
+        assert "1 个步骤未通过" in html
+        assert "页面崩溃" in html
+
+    def test_ui_legacy_single_action_format(self):
+        """旧单动作格式（ui_params 无 steps）：动作链表退化为单行"""
+        rb = {"action": "goto", "url": "/login"}
+        resp = {"action": "goto", "url": "/login", "title": "登录"}
+        html = export_report_html(_Record(), [_UiStep(request_body=rb, response_body=resp)])
+        assert "动作（单步）" in html
+        assert "UI · 单动作" in html
+        assert "动作链（1）" in html
+
+    def test_ui_screenshot_placeholder_without_file(self):
+        """无截图文件：占位文案说明截图策略"""
+        html = export_report_html(_Record(), [_UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK)])
+        assert "无截图" in html
+
+    def test_ui_screenshot_degrades_without_db(self):
+        """有 screenshot_file_id 但无 db 会话：降级提示，不抛异常"""
+        s = _UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK, screenshot_file_id=99)
+        html = export_report_html(_Record(), [s])
+        assert "截图不可用（导出上下文无数据库会话）" in html
+
+    def test_ui_screenshot_embedded_as_data_uri(self):
+        """有 db：TestFile → 物理文件 → base64 data URI 内嵌（点击可看原图）"""
+        import base64 as b64mod
+        import types
+
+        png = b"\x89PNG-fake-bytes"
+        tf = types.SimpleNamespace(content_type="image/png", storage_path="files/ab/abcd")
+        fake_db = types.SimpleNamespace(get=lambda model, fid: tf if fid == 7 else None)
+
+        # _ui_screenshot_sec 内部局部导入 file_helpers.resolve_physical_path，打桩该模块函数
+        import app.services.file_helpers as fh
+        orig = fh.resolve_physical_path
+        fh.resolve_physical_path = lambda p: types.SimpleNamespace(read_bytes=lambda: png)
+        try:
+            s = _UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK, screenshot_file_id=7)
+            html = export_report_html(_Record(), [s], db=fake_db)
+        finally:
+            fh.resolve_physical_path = orig
+
+        uri = "data:image/png;base64," + b64mod.b64encode(png).decode("ascii")
+        assert uri in html
+        assert '<img class="shot"' in html
+
+    def test_ui_page_facts_excludes_steps(self):
+        """页面事实区排除 steps（已在动作链表展开），保留 url/title 等末步公共字段"""
+        html = export_report_html(_Record(), [_UiStep(request_body=_UI_PARAMS, response_body=_UI_FACTS_OK)])
+        assert "页面事实" in html
+        # steps 列表的 JSON 不重复出现在页面事实（动作链表内 count=1 只出现一次级结果摘要）
+        assert '"steps": [' not in html and '"steps":[' not in html
+
+    def test_ui_failed_meta_recovers_page_from_partial(self):
+        """失败组顶层无 url/title：meta 从 partial steps 回溯最后出现值，还原失败页面"""
+        resp = {
+            "action": "steps", "error": "[步骤2·fill] Timeout",
+            "steps": [
+                {"action": "goto", "url": "/dev/order", "title": "订单页"},
+                {"action": "fill", "value": "X"},   # 无 url/title
+            ],
+        }
+        html = export_report_html(_Record(), [
+            _UiStep(status="failed", api_path="", request_body=_UI_PARAMS, response_body=resp)])
+        assert "订单页" in html                                  # 回溯到的页面标题
+        assert "/dev/order" in html                              # 回溯到的页面 URL
+
+    def test_api_step_rendering_unchanged(self):
+        """API 步骤（无 step_kind 属性的历史数据）渲染保持原样：请求/响应 Tab + 状态码"""
+        html = export_report_html(_Record(), [_Step()])
+        assert ">请求</label>" in html
+        assert ">响应</label>" in html
+        assert "状态码" in html and "请求头" in html and "请求体" in html
+        assert '<span class="sp-kind">UI</span>' not in html

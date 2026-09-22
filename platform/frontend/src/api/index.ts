@@ -165,6 +165,7 @@ export interface HarPreviewItem {
   _selected?: boolean  // 前端勾选状态
 }
 export type CaseGroup = components['schemas']['CaseGroupOut']
+<<<<<<< HEAD
 // ============ 四来源参数模型（2026-09-30 定案：节点入参取值单选四来源） ============
 export type ParamSource = 'constant' | 'func' | 'ref' | 'sql'
 /** 函数入参：常量或引用（引用允许上游变量/本节点 SQL 参数，后端逐参求值） */
@@ -236,6 +237,48 @@ export interface AssertionSpec {
 export interface NodeConfig {
   id?: number; case_id?: number; node_id: string; api_id?: number | null
   post_extract: PostExtractSpec[]; assertions: AssertionSpec[]
+=======
+// UI 节点参数（step_type='ui' 时使用）：与后端 ui_runtime.py 动作词表对齐。
+// element 支持内联单策略 {strategy, value, name?} 或元素库引用 {element_id}
+/** UI 动作步骤（页面级节点 ui_params.steps 的单项；不允许再嵌套 steps） */
+export interface UiStep {
+  action: 'goto' | 'click' | 'fill' | 'pick' | 'select_option' | 'check' | 'press' | 'type'
+    | 'date' | 'wait' | 'upload' | 'screenshot' | 'evaluate' | 'custom'
+    | 'search' | 'click_text' | 'row_button'
+    | 'scroll_bottom' | 'confirm' | 'popper_pick'
+    | 'toast_watch' | 'save' | 'uncheck_all'
+  url?: string
+  element?: {
+    strategy?: 'css' | 'xpath' | 'text' | 'role' | 'placeholder' | 'label' | 'test_id' | 'for'
+    value?: string
+    name?: string  // role 策略的可访问名（get_by_role(name=...)）
+    element_id?: number  // 元素库引用（优先于内联策略）
+    strategies?: Record<string, any>
+  }
+  value?: any
+  values?: any[]
+  timeout_ms?: number
+  wait_for?: 'load' | 'domcontentloaded' | 'networkidle'
+  force?: boolean
+  files?: any[]
+  index?: number  // click_text 同名按钮取第 N 个
+  match?: 'exact' | 'contains'  // click_text 匹配方式（默认 exact）
+  mode?: 'default' | 'js'  // click 模式（js=绕过可点击性校验）
+  wait?: boolean  // confirm 轮询模式（弹窗延迟出现时持续监视）
+  optional?: boolean  // confirm 只点「继续提交」类、无弹窗跳过；click_text 无则跳过；toast_watch 宽容超时
+  absent?: boolean  // toast_watch 反向断言：观察窗内出现提示即失败（value 空=任何提示）
+  custom_id?: number  // custom 动作引用 custom_actions.id
+}
+/** UI 节点参数：单动作（{action,...}）或动作组（{steps:[...]}，页面级节点，steps 优先） */
+export interface UiParams extends Partial<UiStep> {
+  steps?: UiStep[]
+}
+export interface NodeConfig {
+  id?: number; case_id?: number; node_id: string; api_id?: number | null
+  step_type?: string  // api 接口调用（默认/历史缺省） / ui 浏览器操作
+  ui_params?: UiParams
+  pre_process: any[]; post_extract: any[]; assertions: any[]
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
   wait_after_ms?: number
 }
 export interface TestCase {
@@ -288,7 +331,13 @@ export interface StepRecord {
   resumed?: boolean  // 断点续跑段产出的步骤（顶替旧失败记录）
   replay_passed_at?: string | null  // 重放验证通过时间（「已重放通过」徽标）
   started_at?: string; ended_at?: string; status?: string
+<<<<<<< HEAD
   pre_process?: { type?: string; path?: string; value?: any; sql?: string }[] | null  // 历史遗留：仅老报告回显，新步骤恒 null
+=======
+  step_kind?: string | null  // 步骤类型 api/ui（历史行 null 视为 api）
+  screenshot_file_id?: number | null  // UI 步骤截图文件ID（文件中心 /api/files/{id}/preview）
+  pre_process?: { type?: string; path?: string; value?: any; sql?: string }[] | null
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
   post_extract?: Record<string, any>[] | null
   extracted_vars?: Record<string, any> | null
   assertions: AssertionRecord[]
@@ -732,6 +781,21 @@ export const fileApi = {
   update: (id: number, data: { name?: string; category_id?: number | null }) =>
     http.put<TestFile>(`/files/${id}`, data).then((r) => r.data),
   remove: (id: number) => http.delete<{ message: string; physical_removed: boolean }>(`/files/${id}`),
+  // 批量删除：多条件 AND 组合；dryRun=true 仅预览命中数与样例
+  batchDelete: (data: {
+    project_id: number
+    ids?: number[] | null
+    category_id?: number | null
+    name_contains?: string | null
+    content_type_prefix?: string | null
+    created_by?: number | null
+    created_after?: string | null
+    created_before?: string | null
+    dry_run: boolean
+  }) =>
+    http.post<{ dry_run: boolean; count?: number; deleted?: number; physical_removed?: number;
+                sample?: { id: number; name: string; content_type: string; created_at: string; ref_count: number }[] }>(
+      '/files/batch-delete', data).then((r) => r.data),
   // 下载/预览：用 axios 获取 blob（带 token），转 object URL 供 img/iframe/a 使用
   fetchBlob: (id: number, preview = false) =>
     http.get<Blob>(`/files/${id}/${preview ? 'preview' : 'download'}`, { responseType: 'blob' }).then((r) => {
@@ -748,4 +812,73 @@ export const fileCategoryApi = {
   update: (id: number, data: { name?: string; parent_id?: number | null; sort_order?: number }) =>
     http.put<FileCategory>(`/file-categories/${id}`, data).then((r) => r.data),
   remove: (id: number) => http.delete(`/file-categories/${id}`),
+}
+
+// ============ UiElement UI 元素库 ============
+// 页面元素定位器库：UI 节点可按 {page_scope, element_key} 引用（element_id），
+// strategies 沿用 autotest-playwright locator JSON 的多策略字段（full_xpath 永远兜底）
+export interface UiElement {
+  id: number; project_id: number; page_scope: string; element_key: string
+  strategies: Record<string, any>; description?: string | null
+  updated_at?: string | null
+  created_by?: number | null; updated_by?: number | null
+  created_by_name?: string | null; updated_by_name?: string | null
+}
+export interface UiElementScope {
+  page_scope: string; count: number
+}
+
+// ============ CustomAction 自定义 UI 动作 ============
+export interface CustomAction {
+  id: number
+  project_id: number
+  name: string
+  description?: string | null
+  script: string
+  updated_at?: string | null
+  updated_by_name?: string | null
+}
+
+export const customActionApi = {
+  list: (projectId: number) =>
+    http.get<CustomAction[]>('/custom-actions', { params: { project_id: projectId } }).then((r) => r.data),
+  create: (data: { project_id: number; name: string; description?: string; script: string }) =>
+    http.post<CustomAction>('/custom-actions', data).then((r) => r.data),
+  update: (id: number, data: { name?: string; description?: string; script?: string }) =>
+    http.put<CustomAction>(`/custom-actions/${id}`, data).then((r) => r.data),
+  remove: (id: number) => http.delete(`/custom-actions/${id}`),
+}
+
+// ============ UiActionDoc UI 动作用法文档（项目级） ============
+export interface UiActionDoc {
+  id: number
+  project_id: number
+  action_key: string  // 预设动作名 / custom:{id}
+  usage_text: string
+  updated_at?: string | null
+  updated_by_name?: string | null
+}
+
+export const uiActionDocApi = {
+  list: (projectId: number) =>
+    http.get<UiActionDoc[]>('/ui-action-docs', { params: { project_id: projectId } }).then((r) => r.data),
+  /** 空文本 = 删除覆盖（回落内置说明）；成功返回覆盖对象或 null */
+  upsert: (projectId: number, actionKey: string, usageText: string) =>
+    http.put<UiActionDoc | null>(`/ui-action-docs/${encodeURIComponent(actionKey)}`,
+      { project_id: projectId, usage_text: usageText }).then((r) => r.data),
+}
+
+export const elementApi = {
+  list: (projectId: number, pageScope?: string, keyword?: string) =>
+    http.get<UiElement[]>('/ui-elements', { params: { project_id: projectId, page_scope: pageScope, keyword } }).then((r) => r.data),
+  scopes: (projectId: number) =>
+    http.get<UiElementScope[]>('/ui-elements/scopes', { params: { project_id: projectId } }).then((r) => r.data),
+  create: (data: { project_id: number; page_scope: string; element_key: string; strategies: Record<string, any>; description?: string }) =>
+    http.post<UiElement>('/ui-elements', data).then((r) => r.data),
+  // 覆盖式批量导入：承接 locator JSON 的 {key:{策略字段,description}} 展开结果
+  batch: (data: { project_id: number; page_scope: string; items: { element_key: string; strategies: Record<string, any>; description?: string }[] }) =>
+    http.post<{ message: string; count: number }>('/ui-elements/batch', data).then((r) => r.data),
+  update: (id: number, data: { page_scope?: string; element_key?: string; strategies?: Record<string, any>; description?: string }) =>
+    http.put<UiElement>(`/ui-elements/${id}`, data).then((r) => r.data),
+  remove: (id: number) => http.delete(`/ui-elements/${id}`),
 }

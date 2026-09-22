@@ -93,6 +93,10 @@
             <el-icon><Collection /></el-icon>
             <template #title><span>字段字典</span></template>
           </el-menu-item>
+          <el-menu-item index="/elements">
+            <el-icon><Aim /></el-icon>
+            <template #title><span>元素库</span></template>
+          </el-menu-item>
           <el-menu-item index="/files">
             <el-icon><Files /></el-icon>
             <template #title><span>文件中心</span></template>
@@ -206,8 +210,8 @@
               <el-icon><FullScreen /></el-icon>
             </el-button>
           </el-tooltip>
-          <!-- 常驻帮助入口：coreCap 三 tab（表达式/断言/数据集）随手可查 -->
-          <el-tooltip content="帮助（表达式 / 断言 / 数据集）" placement="top" popper-class="app-tip">
+          <!-- 常驻帮助入口：coreCap 四 tab（表达式/断言/数据集/UI 动作）随手可查 -->
+          <el-tooltip content="帮助（表达式 / 断言 / 数据集 / UI 动作）" placement="top" popper-class="app-tip">
             <el-button text aria-label="帮助" @click="store.openCoreCapability('expression')">
               <el-icon><QuestionFilled /></el-icon>
             </el-button>
@@ -562,6 +566,57 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <!-- ========== UI 动作库解析（按来源分组：原生/非原生；非原生合并项目级用法文档与自定义动作） ========== -->
+      <el-tab-pane label="UI 动作解析" name="actions">
+        <div class="corecap-intro">
+          UI 节点的动作词表（预设 {{ UI_ACTIONS.length }} 种 + 项目自定义 {{ customActions.length }} 个，按来源分组），与编排面板「动作类型」一致；
+          参数均为可选高级项，编排面板按动作自动展示对应表单项。
+          非原生动作统一归入 动作库 → 自定义动作 管理：内置封装可修改描述（此处与编排下拉即时生效），JS 模板可新建/修改/删除。
+        </div>
+        <div v-for="og in ORIGIN_KEYS" :key="og" class="corecap-group">
+          <div class="corecap-group-title">
+            {{ UI_ACTION_ORIGINS[og].group }}（{{ og === 'wrapped' ? wrappedPresets.length + 1 + customActions.length : UI_ACTIONS.filter(x => x.origin === og).length }} 种）
+          </div>
+          <div class="corecap-origin-note">{{ UI_ACTION_ORIGINS[og].note }}</div>
+          <div class="corecap-cards">
+            <div v-for="a in og === 'wrapped' ? wrappedPresets : UI_ACTIONS.filter(x => x.origin === og)" :key="a.action" class="corecap-card">
+              <div class="corecap-card-head">
+                <code class="corecap-syntax">{{ a.action }}</code>
+                <span class="corecap-desc">{{ a.name }} — {{ og === 'wrapped' ? (docText(a.action) || a.desc) : a.desc }}</span>
+                <span class="corecap-origin-tag" :class="`origin-${og}`">{{ UI_ACTION_ORIGINS[og].label }}</span>
+              </div>
+              <div v-for="p in a.params || []" :key="p.name" class="corecap-example">
+                <code>{{ p.name }}</code>{{ p.required ? '（必填）' : '（可选）' }}：{{ p.desc }}
+              </div>
+            </div>
+
+            <!-- custom 步骤占位 + 项目自定义动作清单（仅非原生组追加） -->
+            <template v-if="og === 'wrapped'">
+              <div class="corecap-card">
+                <div class="corecap-card-head">
+                  <code class="corecap-syntax">custom</code>
+                  <span class="corecap-desc">自定义动作 — 执行下方项目动作库的 JS 模板，入参 args，返回值进 facts.result</span>
+                  <span class="corecap-origin-tag origin-wrapped">封装</span>
+                </div>
+                <div class="corecap-example"><code>custom_id</code>（必填）：项目动作库条目（编排下拉选择）</div>
+                <div class="corecap-example"><code>value</code>（可选）：传给脚本的 args（支持 ${变量}）</div>
+              </div>
+              <div v-for="ca in customActions" :key="`ca-${ca.id}`" class="corecap-card">
+                <div class="corecap-card-head">
+                  <code class="corecap-syntax">custom:{{ ca.id }}</code>
+                  <span class="corecap-desc">{{ ca.name }} — 项目自定义 JS 动作{{ ca.updated_by_name ? ` · ${ca.updated_by_name} 维护` : '' }}</span>
+                  <span class="corecap-origin-tag origin-wrapped">自定义</span>
+                </div>
+                <pre v-if="ca.description" class="corecap-usage-text">{{ ca.description }}</pre>
+              </div>
+              <div v-if="!customActions.length" class="corecap-example">
+                项目暂无 JS 模板动作——到 元素库 → 动作库管理 新建（编排时像预设动作一样选用）
+              </div>
+            </template>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
     <template #footer>
       <el-button type="primary" @click="store.setCoreCapVisible(false)">关闭</el-button>
@@ -580,14 +635,28 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Connection, Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, Grid, QuestionFilled } from '@element-plus/icons-vue'
+import { Connection, Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, Grid, QuestionFilled, Aim } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'
 import { useTabStore, type TabItem } from '@/stores/tabs'
-import { authApi } from '@/api'
+import { authApi, customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
 import CommandPalette from '@/components/CommandPalette.vue'
 import ProjectVersionHistory from '@/components/ProjectVersionHistory.vue'
 import AvatarCropper from '@/components/AvatarCropper.vue'
-import { resolveMenuActive } from '@/utils/ui'
+import { resolveMenuActive, UI_ACTIONS, UI_ACTION_ORIGINS, type UiActionOrigin, type UiActionMeta } from '@/utils/ui'
+
+// 动作解析 tab 的来源分组顺序（原生 / 非原生）
+const ORIGIN_KEYS: UiActionOrigin[] = ['native', 'wrapped']
+
+// ===== 动作库项目级数据（帮助中心「UI 动作解析」合并展示；元素库页「动作库管理」维护） =====
+/** 预设封装动作（非原生词表；custom 为步骤占位，单独渲染项目清单） */
+const wrappedPresets = computed<UiActionMeta[]>(() =>
+  UI_ACTIONS.filter((x) => x.origin === 'wrapped' && x.action !== 'custom'))
+const customActions = ref<CustomAction[]>([])
+const actionDocs = ref<UiActionDoc[]>([])
+
+function docText(actionKey: string): string {
+  return actionDocs.value.find((d) => d.action_key === actionKey)?.usage_text || ''
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -600,18 +669,40 @@ const versionVisible = ref(false)
 const SQL_BRACE = '{{节点.变量}}'
 const SQL_EXAMPLE = 'SELECT order_no FROM sys_order WHERE id = {{n_create.order_id}}'
 
+// 动作库项目级数据拉取（store 就绪后注册）
+async function loadActionLibrary() {
+  const pid = store.currentProjectId
+  if (!pid) return
+  try {
+    const [cas, docs] = await Promise.all([
+      customActionApi.list(pid),
+      uiActionDocApi.list(pid),
+    ])
+    customActions.value = cas
+    actionDocs.value = docs
+  } catch {
+    // 帮助视图容错：加载失败保持内置说明，不打断浏览
+  }
+}
+
+// 打开帮助中心且切到动作解析 tab 时刷新（动作库可能在元素库页被其他人更新过）
+watch(() => [store.coreCapVisible, store.coreCapTab] as const, ([vis, tab]) => {
+  if (vis && tab === 'actions') loadActionLibrary()
+})
+
 // 核心能力弹窗标题按 tab 映射（三个 tab 后不再用内联三元）
 const CORE_CAP_TITLES: Record<string, string> = {
   expression: '参数来源 · 四来源与内置函数',
   assertion: '17 种断言规则 · 用法示例',
   dataset: '数据集 · 用法',
+  actions: 'UI 动作库 · 动作解析（原生/封装/项目自定义）',
 }
 const coreCapTitle = computed(() => CORE_CAP_TITLES[store.coreCapTab] || CORE_CAP_TITLES.expression)
 
 // 侧边菜单项（与模板 el-menu-item index 一一对应，供子路由激活态前缀匹配）
 const MENU_PATHS = [
   '/apis', '/cases', '/datasets', '/executions',
-  '/projects', '/envs', '/dictionary', '/files',
+  '/projects', '/envs', '/dictionary', '/elements', '/files',
   '/users', '/operation-logs',
 ]
 // 子路由（如 /envs/edit/:id）下按段前缀匹配激活父菜单，避免导航上下文丢失
@@ -1512,6 +1603,29 @@ onMounted(async () => {
   padding-left: 10px;
   border-left: 3px solid var(--app-primary);
 }
+/* 动作来源：分组说明行 + 卡片角标（四色区分） */
+.corecap-origin-note {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  margin: -4px 0 8px 13px;
+}
+.corecap-origin-tag {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+.corecap-origin-tag.origin-native {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+.corecap-origin-tag.origin-wrapped {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
+}
 .corecap-cards {
   display: grid;
   grid-template-columns: 1fr;
@@ -1546,6 +1660,8 @@ onMounted(async () => {
 .corecap-desc {
   font-size: 12px;
   color: var(--app-text-muted);
+  /* 动作描述可被项目覆盖为多行文本（动作库管理 → 编辑描述） */
+  white-space: pre-line;
 }
 .corecap-example {
   margin-top: 6px;
@@ -1554,6 +1670,33 @@ onMounted(async () => {
   font-family: var(--app-font-mono);
   line-height: 1.6;
   word-break: break-all;
+}
+/* 项目用法（动作库管理的团队补充说明，多行纯文本） */
+.corecap-usage {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 4px;
+  background: var(--app-hover);
+}
+.corecap-usage-tag {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.corecap-usage-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--app-text);
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .corecap-result {
   color: var(--app-success);

@@ -206,6 +206,7 @@ const results = computed<CmdItem[]>(() => {
     { title: '执行记录', path: '/executions' },
     { title: '环境配置', path: '/envs' },
     { title: '字段字典', path: '/dictionary' },
+    { title: '元素库', path: '/elements' },
     { title: '文件中心', path: '/files' },
   ]
   if (store.user?.role === 'admin') {
