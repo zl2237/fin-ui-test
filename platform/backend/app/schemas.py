@@ -163,6 +163,7 @@ class EnvironmentCreate(BaseModel):
     login_config: dict[str, Any] = {}
     notify_config: dict[str, Any] = {}
     common_headers: dict[str, Any] = {}
+    browser_config: dict[str, Any] = {}
     success_codes: str = "200"
     timeout: int = 15
     node_retry_count: int = 0
@@ -177,6 +178,7 @@ class EnvironmentUpdate(BaseModel):
     login_config: dict[str, Any] | None = None
     notify_config: dict[str, Any] | None = None
     common_headers: dict[str, Any] | None = None
+    browser_config: dict[str, Any] | None = None
     success_codes: str | None = None
     timeout: int | None = None
     node_retry_count: int | None = None
@@ -198,6 +200,8 @@ class EnvironmentOut(ORMBase, AuditMixin):
     login_config: dict[str, Any] = {}
     notify_config: dict[str, Any] = {}
     common_headers: dict[str, Any] = {}
+    # 历史环境该列为 NULL（UI 集成前创建），响应必须容忍 None——否则环境列表 500
+    browser_config: dict[str, Any] | None = None
     success_codes: str = "200"
     timeout: int = 15
     # 历史环境迁移前列为 NULL，响应容忍 None（getattr 侧引擎有兜底）
@@ -444,6 +448,12 @@ class CaseGroupOut(ORMBase):
 class NodeConfigIn(BaseModel):
     node_id: str
     api_id: int | None = None
+<<<<<<< HEAD
+=======
+    step_type: str = "api"  # api 接口调用 / ui 浏览器操作
+    ui_params: dict[str, Any] = {}  # UI 节点参数（step_type=ui 时使用）
+    pre_process: list[dict[str, Any]] = []
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: list[dict[str, Any]] = []
     assertions: list[dict[str, Any]] = []
     wait_after_ms: int = 0
@@ -454,6 +464,13 @@ class NodeConfigOut(ORMBase):
     case_id: int
     node_id: str
     api_id: int | None = None
+<<<<<<< HEAD
+=======
+    step_type: str = "api"
+    # 历史用例（UI 集成前创建）该列为 NULL，响应必须容忍 None——否则用例列表 500
+    ui_params: dict[str, Any] | None = None
+    pre_process: list[dict[str, Any]] = []
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: list[dict[str, Any]] = []
     assertions: list[dict[str, Any]] = []
     wait_after_ms: int = 0
@@ -637,6 +654,8 @@ class StepRecordOut(ORMBase):
     pre_process: list[dict[str, Any]] | None = None  # 前置处理快照（历史遗留：仅老报告回显，新步骤恒 null）
     post_extract: list[dict[str, Any]] | None = None  # 后置提取规则快照
     extracted_vars: dict[str, Any] | None = None  # 后置提取实际结果
+    step_kind: str | None = None  # 步骤类型 api/ui（历史行 null 视为 api）
+    screenshot_file_id: int | None = None  # UI 步骤截图文件ID（文件中心预览）
     assertions: list[AssertionRecordOut] = []
 
 
@@ -769,6 +788,104 @@ class FieldDictionaryOut(ORMBase, AuditMixin):
     project_id: int
     key: str
     label: str
+    updated_at: datetime | None = None
+    updated_by: int | None = None
+    updated_by_name: str | None = None
+
+
+# ============ UiElement UI 元素库 ============
+class UiElementCreate(BaseModel):
+    project_id: int
+    page_scope: str
+    element_key: str
+    strategies: dict[str, Any] = {}
+    description: str | None = None
+
+
+class UiElementUpdate(BaseModel):
+    page_scope: str | None = None
+    element_key: str | None = None
+    strategies: dict[str, Any] | None = None
+    description: str | None = None
+
+
+class UiElementItemIn(BaseModel):
+    """批量导入单行（承接 locator JSON 的 {key: {策略字段, description}} 展开）"""
+    element_key: str
+    strategies: dict[str, Any] = {}
+    description: str | None = None
+
+
+class UiElementBatchIn(BaseModel):
+    """按页面域批量导入元素（覆盖式：同 key 更新 strategies，新 key 插入）"""
+    project_id: int
+    page_scope: str
+    items: list[UiElementItemIn]
+
+
+class UiElementOut(ORMBase, AuditMixin):
+    id: int
+    project_id: int
+    page_scope: str
+    element_key: str
+    strategies: dict[str, Any] = {}
+    description: str | None = None
+    updated_at: datetime | None = None
+    updated_by: int | None = None
+    updated_by_name: str | None = None
+
+
+# ============ CustomAction 自定义 UI 动作 ============
+class CustomActionCreate(BaseModel):
+    project_id: int
+    name: str
+    description: str | None = None
+    script: str
+
+
+class CustomActionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    script: str | None = None
+
+
+class CustomActionOut(ORMBase, AuditMixin):
+    id: int
+    project_id: int
+    name: str
+    description: str | None = None
+    script: str
+    updated_at: datetime | None = None
+    updated_by: int | None = None
+    updated_by_name: str | None = None
+
+
+# ============ 文件中心：批量删除 ============
+class FileBatchDeleteRequest(BaseModel):
+    """批量删除条件（AND 组合；至少传一个条件，dry_run=True 仅统计预览）"""
+    project_id: int
+    ids: list[int] | None = None
+    category_id: int | None = None
+    name_contains: str | None = None
+    content_type_prefix: str | None = None
+    created_by: int | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    dry_run: bool = True
+
+
+# ============ UiActionDoc UI 动作用法文档 ============
+class UiActionDocUpsert(BaseModel):
+    """upsert 一条项目级用法文本（usage_text 传空串 = 删除覆盖，回落内置说明）"""
+    project_id: int
+    usage_text: str
+
+
+class UiActionDocOut(ORMBase, AuditMixin):
+    id: int
+    project_id: int
+    action_key: str
+    usage_text: str
     updated_at: datetime | None = None
     updated_by: int | None = None
     updated_by_name: str | None = None

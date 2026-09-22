@@ -274,7 +274,125 @@ def ensure_case_dataset(db: Session, case, user_id: int | None = None,
         db.rollback()
 
 
+<<<<<<< HEAD
 # ============ 复制 / 克隆 / 组合合并（纯值操作） ============
+=======
+def filter_row_vars_for_node(row_vars: dict | None, origins: dict | None,
+                             api, pre_process: list | None) -> dict | None:
+    """快照保真过滤：数据集行值按节点过滤后应用（纯函数，执行层调用）。
+
+    同名异值列（跨节点配置值不同，如 main_ids '3,1' vs ',3,1,'）一张列无法同时
+    驱动所有节点——按行值是否被用户编辑分两种语义：
+
+    1. 行值 == origin（生成后未编辑的快照值）：只作用于"节点自身配置值 == origin"
+       的节点，异值节点保留自身配置。防的是生成时被下游真实订单节点污染的快照
+       盖掉源头节点配置（teu 56→3 案例），保证原样执行与原用例行为一致。
+    2. 行值 != origin（用户在数据集里编辑过该单元格）：明确的覆盖意图，
+       作用于全部节点——即使某节点配置值与 origin 异值（如接口默认值是从真实
+       订单拷贝的"带 order_id 版本"），也按行值覆盖（supplier 整体替换场景）。
+
+    - origins 为 None/空（手工列、旧数据集无 origin）→ 不过滤，行为与现状一致
+    - 节点对 key 的自身配置值 = pre_process 顶层 set_field/add_field 字面量 ?? API 字段
+      默认值（parse_field_value 解析后，与生成口径一致）
+    - 默认值为空的字段记空串哨兵（≠ 任何非空 origin）→ 排除：空值节点的字段
+      不被其他节点贡献的列值盖掉（生成只收非空值，保真口径空 ≠ 非空）
+    - pre_process 对该 key 是动态注入（值含 ${}）→ 该 key 排除（动态绑定不在数据集范围）
+    - 节点没有该 key（请求体无此字段）→ 保留（apply_row_overrides 只覆盖已存在字段，无副作用）
+    """
+    if not row_vars or not origins:
+        return row_vars
+    effective: dict = {}
+    excluded = set()  # 动态注入 key：不在数据集覆盖范围（生成侧已剔除，此处双保险）
+    for f in getattr(api, "fields", None) or []:
+        if not f.key or "." in f.key or f.field_type == "file":
+            continue
+        raw = f.default_value
+        if isinstance(raw, str) and "${" in raw:
+            continue  # 动态默认值：apply_row_overrides 本就跳过 ${} 值
+        effective[f.key] = "" if raw is None or (isinstance(raw, str) and not raw.strip()) \
+            else parse_field_value(raw, f.field_type or "string")
+    for act in pre_process or []:
+        if act.get("type") not in ("set_field", "add_field"):
+            continue
+        path = act.get("path") or ""
+        if not path or "." in path:
+            continue
+        val = act.get("value")
+        if isinstance(val, str) and "${" in val:
+            excluded.add(path)  # 动态注入：该 key 不在数据集覆盖范围
+        else:
+            effective[path] = val
+    result: dict = {}
+    for k, v in row_vars.items():
+        if k in excluded:
+            continue
+        if k not in origins or v != origins[k]:
+            # 无 origin（手工列/旧数据集）或用户编辑过该单元格 → 无条件覆盖
+            result[k] = v
+        elif k not in effective or effective[k] == origins[k]:
+            # 未编辑的快照值：仅当节点配置与 origin 一致才应用（防污染）
+            result[k] = v
+    return result
+
+
+def snapshot_node_configs(case, node_configs: list) -> list:
+    """把用例当前节点编排（含 UI 的 step_type/ui_params）快照为数据集配置（纯函数）。
+
+    只快照 dag_config 中存在的节点（执行时按 node_id 匹配，对不上自然回落用例配置）。
+    注意：快照整块替换用例配置，漏掉 UI 字段会让 UI 节点执行时回落 api 判失败。
+    """
+    node_ids = {n.get("id") for n in (getattr(case, "dag_config", None) or {}).get("nodes", [])}
+    return [{
+        "node_id": c.node_id,
+        "api_id": c.api_id,
+        # getattr 防御：测试替身 SimpleNamespace 可能无该属性（历史行为=api）
+        "step_type": getattr(c, "step_type", None) or "api",
+        "ui_params": deepcopy(ui) if (ui := getattr(c, "ui_params", None)) else None,
+        "pre_process": deepcopy(c.pre_process or []),
+        "post_extract": deepcopy(c.post_extract or []),
+        "assertions": deepcopy(c.assertions or []),
+        "wait_after_ms": c.wait_after_ms or 0,
+    } for c in node_configs if c.node_id in node_ids]
+
+
+def generate_dataset_from_case(db: Session, case_id: int, name: str | None = None,
+                               user_id: int | None = None) -> tuple:
+    """从用例生成数据集：写死参数各成一列 + 1 行原值快照 + 节点配置快照，返回 (dataset, stats)。
+
+    生成的数据集归属该用例（case_id，1:N 隔离）。
+    """
+    case = crud.get_testcase(db, case_id)
+    if not case:
+        raise ValueError(f"用例不存在: {case_id}")
+    assert case.project_id is not None  # 用例必然属于某项目
+    # DataSet.name 上限 100：自定义名超长直接报错；默认名截断用例名部分保后缀
+    suffix = "-参数集"
+    if name:
+        if len(name) > 100:
+            raise ValueError("名称最多 100 字符")
+    else:
+        name = f"{case.name}{suffix}"
+        if len(name) > 100:
+            name = case.name[:100 - len(suffix) - 1] + f"…{suffix}"
+    cfgs = (db.query(models.CaseNodeConfig)
+            .filter(models.CaseNodeConfig.case_id == case_id).all())
+    api_ids = {c.api_id for c in cfgs if c.api_id}
+    apis = (db.query(models.ApiDefinition)
+            .filter(models.ApiDefinition.id.in_(api_ids)).all()) if api_ids else []
+    out = collect_case_params(case, cfgs, {a.id: a for a in apis})
+    if not out["columns"]:
+        raise ValueError("该用例没有可提取的写死请求参数（字段全为 ${} 动态注入 / 嵌套路径 / 空值 / 跨节点同名异值），无法生成数据集")
+    ds = create_dataset(
+        db, project_id=case.project_id, case_id=case.id,
+        name=name,
+        columns=out["columns"], user_id=user_id,
+        description=f"从用例「{case.name}」的写死请求参数生成（{out['stats']['columns']} 列，含 1 行原值快照）",
+        rows_data=[out["row"]],
+        node_configs=snapshot_node_configs(case, cfgs),
+    )
+    return ds, out["stats"]
+
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
 def copy_dataset(db: Session, dataset_id: int, name: str | None = None, user_id: int | None = None) -> models.DataSet:
     """复制数据集（值全量深拷贝，归属同用例）。默认命名「原名-副本」，重名递增。"""

@@ -77,8 +77,12 @@ class DagExecutor:
                  dataset_row: dict[str, Any] | None = None,
                  suite_vars: dict[str, Any] | None = None,
                  suppress_notify: bool = False,
+<<<<<<< HEAD
                  start_node: str | None = None,
                  context_seed: dict[str, Any] | None = None):
+=======
+                 ui_runtime: Any = None):
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
         self.db = db
         self.case = case
         self.env = env
@@ -101,6 +105,7 @@ class DagExecutor:
         self._precreated_record = execution_record
         # 事件出口：默认落库；测试/dry-run 注入内存 sink（持久化接缝）
         self.sink: ExecutionSink = sink or DbSink(db)
+<<<<<<< HEAD
         # 断点续跑：从 start_node（首个未成功节点）起执行，其前缀为已成功节点
         # （不发请求直接计入 passed）；context_seed 为报告虚拟上下文（前缀成功
         # 步骤的提取值），注入 ${} 统一池供后续节点引用
@@ -128,6 +133,11 @@ class DagExecutor:
         return re.sub(r"node_[A-Za-z0-9_]+",
                       lambda m: f"{self._node_labels.get(m.group(0), m.group(0))}({m.group(0)})",
                       msg)
+=======
+        # UI 运行时（惰性构建，首个 ui 节点触发浏览器启动）；
+        # 测试可注入替身，避免真实拉起 Chromium
+        self._ui_runtime = ui_runtime
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
     # ---------- 请求发送 ----------
     def _send_request(self, api: models.ApiDefinition, body: Any, headers: dict,
@@ -267,8 +277,17 @@ class DagExecutor:
         finally:
             record.ended_at = datetime.now()
             self.db.commit()
+<<<<<<< HEAD
             # 用例列表「最近执行」回写（统计列，失败静默不影响收尾）
             touch_case_last_exec(self.db, record)
+=======
+            # UI 运行时收尾：关浏览器/停 playwright/释放并发闸门（未启动则幂等跳过）
+            if self._ui_runtime is not None:
+                try:
+                    self._ui_runtime.close()
+                except Exception as e:
+                    print(f"[资源清理] UI runtime 关闭失败（忽略）: {e}")
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
             if self.db_client:
                 try:
                     self.db_client.close()
@@ -338,11 +357,27 @@ class DagExecutor:
                                request_body=s.request_body or {})
 
     def _resolve_node_config(self, node_id: str):
+<<<<<<< HEAD
         """节点结构配置来源：用例当前 CaseNodeConfig（编排唯一来源，无快照覆盖）。
         仅承载结构层（接口绑定/后置提取/断言/等待）；入参配置见 _resolve_param_config。"""
         if self._node_cache is not None:
             # execute() 已预载全量配置：缓存未命中即该节点确实无配置行
             return self._node_cache.get(node_id)
+=======
+        """节点配置来源：数据集快照优先（node_id 命中整块替换）→ 回落用例 CaseNodeConfig。"""
+        snap = (self.node_config_overrides or {}).get(node_id)
+        if snap:
+            return SimpleNamespace(
+                node_id=node_id,
+                api_id=snap.get("api_id"),
+                step_type=snap.get("step_type") or "api",
+                ui_params=snap.get("ui_params") or {},
+                pre_process=snap.get("pre_process") or [],
+                post_extract=snap.get("post_extract") or [],
+                assertions=snap.get("assertions") or [],
+                wait_after_ms=snap.get("wait_after_ms") or 0,
+            )
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
         return self.db.query(models.CaseNodeConfig).filter(
             models.CaseNodeConfig.case_id == self.case.id,
             models.CaseNodeConfig.node_id == node_id,
@@ -438,6 +473,12 @@ class DagExecutor:
         """
         config = self._resolve_node_config(node_id)
         param_cfg = self._resolve_param_config(node_id)
+
+        # UI 节点分发：step_type='ui' 走 Playwright 管线（api_id 可为空）。
+        # getattr 防御式读取——测试替身 SimpleNamespace 可能没有该属性（历史行为=api）
+        step_type = getattr(config, "step_type", None) or "api"
+        if step_type == "ui":
+            return self._execute_ui_node(execution_id, node_id, node, config)
 
         api = None
         if config and config.api_id:
@@ -566,5 +607,98 @@ class DagExecutor:
         ))
 
         # 节点配置的等待时间（ms），由调用方在节点间应用
+        wait_ms = getattr(config, "wait_after_ms", 0) or 0 if config else 0
+        return step_passed, wait_ms
+
+    # ---------- UI 节点执行 ----------
+    def _execute_ui_node(self, execution_id: int, node_id: str, node: dict, config) -> tuple[bool, int]:
+        """执行单个 UI 节点：跑动作 → 产出 facts → 复用 API 管线的提取/断言 → 落步骤事件。
+
+        facts（{action, url, title, text, ...}）进 response_body，后置提取与
+        json_path_* 断言直接对 facts 求值；db_* 断言不依赖 facts，UI 节点后同样可用
+        （UI 操作 → DB 校验落库的混排场景由此成立）。截图按 browser_config.screenshot
+        策略落文件中心，id 进 step_records.screenshot_file_id。
+        """
+        from ..services.ui_runtime import UiActionError, save_screenshot_file
+
+        started_at = datetime.now()
+        start_ts = time.time()
+        label = node.get("data", {}).get("label") if isinstance(node.get("data"), dict) else node_id
+        params = getattr(config, "ui_params", None) or {}
+
+        if self._ui_runtime is None:
+            from ..services.ui_runtime import UiRuntime
+            self._ui_runtime = UiRuntime(db=self.db, env=self.env, context=self.context,
+                                         project_id=self.case.project_id, db_client=self.db_client)
+
+        facts: dict = {}
+        error: str | None = None
+        try:
+            facts = self._ui_runtime.run_action(params)
+        except UiActionError as e:
+            error = str(e)
+            facts = {"action": params.get("action"), "error": error}
+            # 动作组中途失败：保留已完成步骤明细（报告还原失败现场）
+            if isinstance(getattr(e, "partial", None), list) and e.partial:
+                facts["steps"] = e.partial
+        except Exception as e:  # noqa: BLE001 浏览器崩溃等非预期异常也兜底为失败步骤
+            error = f"UI 节点执行异常: {e}"
+            facts = {"action": params.get("action"), "error": error}
+        elapsed = int((time.time() - start_ts) * 1000)
+
+        # 后置提取：对 facts 做 json_path 提取（与 API 管线同一实现）
+        extracted: dict = {}
+        if config and config.post_extract and facts is not None:
+            self.extractor.set_extracted_vars(self.context.extracted)
+            extracted = self.extractor.extract(facts, config.post_extract)
+            self.context.update_extracted(extracted)
+
+        # 断言：json_path_* 对 facts 求值（$.url/$.text/$.title 等）
+        assertion_results: list[dict] = []
+        if config and config.assertions:
+            engine = AssertionEngine(self.context.to_dict(), self.db_client)
+            assertion_results = engine.evaluate_all(facts, 0, elapsed, config.assertions)
+
+        step_passed = (error is None) and all(r["pass"] for r in assertion_results)
+
+        # 截图策略：on_failure（默认）/ always / off；动作执行前浏览器可能未启动（如
+        # playwright 缺失），take_screenshot 内部返回 None 兜底。
+        # 归档分类默认项目级「UI执行截图」（save 内部自动建），browser_config.screenshot_category_id 可指定；
+        # 上传人记为执行人（execution_record.created_by）
+        browser_cfg = (getattr(self.env, "browser_config", None) or {})
+        shot_policy = browser_cfg.get("screenshot", "on_failure")
+        shot_category = browser_cfg.get("screenshot_category_id")
+        executor_user = getattr(self._precreated_record, "created_by", None)
+        screenshot_file_id = None
+        if shot_policy == "always" or (shot_policy == "on_failure" and not step_passed):
+            png = self._ui_runtime.take_screenshot()
+            if png:
+                screenshot_file_id = save_screenshot_file(
+                    self.db, self.case.project_id, png,
+                    name=f"ui_{node_id}_{started_at.strftime('%Y%m%d_%H%M%S')}.png",
+                    user_id=executor_user, category_id=shot_category)
+
+        self.sink.record_step(StepResult(
+            execution_id=execution_id, node_id=node_id,
+            api_name=label or str(params.get("action") or node_id),
+            api_path=str(facts.get("url") or ""),
+            api_method="UI",
+            request_headers={}, request_body=params,
+            response_status=0, response_body=facts,
+            response_time_ms=elapsed, started_at=started_at, ended_at=datetime.now(),
+            status="success" if step_passed else "failed",
+            pre_process=(config.pre_process if config else None) or None,
+            post_extract=(config.post_extract if config else None) or None,
+            extracted_vars=extracted,
+            step_kind="ui", screenshot_file_id=screenshot_file_id,
+            assertions=[
+                AssertionResult(
+                    type=ar["type"], rule_config=ar, passed=ar["pass"],
+                    actual=ar.get("actual"), expected=ar.get("expected"),
+                    message=ar.get("message", ""),
+                ) for ar in assertion_results
+            ],
+        ))
+
         wait_ms = getattr(config, "wait_after_ms", 0) or 0 if config else 0
         return step_passed, wait_ms

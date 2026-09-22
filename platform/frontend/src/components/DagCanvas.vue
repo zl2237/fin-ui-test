@@ -18,6 +18,7 @@
         <div
           class="dag-node"
           :class="[methodClass(props.data.api_method), {
+            'is-ui': props.data.step_type === 'ui',
             selected: props.selected,
             'is-new': newNodeIds.includes(props.id),
             'link-source': linkSourceId === props.id,
@@ -33,9 +34,13 @@
           <Handle id="source" type="source" :position="Position.Right" class="dag-handle source-handle" />
           <!-- 目标连接点（左侧） -->
           <Handle id="target" type="target" :position="Position.Left" class="dag-handle target-handle" />
-          <!-- 接线卡头：method 色签（复用全站四色映射）+ 节点名 -->
+          <!-- 接线卡头：method 色签（复用全站四色映射）+ 节点名；
+               UI 节点色签显示动作名（ui_action），动作组节点显示 组N动作 -->
           <div class="dag-node-head">
-            <span class="dag-node-method">{{ (props.data.api_method || '?').toUpperCase() }}</span>
+            <span v-if="props.data.step_type === 'ui'" class="dag-node-method">
+              {{ props.data.ui_action === 'steps' ? `UI·组${props.data.ui_steps_len ?? '?'}动作` : `UI·${uiActionName(props.data.ui_action) || '操作'}` }}
+            </span>
+            <span v-else class="dag-node-method">{{ (props.data.api_method || '?').toUpperCase() }}</span>
             <span class="dag-node-title" :title="props.data.label || props.id">{{ props.data.label || props.id }}</span>
           </div>
           <div v-if="props.data.api_path" class="dag-node-sub">{{ props.data.api_path }}</div>
@@ -69,6 +74,7 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage } from 'element-plus'
+import { uiActionName } from '@/utils/ui'
 
 const props = defineProps<{
   nodes: any[]
@@ -411,13 +417,11 @@ function toggleLinkMode() {
   return linkMode.value
 }
 
-// 自动布局：按 DAG 拓扑顺序（BFS）将节点填入网格，
-// 根据节点总数计算目标行列数，使布局宽高比接近 4:3，避免扁平或瘦长。
-function autoLayout() {
-  const allNodes = getNodes.value
-  const allEdges = getEdges.value
-  if (!allNodes.length) return
-
+// 拓扑（BFS）网格布局：计算各节点应落位置，供「自动布局」与加载兜底共用
+function layoutGridPositions(
+  allNodes: { id: string }[],
+  allEdges: { source: string; target: string }[],
+): Map<string, { x: number; y: number }> {
   // 构建后继邻接表和入度
   const succ = new Map<string, string[]>()
   const indeg = new Map<string, number>()
@@ -467,15 +471,18 @@ function autoLayout() {
   order.forEach((id, idx) => {
     const row = Math.floor(idx / cols)
     const col = idx % cols
-    const x = START_X + col * NODE_GAP_X
-    const y = START_Y + row * NODE_GAP_Y
-    POS_MAP.set(id, { x, y })
+    POS_MAP.set(id, { x: START_X + col * NODE_GAP_X, y: START_Y + row * NODE_GAP_Y })
   })
+  return POS_MAP
+}
 
-  const newNodes = allNodes.map(n => {
-    const pos = POS_MAP.get(n.id) || { x: START_X, y: START_Y }
-    return { ...n, position: { x: pos.x, y: pos.y } }
-  })
+// 自动布局：按 DAG 拓扑顺序（BFS）将节点填入网格，
+// 根据节点总数计算目标行列数，使布局宽高比接近 4:3，避免扁平或瘦长。
+function autoLayout() {
+  const allNodes = getNodes.value
+  if (!allNodes.length) return
+  const posMap = layoutGridPositions(allNodes, getEdges.value)
+  const newNodes = allNodes.map(n => ({ ...n, position: posMap.get(n.id) || { x: 80, y: 60 } }))
 
   syncing.value = true
   setNodes(newNodes)
@@ -498,8 +505,18 @@ watch(
   () => props.nodes?.length,
   (newLen, oldLen) => {
     if (!props.nodes || newLen === oldLen) return
+    const list = props.nodes.map((n: any) => ({ ...n }))
+    // 兜底：缺 position 的节点（脚本写库/外部导入产生）Vue Flow 会静默不渲染，画布呈空白；
+    // 按拓扑网格为缺失者补位，已有位置的不动
+    const noPos = (n: any) => !n.position || n.position.x == null || n.position.y == null
+    if (list.some(noPos)) {
+      const posMap = layoutGridPositions(list, props.edges || [])
+      for (const n of list) {
+        if (noPos(n)) n.position = posMap.get(n.id) || { x: 80, y: 60 }
+      }
+    }
     syncing.value = true
-    setNodes(props.nodes.map((n: any) => ({ ...n })))
+    setNodes(list)
     syncing.value = false
     setTimeout(() => fitView(), 50)
   },
@@ -600,6 +617,9 @@ watch(
 .dag-node.m-put { --node-accent: var(--app-warn-accent); --node-accent-text: color-mix(in srgb, var(--app-warn-text) 70%, black); }
 .dag-node.m-delete { --node-accent: var(--app-danger); --node-accent-text: var(--app-danger-text); }
 .dag-node.m-other { --node-accent: var(--app-text-faint); --node-accent-text: var(--app-text-muted); }
+/* UI 节点专属配色：紫罗兰系（与 HTTP method 四色语义区隔）——覆盖 methodClass 的中性色轨 */
+.dag-node.is-ui { --node-accent: #7c5cff; --node-accent-text: #5b3fe0; }
+html.dark .dag-node.is-ui { --node-accent: #9d86ff; --node-accent-text: #b3a4ff; }
 /* hover 反馈：预判可点击（双击开配置），cursor 提示交互 */
 .dag-node:hover {
   border-color: color-mix(in srgb, var(--app-primary) 55%, var(--app-border));

@@ -19,3 +19,6 @@ PyYAML>=6.0.1
 cryptography>=42.0.0
 # 列表导出 Excel（openpyxl）
 openpyxl>=3.1.2
+# UI 自动化（Playwright，step_type=ui 节点执行）；缺失时 UI 节点优雅报错，API 用例不受影响
+# 安装后需执行一次：playwright install --with-deps chromium（浏览器二进制不进 pip）
+playwright>=1.48.0

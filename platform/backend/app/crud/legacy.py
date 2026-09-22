@@ -640,12 +640,22 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
     db.add(obj)
     db.commit()
     db.refresh(obj)
+<<<<<<< HEAD
     # 复制节点配置（结构层；入参配置随数据集行克隆）
+=======
+    # 复制节点配置（含 UI 节点的 step_type/ui_params，漏拷会导致复制件 UI 配置丢失）
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     for nc in (case.node_configs or []):
         nnc = models.CaseNodeConfig(
             case_id=obj.id,
             node_id=nc.node_id,
             api_id=nc.api_id,
+<<<<<<< HEAD
+=======
+            step_type=nc.step_type or "api",
+            ui_params=nc.ui_params,
+            pre_process=nc.pre_process or [],
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
             post_extract=nc.post_extract or [],
             assertions=nc.assertions or [],
             wait_after_ms=nc.wait_after_ms or 0,
@@ -675,14 +685,24 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
 
 
 def _sync_node_configs(db: Session, case_id: int, node_configs: list[dict]):
+<<<<<<< HEAD
     """全量覆盖用例的节点配置（结构层：接口绑定/提取/断言/等待；
     入参配置在数据集行，不随编排保存）"""
+=======
+    """全量覆盖用例的节点配置（含 UI 节点的 step_type/ui_params，缺失即被模型默认值抹平）"""
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     db.query(models.CaseNodeConfig).filter(models.CaseNodeConfig.case_id == case_id).delete()
     for nc in node_configs:
         obj = models.CaseNodeConfig(
             case_id=case_id,
             node_id=nc["node_id"],
             api_id=nc.get("api_id"),
+<<<<<<< HEAD
+=======
+            step_type=nc.get("step_type") or "api",
+            ui_params=nc.get("ui_params"),
+            pre_process=nc.get("pre_process", []),
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
             post_extract=nc.get("post_extract", []),
             assertions=nc.get("assertions", []),
             wait_after_ms=nc.get("wait_after_ms", 0) or 0,

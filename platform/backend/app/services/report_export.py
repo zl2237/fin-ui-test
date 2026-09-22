@@ -9,7 +9,10 @@ HTML 报告为档案风（Dossier）导航布局（左侧卷内目录 + 右侧�
 - 内嵌无依赖 JS：搜索过滤 / 状态筛选 / 导航跳转（约 100 行）
 - 自带深浅双套 CSS 变量（prefers-color-scheme：纸面档案 / 暗夜档案），--primary 保留系统蓝
 - 单文件自包含，双击即可在浏览器打开
+- UI 步骤（step_kind='ui'）专项渲染：动作链表（参数×结果逐步对齐，失败组还原
+  partial 现场）、截图 base64 内嵌、页面事实；API 步骤渲染保持不变
 """
+import base64
 import json
 from datetime import datetime
 from typing import Any
@@ -343,7 +346,17 @@ input.sp-radio { display: none; }
 .assert-table .fail-msg { color: var(--err); }
 .assert-table .fail-text { color: var(--err); }
 
+<<<<<<< HEAD
 .foot { text-align: center; font-size: 11px; color: var(--text-3); padding: 10px 0 0; border-top: 1px solid var(--border); }
+=======
+/* ===== UI 步骤：类型徽标 / 动作链表 / 截图 ===== */
+.sp-kind { flex-shrink: 0; padding: 1px 9px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--warn-soft); color: var(--warn); }
+.ui-steps th, .ui-steps td { font-size: 11px; }
+.shot-wrap { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--card-2); }
+.shot { display: block; width: 100%; height: auto; cursor: zoom-in; }
+
+.foot { text-align: center; font-size: 11px; color: var(--text-3); padding: 4px 0 0; }
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
 /* ===== 打印兜底：隐藏导航/按钮，全部步骤单列展开（印章随纸面落档） ===== */
 @media print {
@@ -524,45 +537,182 @@ def _extract_pane(post_extract: list[Any], extracted_vars: Any) -> str:
             + "".join(rows) + "</table></div>")
 
 
-def _step_pane(s: Any, idx: int, sid: str) -> str:
+# ===== UI 步骤展示辅助（动作链表 / 单步结果摘要 / 截图嵌入） =====
+
+def _clip(t: str, n: int) -> str:
+    """超长文本截断（尾部省略号）"""
+    return t if len(t) <= n else t[: n - 1] + "…"
+
+
+def _ui_param_brief(sp: dict) -> str:
+    """单步参数摘要：action/steps 之外的非空键值紧凑拼接（url=… element=… value=…）"""
+    parts: list[str] = []
+    for k, v in sp.items():
+        if k in ("action", "steps") or v is None or v == "" or v == [] or v == {}:
+            continue
+        parts.append(f"{k}={_clip(_value_text(v), 60)}")
+    return "  ".join(parts) or "—"
+
+
+def _ui_result_brief(facts: dict) -> tuple[str, str]:
+    """单步 facts（响应侧）→（表格内 k=v 摘要, title 悬浮 JSON 全文）"""
+    payload = {k: v for k, v in facts.items() if k != "action"}
+    try:
+        full = json.dumps(payload, ensure_ascii=False, default=str)
+    except Exception:
+        full = str(payload)
+    brief = "  ".join(f"{k}={_clip(_value_text(v), 40)}" for k, v in payload.items()) or "—"
+    return brief, _clip(full, 600)
+
+
+def _ui_steps_sec(rb: dict, resp: dict) -> str:
+    """UI 动作链表：逐步参数（请求侧 ui_params.steps）× 结果（响应侧 facts.steps）对齐。
+
+    成功组逐行 ✓+结果摘要；失败组（partial 现场）标注失败步的错误信息，其后步骤标"未执行"。
+    旧单动作格式（迁移前用例，ui_params 无 steps）退化为单行动作。
+    """
+    p_steps = rb.get("steps") if isinstance(rb.get("steps"), list) else None
+    r_steps = resp.get("steps") if isinstance(resp.get("steps"), list) else None
+    err = resp.get("error")
+    rows: list[str] = []
+    if p_steps:
+        done = len(r_steps or [])
+        for i, sp in enumerate(p_steps, 1):
+            sp = sp if isinstance(sp, dict) else {}
+            param_brief = _ui_param_brief(sp)
+            if r_steps and i <= done and isinstance(r_steps[i - 1], dict):
+                brief, full = _ui_result_brief(r_steps[i - 1])
+                mark, cell = '<td class="pass">✓</td>', \
+                    f'<td><span class="mono" title="{_esc(full)}">{_esc(brief)}</span></td>'
+            elif err and i == done + 1:  # partial 之后的第一步即失败步
+                mark, cell = '<td class="fail">✗</td>', \
+                    f'<td><span class="mono fail-msg" title="{_esc(err)}">{_esc(_clip(str(err), 90))}</span></td>'
+                rows.append(f'<tr class="row-fail">{mark}<td class="mono">{i}</td>'
+                            f'<td class="mono">{_esc(str(sp.get("action") or "—"))}</td>'
+                            f'<td class="mono">{_esc(param_brief)}</td>{cell}</tr>')
+                continue
+            else:
+                mark, cell = '<td class="fail">✗</td>', '<td><span class="muted">未执行</span></td>'
+            rows.append(f'<tr>{mark}<td class="mono">{i}</td>'
+                        f'<td class="mono">{_esc(str(sp.get("action") or "—"))}</td>'
+                        f'<td class="mono">{_esc(param_brief)}</td>{cell}</tr>')
+        title = f"动作链（{len(p_steps)} 步）"
+    else:  # 旧单动作格式：一行动作 + facts 结果
+        action = str(rb.get("action") or resp.get("action") or "—")
+        if err:
+            cell = f'<td><span class="mono fail-msg" title="{_esc(err)}">{_esc(_clip(str(err), 90))}</span></td>'
+            rows.append(f'<tr class="row-fail"><td class="fail">✗</td><td class="mono">1</td>'
+                        f'<td class="mono">{_esc(action)}</td><td class="mono">{_esc(_ui_param_brief(rb))}</td>{cell}</tr>')
+        else:
+            brief, full = _ui_result_brief(resp)
+            rows.append(f'<tr><td class="pass">✓</td><td class="mono">1</td>'
+                        f'<td class="mono">{_esc(action)}</td><td class="mono">{_esc(_ui_param_brief(rb))}</td>'
+                        f'<td><span class="mono" title="{_esc(full)}">{_esc(brief)}</span></td></tr>')
+        title = "动作（单步）"
+    return (f'<div class="sec"><div class="sec-title">{title}</div>'
+            '<table class="assert-table ui-steps"><thead><tr><th>状态</th><th>#</th><th>动作</th><th>参数</th><th>结果</th></tr></thead>'
+            + "".join(rows) + "</table></div>")
+
+
+def _ui_screenshot_sec(db: Any, s: Any) -> str:
+    """UI 步骤截图：TestFile → 物理文件 → base64 data URI 内嵌（单文件自包含，点击看原图）"""
+    head = '<div class="sec"><div class="sec-title">页面截图</div>'
+    fid = getattr(s, "screenshot_file_id", None)
+    if not fid:
+        return head + '<div class="sec-empty">无截图（截图策略 on_failure 时仅失败步骤留存截图）</div></div>'
+    if db is None:
+        return head + '<div class="sec-empty">截图不可用（导出上下文无数据库会话）</div></div>'
+    try:
+        from .. import models
+        from .file_helpers import resolve_physical_path
+
+        tf = db.get(models.TestFile, fid)
+        if not tf:
+            return head + '<div class="sec-empty">截图文件已清理</div></div>'
+        data = resolve_physical_path(tf.storage_path).read_bytes()
+        if len(data) > 15 * 1024 * 1024:
+            return head + f'<div class="sec-empty">截图过大（{len(data) // 1024} KB），未嵌入</div></div>'
+        uri = f"data:{tf.content_type or 'image/png'};base64," + base64.b64encode(data).decode("ascii")
+        return head + f'<div class="shot-wrap"><a href="{uri}" target="_blank" rel="noopener"><img class="shot" src="{uri}" alt="UI 截图 #{fid}"></a></div></div>'
+    except Exception as e:  # noqa: BLE001 物理文件缺失等不阻断报告导出
+        return head + f'<div class="sec-empty">截图读取失败：{_esc(e)}</div></div>'
+
+
+def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
     name = s.api_name or s.node_id or "未命名步骤"
     assertions = getattr(s, "assertions", None) or []
     post_extract = getattr(s, "post_extract", None) or []
     extracted_vars = getattr(s, "extracted_vars", None) or {}
+    is_ui = getattr(s, "step_kind", None) == "ui"
+    rb = s.request_body if isinstance(s.request_body, dict) else {}
+    resp = s.response_body if isinstance(s.response_body, dict) else {}
+    n_steps = len(rb["steps"]) if isinstance(rb.get("steps"), list) else 0
     p: list[str] = []
     p.append(f'<section class="step-pane" data-step="{sid}" data-tabbed="1">')
 
+<<<<<<< HEAD
     # 标题区粘顶容器：节点名 + meta + Tab 栏滚动时常驻视口顶部
     p.append('<div class="sp-sticky">')
 
     # 头部（步骤名单行截断 + title 悬浮全文）
+=======
+    # 头部（步骤名单行截断 + title 悬浮全文；UI 步骤加类型徽标）
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     p.append('<div class="sp-head">')
     p.append(f'<div class="sp-title"><span class="sp-idx">#{idx + 1}</span>'
-             f'<span class="sp-name" title="{_esc(name)}">{_esc(name)}</span>'
+             + ('<span class="sp-kind">UI</span>' if is_ui else '')
+             + f'<span class="sp-name" title="{_esc(name)}">{_esc(name)}</span>'
              f'<span class="sp-status {_esc(s.status or "none")}">{_esc(_step_status_text(s.status))}</span></div>')
     p.append("</div>")
 
-    # meta 行
+    # meta 行（UI：类型规模 + 终态页面/标题；API：请求方法路径 + HTTP 状态）
     p.append('<div class="sp-meta">')
-    p.append(f'<span><em>请求</em><span class="mono">{_esc(s.api_method or "")} {_esc(s.api_path or "")}</span></span>')
-    p.append(f'<span><em>HTTP</em>{_esc(s.response_status if s.response_status is not None else "-")}</span>')
+    if is_ui:
+        # 失败组顶层 facts 无 url/title 时，从 partial steps 回溯最后出现值，还原失败页面
+        page_url = s.api_path or ""
+        page_title = str(resp.get("title") or "")
+        ui_done = resp.get("steps") if isinstance(resp.get("steps"), list) else []
+        for st in reversed(ui_done):
+            if not isinstance(st, dict):
+                continue
+            if not page_url and st.get("url"):
+                page_url = str(st["url"])
+            if not page_title and st.get("title"):
+                page_title = str(st["title"])
+            if page_url and page_title:
+                break
+        p.append(f'<span><em>类型</em>UI · {f"动作组 {n_steps} 步" if n_steps else "单动作"}</span>')
+        p.append(f'<span><em>页面</em><span class="mono">{_esc(page_url or "-")}</span></span>')
+        if page_title:
+            p.append(f'<span><em>标题</em>{_esc(page_title)}</span>')
+    else:
+        p.append(f'<span><em>请求</em><span class="mono">{_esc(s.api_method or "")} {_esc(s.api_path or "")}</span></span>')
+        p.append(f'<span><em>HTTP</em>{_esc(s.response_status if s.response_status is not None else "-")}</span>')
     p.append(f'<span><em>耗时</em>{_esc(s.response_time_ms if s.response_time_ms is not None else "-")} ms</span>')
     p.append(f'<span><em>开始</em>{_esc(s.started_at or "-")}</span>')
     p.append(f'<span><em>结束</em>{_esc(s.ended_at or "-")}</span>')
     p.append("</div>")
 
+<<<<<<< HEAD
     # Tabs（radio 实现：选中态用 :has() 纯 CSS，无 JS 依赖；radio 与 sp-tabs 同在 sp-sticky 内）
+=======
+    # Tabs（radio 实现：选中态纯 CSS，无 JS 依赖；顺序 radio → tabs → panes 满足兄弟选择器；
+    # UI 步骤前两个 tab 语义换成动作链 / 页面截图）
+    req_label = f"动作链（{n_steps or 1}）" if is_ui else "请求"
+    resp_label = "页面 / 截图" if is_ui else "响应"
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-req" id="tab-{sid}-req" checked>')
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-resp" id="tab-{sid}-resp">')
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-extract" id="tab-{sid}-ex">')
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-assert" id="tab-{sid}-as">')
     p.append('<div class="sp-tabs">')
-    p.append(f'<label class="sp-tab sp-tab-req" for="tab-{sid}-req">请求</label>')
-    p.append(f'<label class="sp-tab sp-tab-resp" for="tab-{sid}-resp">响应</label>')
+    p.append(f'<label class="sp-tab sp-tab-req" for="tab-{sid}-req">{req_label}</label>')
+    p.append(f'<label class="sp-tab sp-tab-resp" for="tab-{sid}-resp">{resp_label}</label>')
     p.append(f'<label class="sp-tab sp-tab-extract" for="tab-{sid}-ex">提取（{len(post_extract)}）</label>')
     p.append(f'<label class="sp-tab sp-tab-assert" for="tab-{sid}-as">断言（{len(assertions)}）</label>')
     p.append("</div>")
 
+<<<<<<< HEAD
     p.append("</div>")  # /sp-sticky
 
     # 请求（前置处理快照不再展示：配置原文与请求体重复，信息噪音大于价值）
@@ -576,6 +726,25 @@ def _step_pane(s: Any, idx: int, sid: str) -> str:
             f'<span class="kv"><b>{_esc(s.response_time_ms if s.response_time_ms is not None else "-")} ms</b></span></div>'
             f'{_json_sec("响应体", s.response_body)}</div>')
     p.append(resp)
+=======
+    p.append('<div class="sp-panes">')
+    if is_ui:
+        # 请求 Tab = 前置处理 + 动作链表（参数×结果逐步对齐，失败组还原 partial 现场）
+        p.append(f'<div class="sp-pane sp-pane-req">{_pre_sec(pre_list)}{_ui_steps_sec(rb, resp)}</div>')
+        # 响应 Tab = 截图（base64 内嵌）+ 页面事实（facts 去 steps——steps 已在动作链表展开）
+        facts_brief = {k: v for k, v in resp.items() if k != "steps"} or None
+        p.append(f'<div class="sp-pane sp-pane-resp">{_ui_screenshot_sec(db, s)}{_json_sec("页面事实", facts_brief)}</div>')
+    else:
+        # 请求（前置处理 = 注入情况，置于请求头/请求体之前，与平台详情页顺序一致）
+        p.append(f'<div class="sp-pane sp-pane-req">{_pre_sec(pre_list)}{_json_sec("请求头", s.request_headers)}{_json_sec("请求体", s.request_body)}</div>')
+        # 响应
+        p.append(f'<div class="sp-pane sp-pane-resp">'
+                 f'<div class="sec"><div class="sec-title">状态码</div>'
+                 f'<span class="kv"><b>{_esc(s.response_status if s.response_status is not None else "-")}</b></span></div>'
+                 f'<div class="sec"><div class="sec-title">响应耗时</div>'
+                 f'<span class="kv"><b>{_esc(s.response_time_ms if s.response_time_ms is not None else "-")} ms</b></span></div>'
+                 f'{_json_sec("响应体", s.response_body)}</div>')
+>>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     # 提取
     p.append(_extract_pane(post_extract, extracted_vars))
     # 断言
@@ -610,7 +779,13 @@ def _fail_card(steps: list[Any], sid_of: Any) -> str:
         s = steps[i]
         name = s.api_name or s.node_id or "未命名步骤"
         failed_asserts = [a for a in (getattr(s, "assertions", None) or []) if not a.result]
-        why = (failed_asserts[0].message or failed_asserts[0].rule_type) if failed_asserts else (s.status or "失败")
+        if failed_asserts:
+            why = failed_asserts[0].message or failed_asserts[0].rule_type
+        elif getattr(s, "step_kind", None) == "ui":
+            rb_resp = s.response_body if isinstance(s.response_body, dict) else {}
+            why = str(rb_resp.get("error") or "UI 动作执行失败")
+        else:
+            why = s.status or "失败"
         items.append(
             f'<div class="fail-item" data-step="{sid_of(i)}">'
             f'<span class="fail-idx">#{i + 1}</span>'
@@ -623,8 +798,11 @@ def _fail_card(steps: list[Any], sid_of: Any) -> str:
             f'{"".join(items)}</div>')
 
 
-def export_report_html(record: Any, steps: list[Any]) -> str:
-    """执行记录 + 步骤 → 自包含 HTML 报告文本（Allure 式导航布局，见模块 docstring）。"""
+def export_report_html(record: Any, steps: list[Any], db: Any = None) -> str:
+    """执行记录 + 步骤 → 自包含 HTML 报告文本（Allure 式导航布局，见模块 docstring）。
+
+    db 用于 UI 步骤截图内嵌（TestFile → 物理文件 → base64），可空——缺失时截图区降级提示。
+    """
     sid_of = lambda i: _step_id(steps[i], i)
 
     parts: list[str] = []
@@ -690,7 +868,7 @@ def export_report_html(record: Any, steps: list[Any]) -> str:
     parts.append("</div></nav>")
     parts.append('<main class="detail">')
     for idx, s in enumerate(steps):
-        parts.append(_step_pane(s, idx, sid_of(idx)))
+        parts.append(_step_pane(s, idx, sid_of(idx), db=db))
     if not steps:
         parts.append('<div class="sec-empty" style="padding:30px">暂无步骤数据</div>')
     parts.append("</main></div>")

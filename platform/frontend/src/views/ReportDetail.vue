@@ -169,8 +169,11 @@
                   <div class="step-sub">{{ s.api_method }} {{ s.api_path }}</div>
                   <div class="step-tags">
                     <!-- 状态由时间轴节点色表达（去三重冗余）；tag 只承载增量信息：
-                         HTTP 码（非 2xx 升 danger 警示）与耗时（mono 机器数据） -->
-                    <el-tag v-if="s.response_status" size="small" :type="httpStatusType(s.response_status)" effect="light">
+                         UI 步骤显示动作名（无 HTTP 概念）；HTTP 码（非 2xx 升 danger 警示）与耗时（mono 机器数据） -->
+                    <el-tag v-if="isUiStep(s)" size="small" effect="light" class="ui-action-tag">
+                      UI · {{ uiActionName(factsAction(s)) || '操作' }}
+                    </el-tag>
+                    <el-tag v-else-if="s.response_status" size="small" :type="httpStatusType(s.response_status)" effect="light">
                       HTTP {{ s.response_status }}
                     </el-tag>
                     <el-tag v-if="s.response_time_ms != null" size="small" type="info" effect="light">
@@ -239,7 +242,29 @@
             </el-collapse-item>
           </el-collapse>
           <el-tabs v-model="activeTab" class="detail-tabs">
-            <el-tab-pane label="请求" name="request">
+            <!-- UI 步骤：页面详情（截图 + facts）替代 HTTP 请求/响应面板 -->
+            <el-tab-pane v-if="isUiStep(currentStep)" label="页面详情" name="page">
+              <div class="section">
+                <div class="section-title">页面截图</div>
+                <el-image
+                  v-if="screenshotUrl"
+                  :src="screenshotUrl"
+                  :preview-src-list="[screenshotUrl]"
+                  fit="contain"
+                  hide-on-click-modal
+                  class="screenshot-img"
+                  :alt="currentStep.api_name || 'UI 步骤截图'"
+                />
+                <EmptyState v-else :description="currentStep.screenshot_file_id ? '截图加载失败' : '无截图'" :image-size="60" />
+              </div>
+              <div class="section">
+                <div class="section-title">页面事实（facts）</div>
+                <VueJsonPretty v-if="currentStep.response_body != null" :data="currentStep.response_body" />
+                <EmptyState v-else description="无 facts 数据" :image-size="40" />
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane v-if="!isUiStep(currentStep)" label="请求" name="request">
               <div class="section">
                 <div class="section-title">
                   请求头
@@ -261,7 +286,7 @@
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="响应" name="response">
+            <el-tab-pane v-if="!isUiStep(currentStep)" label="响应" name="response">
               <div class="section">
                 <div class="section-title">状态码</div>
                 <el-tag :type="httpStatusType(currentStep.response_status)" effect="light">
@@ -423,10 +448,11 @@ import ReplayDialog from '@/components/ReplayDialog.vue'
 import DiffValue from '@/components/DiffValue.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import StepTrendChart from '@/components/StepTrendChart.vue'
-import { execApi, caseApi, type ExecutionRecord, type StepRecord } from '@/api'
+import { execApi, caseApi, fileApi, type ExecutionRecord, type StepRecord } from '@/api'
 import { generateReportFilename } from '@/utils/reportFilename'
 import { copyText } from '@/utils/clipboard'
 import { execStatusType as stepType, execStatusText as statusText } from '@/utils/format'
+import { uiActionName } from '@/utils/ui'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
 
 const route = useRoute()
@@ -522,6 +548,55 @@ const steps = computed<StepRecord[]>(() => record.value?.steps ?? [])
 const currentStep = computed<StepRecord | null>(() =>
   steps.value.find((s) => s.id === currentStepId.value) ?? null
 )
+
+// ===== UI 步骤识别与展示辅助 =====
+// step_kind 是新记录字段（历史行 null 视为 api）；老执行记录以 api_method='UI' 兜底识别
+function isUiStep(s?: StepRecord | null): boolean {
+  if (!s) return false
+  return s.step_kind === 'ui' || s.api_method === 'UI'
+}
+/** UI 步骤动作名：facts（response_body）里的 action 字段 */
+function factsAction(s: StepRecord): string | null {
+  const body = s.response_body as any
+  return body && typeof body === 'object' ? (body.action ?? null) : null
+}
+
+// UI 步骤截图：preview 端点带鉴权，走 blob + objectURL（与文件中心同法），步骤切换时换图
+const screenshotUrl = ref<string>('')
+function revokeScreenshot() {
+  if (screenshotUrl.value) {
+    URL.revokeObjectURL(screenshotUrl.value)
+    screenshotUrl.value = ''
+  }
+}
+watch(
+  () => currentStep.value?.id,
+  async (stepId) => {
+    revokeScreenshot()
+    const fid = stepId != null ? currentStep.value?.screenshot_file_id : null
+    if (!fid) return
+    try {
+      const { url } = await fileApi.fetchBlob(fid, true)
+      // 防竞态：仅在仍停留在发起时的步骤时生效，否则立即释放
+      if (currentStep.value?.id === stepId) screenshotUrl.value = url
+      else URL.revokeObjectURL(url)
+    } catch {
+      // 加载失败保持空串，模板展示占位
+    }
+  },
+  { immediate: true },
+)
+onUnmounted(revokeScreenshot)
+
+// UI/API 步骤切换时详情 tab 联动：页面详情 ↔ 请求，避免停留在已隐藏的 tab 上
+watch(currentStep, (s) => {
+  if (!s) return
+  if (isUiStep(s) && (activeTab.value === 'request' || activeTab.value === 'response')) {
+    activeTab.value = 'page'
+  } else if (!isUiStep(s) && activeTab.value === 'page') {
+    activeTab.value = 'request'
+  }
+})
 
 // 失败可见性：失败步骤计数 + 「只看失败」过滤 + 导航搜索（与导出报告同构）
 const failedStepCount = computed(() => steps.value.filter((s) => s.status !== 'success').length)
@@ -1259,6 +1334,34 @@ onUnmounted(stopPolling)
   font-size: 13px;
   font-weight: 600;
   color: var(--app-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* UI 步骤页面截图：限高内嵌展示，点击 el-image 放大 */
+.screenshot-img {
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-hover);
+}
+/* UI 动作 tag：与 DAG UI 节点同源的紫罗兰语义 */
+.ui-action-tag {
+  color: #5b3fe0;
+  background: color-mix(in srgb, #7c5cff 12%, transparent);
+  border-color: color-mix(in srgb, #7c5cff 32%, transparent);
+}
+html.dark .ui-action-tag {
+  color: #b3a4ff;
+  background: rgba(125, 92, 255, 0.16);
+  border-color: rgba(157, 134, 255, 0.4);
+}
+
+/* 前置处理动作行：标签 + path = 值（值可含 ${} 引用，规则原文快照） */
+.pre-item {
   display: flex;
   align-items: center;
   gap: 8px;

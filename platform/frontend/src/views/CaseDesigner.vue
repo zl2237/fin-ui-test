@@ -6,11 +6,17 @@
       <el-button size="small" @click="initialLoad">重试</el-button>
     </div>
     <template v-else>
-    <!-- 左侧接口列表（按分组树折叠，继承接口管理的分组与排序；返回入口统一收口到画布工具栏） -->
+    <!-- 左侧组件面板：接口列表 / UI 操作 两个页签（DAG 支持 API+UI 混排） -->
     <div class="api-panel">
       <div class="panel-title">
-        <span class="title-text">接口列表</span>
+        <span class="title-text">{{ panelTab === 'api' ? '接口列表' : 'UI 操作' }}</span>
+        <el-radio-group v-model="panelTab" size="small">
+          <el-radio-button value="api">接口</el-radio-button>
+          <el-radio-button value="ui">UI 操作</el-radio-button>
+        </el-radio-group>
       </div>
+      <!-- 接口视图：按分组树折叠（继承接口管理的分组与排序），点击添加为 DAG 节点 -->
+      <template v-if="panelTab === 'api'">
       <!-- 接口搜索：接口上百时免逐级展开找目标（与节点配置抽屉的 filterable 对等） -->
       <el-input
         v-model="apiKeyword"
@@ -64,6 +70,22 @@
         </div>
         <EmptyState v-if="apiList.length && apiKeyword && !filteredApiCount" description="无匹配接口" :image-size="60" />
         <EmptyState v-if="!apiList.length" description="暂无接口，请先到接口管理新增" :image-size="60" />
+      </div>
+      </template>
+      <!-- UI 视图：浏览器动作面板（基础+组合动作，点击添加为 UI 节点） -->
+      <div v-else class="api-list">
+        <button
+          v-for="a in UI_ACTIONS"
+          :key="a.action"
+          type="button"
+          class="api-item"
+          :title="`UI ${a.action}：${a.desc}`"
+          @click="onAddUiNode(a.action)"
+        >
+          <span class="api-item-name">{{ a.name }}<span class="ui-action-key">{{ a.action }}</span></span>
+          <span class="api-item-path">{{ a.desc }}</span>
+        </button>
+        <p class="ui-panel-tip">UI 节点由 Playwright 驱动浏览器执行，与接口节点在 DAG 中自由混排连线。</p>
       </div>
     </div>
 
@@ -209,13 +231,14 @@ import { ArrowLeft, CaretRight, Search, Grid, Share, Scissor, Loading, WarningFi
 import DagCanvas from '@/components/DagCanvas.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
-import { caseApi, apiApi, apiGroupApi, datasetApi, type ApiDef, type ApiGroup, type TestCase, type NodeConfig, type SplitVar } from '@/api'
+import { caseApi, apiApi, apiGroupApi, datasetApi, type ApiDef, type ApiGroup, type TestCase, type NodeConfig, type UiParams, type UiStep, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
 import { useGroupTree, collectDescendantIds, type FlatGroup } from '@/composables/useGroupTree'
 import { buildRefGroups, type RefGraphCtx } from '@/composables/useRefGroups'
 import type { RefVarGroup } from '@/components/VarRefSelect.vue'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
+import { UI_ACTIONS, uiActionName } from '@/utils/ui'
 import EmptyState from '@/components/EmptyState.vue'
 
 const route = useRoute()
@@ -228,6 +251,9 @@ const runner = useExecutionRunner()
 
 const apiList = ref<ApiDef[]>([])
 const apiGroups = ref<ApiGroup[]>([])
+
+// 左侧组件面板页签：api 接口列表（默认） / ui UI 操作
+const panelTab = ref<'api' | 'ui'>('api')
 
 // ===== 多级分组树（继承接口管理的分组层级与排序） =====
 const flatGroups = computed<FlatGroup[]>(() =>
@@ -343,9 +369,18 @@ const currentConfig = computed<NodeConfig>(() => {
   }
   const found = configs.value.find((c) => c.node_id === selectedNodeId.value)
   if (found) return found
+  // UI 节点兜底：画布节点 data 已携带 step_type/ui_action，配置缺失时按其初始化（统一动作组形态）
+  const nodeData = nodes.value.find((n) => n.id === selectedNodeId.value)?.data || {}
   const fresh: NodeConfig = {
     node_id: selectedNodeId.value,
     api_id: null,
+    ...(nodeData.step_type === 'ui' ? {
+      step_type: 'ui',
+      ui_params: {
+        steps: [{ action: (nodeData.ui_action && nodeData.ui_action !== 'steps' ? nodeData.ui_action : 'goto') as UiStep['action'] }],
+      },
+    } : {}),
+    pre_process: [],
     post_extract: [],
     assertions: [],
     wait_after_ms: 0,
@@ -549,6 +584,32 @@ function onAddNode(api: ApiDef) {
   dirty.value = true
 }
 
+/** 添加 UI 操作节点：不绑 api_id，页面级动作组（steps），首步为拖选的动作 */
+function onAddUiNode(action: string) {
+  const id = `node_${Date.now()}`
+  const position = canvasRef.value?.findFreePosition?.() ?? { x: 80, y: 60 }
+  const name = uiActionName(action)
+  const node = {
+    id,
+    position,
+    data: { label: name, step_type: 'ui', ui_action: 'steps', ui_steps_len: 1 },
+    label: name,
+  }
+  nodes.value.push(node)
+  canvasRef.value?.addNode(node)
+  configs.value.push({
+    node_id: id,
+    api_id: null,
+    step_type: 'ui',
+    ui_params: { steps: [{ action: action as UiStep['action'] }] },
+    pre_process: [],
+    post_extract: [],
+    assertions: [],
+    wait_after_ms: 0,
+  })
+  dirty.value = true
+}
+
 /** 双击/回车打开节点配置抽屉 */
 function onNodeOpen(id: string) {
   if (linkMode.value) return
@@ -573,18 +634,24 @@ function onNodesPasted(mapping: { oldId: string; newId: string }[]) {
 function onConfigSave(_config: NodeConfig) {
   const idx = configs.value.findIndex((c) => c.node_id === _config.node_id)
   if (idx >= 0) configs.value[idx] = { ..._config }
-  // 换绑接口：同步画布名称/method/path 与 data.api_id。
-  // 运行时按 node_configs.api_id 取接口（dag_executor._resolve_node_config），
-  // 若此处不同步，保存的 dag_config 残留旧 api_id，重开用例时 loadCase 会把名称刷回旧接口
   const nd = nodes.value.find((n) => n.id === _config.node_id)
-  if (nd && _config.api_id) {
-    const api = apiList.value.find((a) => a.id === _config.api_id)
-    if (api) {
-      nd.data.label = api.name
-      nd.data.api_id = api.id
-      nd.data.api_method = api.method
-      nd.data.api_path = api.path
-      nd.label = api.name
+  if (nd) {
+    if (_config.step_type === 'ui' && _config.ui_params?.steps?.length) {
+      // UI 组节点：同步画布徽标（UI·组N动作）与首步名，保持画布可读
+      nd.data.ui_action = 'steps'
+      nd.data.ui_steps_len = _config.ui_params.steps.length
+    } else if (_config.api_id) {
+      // 换绑接口：同步画布名称/method/path 与 data.api_id。
+      // 运行时按 node_configs.api_id 取接口（dag_executor._resolve_node_config），
+      // 若此处不同步，保存的 dag_config 残留旧 api_id，重开用例时 loadCase 会把名称刷回旧接口
+      const api = apiList.value.find((a) => a.id === _config.api_id)
+      if (api) {
+        nd.data.label = api.name
+        nd.data.api_id = api.id
+        nd.data.api_method = api.method
+        nd.data.api_path = api.path
+        nd.label = api.name
+      }
     }
   }
   dirty.value = true
@@ -839,6 +906,19 @@ watch(() => store.currentProjectId, async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* UI 动作英文 key 徽标（中文名右侧 mono 小字） */
+.ui-action-key {
+  margin-left: 6px;
+  font-family: var(--app-font-mono);
+  font-size: 10px;
+  color: var(--app-text-faint);
+}
+.ui-panel-tip {
+  margin: 10px 6px;
+  font-size: 11px;
+  color: var(--app-text-faint);
+  line-height: 1.6;
 }
 .canvas-wrap {
   flex: 1;

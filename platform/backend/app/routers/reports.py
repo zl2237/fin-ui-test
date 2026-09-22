@@ -32,7 +32,8 @@ def export_report(exec_id: int, format: str = Query("csv", pattern="^(csv|html)$
     crud.fill_audit_names(db, obj)
     crud.fill_exec_names(db, obj)
     if format == "html":
-        content = export_report_html(obj, obj.steps or []).encode("utf-8")
+        # db 透传：UI 步骤截图内嵌（TestFile → base64 data URI）需查库读物理文件
+        content = export_report_html(obj, obj.steps or [], db=db).encode("utf-8")
         media, ext = "text/html; charset=utf-8", "html"
     else:
         content = export_steps_csv(obj.steps or []).encode("utf-8")
