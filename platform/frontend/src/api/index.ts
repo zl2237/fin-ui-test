@@ -165,7 +165,6 @@ export interface HarPreviewItem {
   _selected?: boolean  // 前端勾选状态
 }
 export type CaseGroup = components['schemas']['CaseGroupOut']
-<<<<<<< HEAD
 // ============ 四来源参数模型（2026-09-30 定案：节点入参取值单选四来源） ============
 export type ParamSource = 'constant' | 'func' | 'ref' | 'sql'
 /** 函数入参：常量或引用（引用允许上游变量/本节点 SQL 参数，后端逐参求值） */
@@ -234,11 +233,7 @@ export interface AssertionSpec {
   expected?: string     // 期望值（可切换 引用/函数/SQL 取值）
   message?: string      // 自定义失败文案
 }
-export interface NodeConfig {
-  id?: number; case_id?: number; node_id: string; api_id?: number | null
-  post_extract: PostExtractSpec[]; assertions: AssertionSpec[]
-=======
-// UI 节点参数（step_type='ui' 时使用）：与后端 ui_runtime.py 动作词表对齐。
+// ============ UI 节点参数（step_type='ui' 时使用）：与后端 ui_runtime.py 动作词表对齐 ============
 // element 支持内联单策略 {strategy, value, name?} 或元素库引用 {element_id}
 /** UI 动作步骤（页面级节点 ui_params.steps 的单项；不允许再嵌套 steps） */
 export interface UiStep {
@@ -277,8 +272,8 @@ export interface NodeConfig {
   id?: number; case_id?: number; node_id: string; api_id?: number | null
   step_type?: string  // api 接口调用（默认/历史缺省） / ui 浏览器操作
   ui_params?: UiParams
-  pre_process: any[]; post_extract: any[]; assertions: any[]
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
+  pre_process?: any[]  // 历史遗留：入参已收敛到数据集，仅老数据回显
+  post_extract: PostExtractSpec[]; assertions: AssertionSpec[]
   wait_after_ms?: number
 }
 export interface TestCase {
@@ -331,13 +326,9 @@ export interface StepRecord {
   resumed?: boolean  // 断点续跑段产出的步骤（顶替旧失败记录）
   replay_passed_at?: string | null  // 重放验证通过时间（「已重放通过」徽标）
   started_at?: string; ended_at?: string; status?: string
-<<<<<<< HEAD
-  pre_process?: { type?: string; path?: string; value?: any; sql?: string }[] | null  // 历史遗留：仅老报告回显，新步骤恒 null
-=======
   step_kind?: string | null  // 步骤类型 api/ui（历史行 null 视为 api）
   screenshot_file_id?: number | null  // UI 步骤截图文件ID（文件中心 /api/files/{id}/preview）
-  pre_process?: { type?: string; path?: string; value?: any; sql?: string }[] | null
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
+  pre_process?: { type?: string; path?: string; value?: any; sql?: string }[] | null  // 历史遗留：仅老报告回显，新步骤恒 null
   post_extract?: Record<string, any>[] | null
   extracted_vars?: Record<string, any> | null
   assertions: AssertionRecord[]
