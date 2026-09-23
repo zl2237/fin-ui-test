@@ -741,7 +741,7 @@ class UiRuntime:
         if params.get("match") == "contains":
             js = ("t=>{const v=(e)=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
                   "const n=(x)=>(x.textContent||'').replace(/\\s+/g,'');"
-                  "t=n(t);"  # 目标文本同样归一化（「保 存」→「保存」，否则 includes 恒 false）
+                  "t=String(t).replace(/\\s+/g,'');"  # 目标文本归一化（「保 存」→「保存」）。不能走 n()：字符串无 textContent，||'' 兜底会把目标清成空串——includes('') 恒真误点首个按钮
                   "const b=[...document.querySelectorAll('button')].filter(v)"
                   ".find(b=>n(b).includes(t));"
                   "if(!b)return '';b.click();return 'clicked:'+n(b)}")
@@ -759,7 +759,7 @@ class UiRuntime:
         # 恒为 null 会漏杀（业务订单编辑页实证）
         js = ("([t,i])=>{const v=(e)=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
               "const n=(x)=>(x.textContent||'').replace(/\\s+/g,'');"
-              "t=n(t);"  # 目标文本归一化：「保 存」「编 辑」等带空格文案
+              "t=String(t).replace(/\\s+/g,'');"  # 目标文本归一化（「保 存」「编 辑」）。不能走 n()：字符串无 textContent 会被清成空串——=== '' 永假、全页按钮失配
               # 排除禁用按钮：JS click 对 disabled 按钮无事件（run#700 实证
               # 点击后无任何 toast——费用表单校验未过时保存钮 disabled）
               "const all=[...document.querySelectorAll('span,button,a')]"
@@ -808,7 +808,7 @@ class UiRuntime:
               "const own=e=>{let s='';for(const c of e.childNodes)"
               "{if(c.nodeType===3)s+=c.textContent}return s.replace(/\\s+/g,'')};"
               "let btns=[...document.querySelectorAll('button,a,span')]"
-              ".filter(e=>own(e)===n(t)&&v(e)"
+              ".filter(e=>own(e)===String(t).replace(/\\s+/g,'')&&v(e)"
               "&&!e.closest('[class*=sidebar],.el-pagination,[class*=checkbox]'));"
               "const inTbl=btns.filter(e=>e.closest('[class*=vxe-table]'));"
               "if(inTbl.length)btns=inTbl;"

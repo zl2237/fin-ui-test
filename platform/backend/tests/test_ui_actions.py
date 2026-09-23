@@ -135,7 +135,7 @@ class TestClickText:
     def test_row_button(self, rt):
         _load(rt, BASE_DOM)
         facts = rt.run_action({"action": "row_button", "value": "详情"})
-        assert facts["result"] == "clicked"
+        assert facts["result"].startswith("clicked")  # clicked|目标|pool=... 增强格式
 
 
 # ---------- 弹窗类 ----------
@@ -386,9 +386,15 @@ class TestPick:
 
 # ---------- 激活式检索 ----------
 class TestSearch:
+    # SEARCH_DOM 是激活式检索框结构（readonly 输入框，点击解除后填值回车），
+    # 对应 search 的 element 路径；默认筛选区路径面向真实系统页面（展开/更多筛选/
+    # 字段下拉），本地 DOM 无这些结构，走默认路径必在「更多筛选」处超时
+    ELEMENT = {"strategy": "css", "value": "#bl"}
+
     def test_search_found(self, rt):
         _load(rt, SEARCH_DOM)
-        facts = rt.run_action({"action": "search", "value": "uitestBl2026"})
+        facts = rt.run_action({"action": "search", "value": "uitestBl2026",
+                               "element": self.ELEMENT})
         assert facts["result"] == "found"
         assert rt._page.evaluate("document.getElementById('bl').value") == "uitestBl2026"
         assert rt._page.evaluate("document.getElementById('log').dataset.query") == "1"
@@ -396,7 +402,8 @@ class TestSearch:
     def test_search_not_found_raises(self, rt):
         _load(rt, SEARCH_DOM)
         with pytest.raises(UiActionError, match="未见业务行"):
-            rt.run_action({"action": "search", "value": "not-exist-key"})
+            rt.run_action({"action": "search", "value": "not-exist-key",
+                           "element": self.ELEMENT})
 
 
 # ---------- 参数校验 ----------
