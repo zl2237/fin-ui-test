@@ -327,7 +327,7 @@ class UiRuntime:
     def _evaluate(self, value: Any) -> Any:
         if not isinstance(value, (str, dict, list)):
             return value
-        engine = ExpressionEngine(self.context.to_dict(), self.db_client)
+        engine = ExpressionEngine(self.context, self.db_client)
         return engine.evaluate(value)
 
     def _timeout_ms(self, params: dict) -> int:
