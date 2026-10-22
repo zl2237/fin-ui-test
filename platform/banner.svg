@@ -28,7 +28,7 @@
       Fin UI Test Platform
     </text>
     <text x="2" y="46" font-size="21" fill="#ffffff" fill-opacity="0.82" letter-spacing="2">
-      接口自动化测试平台 · 把用例从「一段代码」变成「一张可复用、可 diff 的 DAG 图」
+      UI 自动化测试平台 · 把 UI 用例从「一段代码」变成「一张可复用、可 diff 的 DAG 图」
     </text>
   </g>
 

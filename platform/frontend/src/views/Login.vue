@@ -25,14 +25,14 @@
             <path d="M11 19.6 L14.6 23.4 L21.4 15.6" fill="none" stroke="#fff" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round" />
           </svg>
-          <span class="brand-name">Fin API Test</span>
+          <span class="brand-name">Fin UI Test</span>
         </div>
-        <h1 class="brand-title">接口自动化测试平台</h1>
+        <h1 class="brand-title">UI 自动化测试平台</h1>
         <p class="brand-slogan app-mono">DAG 可视化编排，17 种断言，一键执行报告</p>
 
         <!-- 静态 DAG 品牌大图：本产品视觉识别符（画布同构，无动画） -->
         <svg class="brand-dag" viewBox="0 0 480 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img"
-             aria-label="用例编排 DAG 示意：三个接口节点汇聚到断言节点，其中一条链路校验失败">
+             aria-label="用例编排 DAG 示意：三个 UI 操作节点汇聚到断言节点，其中一条链路校验失败">
           <defs>
             <marker id="dagArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
               <polygon points="0 0, 10 5, 0 10" fill="rgba(255,255,255,0.55)" />
@@ -44,22 +44,22 @@
           <path d="M110 230 C 170 230, 190 168, 250 158" stroke="rgba(255,120,110,0.75)" stroke-width="1.6" stroke-dasharray="5 5" marker-end="url(#dagArrow)" />
           <path d="M330 148 C 370 148, 380 70, 425 66" stroke="rgba(255,255,255,0.4)" stroke-width="1.6" marker-end="url(#dagArrow)" />
           <path d="M330 148 C 370 148, 380 226, 425 230" stroke="rgba(255,255,255,0.4)" stroke-width="1.6" marker-end="url(#dagArrow)" />
-          <!-- 上游接口节点 -->
+          <!-- 上游 UI 操作节点 -->
           <g>
             <rect x="28" y="46" width="82" height="48" rx="2" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.55)" stroke-width="1.2" />
-            <text x="69" y="67" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">POST</text>
-            <text x="69" y="83" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">/login</text>
+            <text x="69" y="67" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">goto</text>
+            <text x="69" y="83" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">打开工作台</text>
           </g>
           <g>
             <rect x="28" y="126" width="82" height="48" rx="2" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.55)" stroke-width="1.2" />
-            <text x="69" y="147" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">POST</text>
-            <text x="69" y="163" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">/orders</text>
+            <text x="69" y="147" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">fill</text>
+            <text x="69" y="163" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">订单表单</text>
           </g>
           <!-- 失败链路节点 -->
           <g>
             <rect x="28" y="206" width="82" height="48" rx="2" fill="rgba(255,120,110,0.12)" stroke="rgba(255,120,110,0.8)" stroke-width="1.2" />
-            <text x="69" y="227" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">GET</text>
-            <text x="69" y="243" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">/refund</text>
+            <text x="69" y="227" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="11" font-weight="600">click</text>
+            <text x="69" y="243" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">提交退款</text>
           </g>
           <!-- 汇聚断言节点（产品核心：17 种校验） -->
           <g>
