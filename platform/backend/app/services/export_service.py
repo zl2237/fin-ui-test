@@ -174,7 +174,7 @@ def export_apis_openapi(apis: list, group_names: dict[int, str], project_name: s
     doc = {
         "openapi": "3.0.3",
         "info": {"title": f"{project_name} 接口定义", "version": "1.0.0",
-                 "description": f"由 fin-api-test 平台导出于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"},
+                 "description": f"由 fin-ui-test 平台导出于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"},
         **({"tags": tags} if tags else {}),
         "paths": paths,
         **({"components": {"schemas": schemas}} if schemas else {}),

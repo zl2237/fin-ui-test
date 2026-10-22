@@ -1,8 +1,8 @@
 """
 统一把项目根目录加入 sys.path，使 platform 后端可复用现有 api/db/utils/steps 模块。
 
-平台后端代码位置：fin-api-test/platform/backend/app/
-项目根目录位置：fin-api-test/   (= 本文件向上 4 级)
+平台后端代码位置：fin-ui-test/platform/backend/app/
+项目根目录位置：fin-ui-test/   (= 本文件向上 4 级)
 """
 import sys
 from pathlib import Path

@@ -14,7 +14,7 @@ user = cfg.get('DB_USER', 'root')
 password = cfg.get('DB_PASSWORD', '')
 host = cfg.get('DB_HOST', '127.0.0.1')
 port = cfg.get('DB_PORT', '3306')
-name = cfg.get('DB_NAME', 'fin_api_test')
+name = cfg.get('DB_NAME', 'fin_ui_test')
 
 TABLES = ["ui_elements", "custom_actions", "ui_action_docs", "file_tags", "file_tag_relations"]
 out_dir = Path('backups')

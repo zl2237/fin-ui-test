@@ -30,7 +30,7 @@ declare module 'axios' {
 }
 
 // ============ Token 管理 ============
-const TOKEN_KEY = 'fin_api_test_token'
+const TOKEN_KEY = 'fin_ui_test_token'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)

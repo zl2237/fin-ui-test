@@ -1,5 +1,5 @@
 <svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
-  <!-- Fin API Test Platform 横幅：与产品图标同一视觉语言（DAG 汇聚 + 断言对勾） -->
+  <!-- Fin UI Test Platform 横幅：与产品图标同一视觉语言（DAG 汇聚 + 断言对勾） -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0B1F3A"/>
@@ -25,7 +25,7 @@
   <!-- ===== 左侧文案 ===== -->
   <g transform="translate(72, 86)">
     <text x="0" y="0" font-size="52" font-weight="700" fill="#ffffff" letter-spacing="1">
-      Fin API Test Platform
+      Fin UI Test Platform
     </text>
     <text x="2" y="46" font-size="21" fill="#ffffff" fill-opacity="0.82" letter-spacing="2">
       接口自动化测试平台 · 把用例从「一段代码」变成「一张可复用、可 diff 的 DAG 图」

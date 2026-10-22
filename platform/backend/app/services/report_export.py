@@ -848,7 +848,7 @@ def export_report_html(record: Any, steps: list[Any], db: Any = None) -> str:
         parts.append('<div class="sec-empty" style="padding:30px">暂无步骤数据</div>')
     parts.append("</main></div>")
 
-    parts.append(f'<footer class="foot">由 fin-api-test 平台生成 · {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</footer>')
+    parts.append(f'<footer class="foot">由 fin-ui-test 平台生成 · {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</footer>')
     parts.append("</div>")
     parts.append(f"<script>{_REPORT_HTML_JS}</script>")
     parts.append("</body></html>")
