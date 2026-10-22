@@ -78,8 +78,9 @@ class DbSink:
             resumed=result.resumed,
             started_at=result.started_at, ended_at=result.ended_at,
             status=result.status,
-            post_extract=result.post_extract,
-            extracted_vars=result.extracted_vars,
+            # 列已收紧 NOT NULL：无提取的步骤显式传 None 会压过列 default，收口为空容器
+            post_extract=result.post_extract if result.post_extract is not None else [],
+            extracted_vars=result.extracted_vars if result.extracted_vars is not None else {},
             step_kind=result.step_kind, screenshot_file_id=result.screenshot_file_id,
         )
         self.db.add(step)
