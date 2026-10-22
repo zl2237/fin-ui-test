@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-# 默认源项目根：与 fin-api-test 平级的 autotest-playwright（脚本向上 5 级目录）
+# 默认源项目根：与 fin-ui-test 平级的 autotest-playwright（脚本向上 5 级目录）
 DEFAULT_AUTOTEST_ROOT = Path(__file__).resolve().parents[4] / "autotest-playwright"
 
 # 脚本不经 app.main 启动：自行加载 backend/.env（存在时真实配置优先）
@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--project-id", type=int, required=True,
                         help="目标项目 ID（元素库归属，必填）")
     parser.add_argument("--autotest-root", default=str(DEFAULT_AUTOTEST_ROOT),
-                        help=f"autotest-playwright 项目根目录（默认与 fin-api-test 平级: "
+                        help=f"autotest-playwright 项目根目录（默认与 fin-ui-test 平级: "
                              f"{DEFAULT_AUTOTEST_ROOT}）")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将导入的 (page_scope, element_key, 策略键列表)，不写库")

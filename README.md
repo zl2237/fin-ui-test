@@ -1,88 +1,55 @@
-# Fin API Test
+# Fin UI Test
 
-> 面向金融业务系统的 API 自动化测试框架 · pytest 驱动 · 多环境 · 数据库校验 · 链路编排
+> 面向金融业务系统的 UI 自动化测试平台 · Playwright 驱动 · DAG 可视化编排 · 元素库 · 结构化报告
 
-[![CI](https://github.com/zl2237/fin-api-test/actions/workflows/ci.yml/badge.svg)](https://github.com/zl2237/fin-api-test/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
-[![pytest](https://img.shields.io/badge/pytest-9.0.3-green.svg)](https://pytest.org/)
+[![Playwright](https://img.shields.io/badge/Playwright-1.x-green.svg)](https://playwright.dev/)]
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
-金融业务接口链路长、状态流转复杂、强依赖落库校验。本项目把"登录鉴权 → 接口调用 → 业务编排 → 数据校验"串联成一套开箱即用的骨架，让用例代码只关心业务本身。
-
-> 可视化 Web 平台版本见 [`platform/`](./platform/README.md)。
+金融业务系统的页面操作链路长、录入项多、状态流转复杂。本项目把「打开页面 → 定位录入 → 提交流转 → 结果校验」搬上可视化画布：用例即 DAG，节点即 UI 操作，不再把操作顺序写死在代码里。
 
 ## Features
 
-- **分层架构** — `Test → Flow → Step → API → HTTP/DB`，职责清晰
-- **链路编排** — `OrderFlow` 封装完整业务链路，用例 3 行代码跑通全流程
-- **多环境** — `config/env_*.yaml` 一键切换 test / pre / prod
-- **Token 自动刷新** — 401 自动重登并刷新全局 Authorization
-- **数据库校验** — 直接 MySQL 查询，校验落库状态
-- **YAML 数据驱动** — 请求模板与测试数据分离
+- **DAG 可视化编排** — 画布上把 UI 操作节点连成流程，双击节点配置动作链、提取与断言
+- **60+ 浏览器动作** — goto / click / fill / hover / 断言类动作 / 组合动作，事实（facts）结构统一
+- **元素库沉淀** — 多策略 + 兜底链定位（test_id / label / text / xpath…），按名引用，系统改版只改一处
+- **`${}` 表达式** — 步骤值引用上游提取变量、内置函数（`now()` / `generate_bl_no()` 等）、`db.query_one` 取数
+- **提取 + 断言引擎** — 页面事实 JSONPath 提取、17 种断言规则、DB 交叉校验、失败自动重试
+- **失败取证** — 失败节点自动截图入文件中心，报告内直接查看
+- **环境管理** — 多环境（地址 / 登录 / 数据库连接），连通性即时测试，执行严格绑定用例环境
+- **套件编排** — 跨系统串联用例成链，上游变量白名单注入下游
 
 ## Quick Start
 
 ```bash
-# 安装依赖
-pip install -r requirements.txt
+cd platform/backend
+cp .env.example .env        # 填 MySQL 连接、JWT 密钥
+python -m uvicorn app.main:app --port 8000
 
-# 配置环境
-cp config/env_demo.yaml config/env_test.yaml   # 编辑 base_url / mysql
-
-# 运行
-python run.py              # 跑全部用例 1 轮
-python run.py fee_add      # 只跑 fee_add 用例
-python run.py fee_add 5    # 只跑 fee_add 用例 5 轮
-pytest -m create           # 按 marker 过滤
+cd ../frontend
+npm install && npm run dev  # http://localhost:5173
 ```
 
-报告输出到 `report/report.html`。
+五步上手：建项目 → 配环境 → （可选）沉淀元素 → 画布编排用例 → 执行看报告。
+详见平台内「上手指南」与 [platform/README.md](./platform/README.md)。
 
 ## Architecture
 
 ```
-Test Cases (testcases/)      用例编排、断言、marker
+用例编排 (CaseDesigner)        DAG 画布：UI 操作节点 / 提取 / 断言 / 等待
      ↓
-Order Flow (flows/)          链路编排、阶段幂等、DB 断言
+DAG 执行器 (dag_executor)      拓扑调度 · 变量注册表（节点命名空间）· 断言引擎
      ↓
-Business Steps (steps/)      原子步骤（API 调用 + code 断言）
+UI 运行时 (ui_runtime)         Playwright 动作链 · 多策略定位 · facts 产出 · 失败截图
      ↓
-API Layer (api/)             HTTP 请求封装
-     ↓
-HTTP Client | MySQL Client   401 自动重登 | 落库校验
-```
-
-## Example
-
-```python
-# api/order/order_api.py
-from api.base_api import BaseApi
-
-class OrderApi(BaseApi):
-    def create_order(self, body: dict):
-        return self.http.post("/api/order/orderEntrust/orderAdd", json=body)
-```
-
-```python
-# testcases/order/test_order.py
-@pytest.mark.fee_add
-def test_fee_add(api_factory, db_factory, env_config):
-    """创建→分发→暂存→提交→生成子订单→录入费用"""
-    flow = OrderFlow(api_factory, db_factory, env_config)
-    flow.fee_add()   # 自动执行前置链路，幂等控制
+元素库 | 文件中心 | 结构化报告   元素沉淀 · 截图留档 · 步骤级回放
 ```
 
 ## Tech Stack
 
-[pytest](https://pytest.org/) 9 · [requests](https://docs.python-requests.org/) 2.33 · [PyMySQL](https://pymysql.readthedocs.io/) 1.1 · [PyYAML](https://pyyaml.org/) 6 · [pytest-html](https://pytest-html.readthedocs.io/) 4
+[FastAPI](https://fastapi.tiangolo.com/) · [SQLAlchemy](https://www.sqlalchemy.org/) · [Playwright](https://playwright.dev/) · [Vue 3](https://vuejs.org/) · [TypeScript](https://www.typescriptlang.org/) · [Element Plus](https://element-plus.org/) · [Vue Flow](https://vueflow.dev/)
 
-## Visual Platform
-
-同时提供一套 Web 测试平台（FastAPI + Vue3），与命令行版本共享底层能力：
-
-- 平台说明与快速上手：[platform/README.md](./platform/README.md)
-- 深模块词汇表（单一实现约定）：[docs/CONTEXT.md](./docs/CONTEXT.md)
-- 后端 759 个 fake-db 单测 + 前端 vue-tsc 全量类型检查，CI 与 pre-commit 同口径
+> 本项目由 fin-api-test（API 自动化平台）的 DAG 编排核心派生，共享执行器 / 变量池 / 断言引擎等基础设施；接口注册与数据集入参两个 API 工作面已裁撤。
 
 ## License
 

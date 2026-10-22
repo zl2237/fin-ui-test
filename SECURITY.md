@@ -15,7 +15,7 @@
 Use GitHub's private vulnerability reporting:
 
 - Repo 页面 → Security 标签 → Report a vulnerability
-- 或直接访问 https://github.com/zl2237/fin-api-test/security/advisories/new
+- 或直接访问 https://github.com/zl2237/fin-ui-test/security/advisories/new
 
 会在 72 小时内响应。修复将在验证后通过 Security Advisory 发布致谢。
 

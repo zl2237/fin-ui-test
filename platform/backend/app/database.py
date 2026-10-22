@@ -6,7 +6,7 @@ SQLAlchemy 引擎与会话工厂（仅支持 MySQL）。
     DB_PORT（默认 3306）
     DB_USER（默认 root）
     DB_PASSWORD（必填）
-    DB_NAME（默认 fin_api_test）
+    DB_NAME（默认 fin_ui_test）
 """
 import os
 
@@ -31,7 +31,7 @@ def _build_mysql_url() -> URL:
         password=password,  # 原始字符串直接传入，无需转义
         host=os.getenv("DB_HOST", "127.0.0.1"),
         port=int(os.getenv("DB_PORT", "3306")),
-        database=os.getenv("DB_NAME", "fin_api_test"),
+        database=os.getenv("DB_NAME", "fin_ui_test"),
         query={"charset": "utf8mb4"},
     )
 

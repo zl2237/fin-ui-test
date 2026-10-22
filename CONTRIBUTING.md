@@ -1,12 +1,12 @@
 # 贡献指南 / Contributing
 
-感谢关注 fin-api-test！欢迎通过 Issue、Discussion 与 Pull Request 参与共建。
+感谢关注 fin-ui-test！欢迎通过 Issue、Discussion 与 Pull Request 参与共建。
 
 ## 开发环境
 
 ```bash
-git clone https://github.com/zl2237/fin-api-test.git
-cd fin-api-test
+git clone https://github.com/zl2237/fin-ui-test.git
+cd fin-ui-test
 
 # 后端（Python 3.12+）
 python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
@@ -58,6 +58,6 @@ docs: README 同步数据驱动能力
 
 ## 报告问题
 
-- 可复现 Bug：[Issue](https://github.com/zl2237/fin-api-test/issues/new?template=bug_report.md)
+- 可复现 Bug：[Issue](https://github.com/zl2237/fin-ui-test/issues/new?template=bug_report.md)
 - 安全漏洞：见 [SECURITY.md](SECURITY.md)
-- 使用问题与想法：[Discussions](https://github.com/zl2237/fin-api-test/discussions)
+- 使用问题与想法：[Discussions](https://github.com/zl2237/fin-ui-test/discussions)

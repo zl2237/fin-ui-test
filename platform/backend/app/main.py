@@ -1,5 +1,5 @@
 """
-fin-api-test 平台后端入口。
+fin-ui-test 平台后端入口。
 
 启动方式（在 platform/backend 目录下）：
     # 方式一：使用 .env 文件（推荐，python-dotenv 自动加载）
@@ -168,7 +168,7 @@ _HTML_CACHE_HEADERS = {"Cache-Control": "no-cache"}
 def root():
     if _HAS_FRONTEND:
         return FileResponse(_FRONTEND_DIST / "index.html", headers=_HTML_CACHE_HEADERS)
-    return {"name": "fin-api-test 平台", "docs": "/docs"}
+    return {"name": "fin-ui-test 平台", "docs": "/docs"}
 
 
 app.include_router(auth.router)
