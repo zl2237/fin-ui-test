@@ -125,9 +125,9 @@ export class ApiError extends Error {
 
 // ============ 类型 ============
 // 响应类型优先取 OpenAPI 生成物别名（npm run gen:api，后端 Pydantic 为单一事实源）。
-// 仍手写的接口分两类：嵌套结构在生成物中退化为 unknown（Environment/ApiDef/TestCase/
-// NodeConfig/记录族/DataSet 族/版本族——视图需要更强的领域形状），或手写 union 承载
-// 领域约束（TestSchedule 的 schedule_type、DataSetColumn 的 type）；待后端模型细化后分批换。
+// 仍手写的接口分两类：嵌套结构在生成物中退化为 unknown（Environment/TestCase/
+// NodeConfig/记录族/版本族——视图需要更强的领域形状），或手写 union 承载
+// 领域约束（TestSchedule 的 schedule_type）；待后端模型细化后分批换。
 export type User = components['schemas']['UserOut']
 export type Project = components['schemas']['ProjectOut']
 export interface Environment {
@@ -141,28 +141,6 @@ export interface Environment {
   is_default: boolean; sort_order?: number; created_at?: string
   created_by?: number | null; updated_by?: number | null
   created_by_name?: string | null; updated_by_name?: string | null
-}
-export type ApiGroup = components['schemas']['ApiGroupOut']
-export interface ApiField {
-  id?: number; api_id?: number
-  key: string; label?: string; field_type: string; required: boolean
-  default_value?: string; remark?: string; sort_order: number
-}
-export interface ApiDef {
-  id: number; project_id: number; group_id?: number | null; name: string; code: string; category?: string
-  method: string; path: string; description?: string
-  request_template: any; headers_template: Record<string, any>
-  fields: ApiField[]; sort_order?: number; created_at?: string
-  created_by?: number | null; updated_by?: number | null
-  created_by_name?: string | null; updated_by_name?: string | null
-}
-export interface HarPreviewField {
-  key: string; field_type: string; default_value: string; in: string; required: boolean
-}
-export interface HarPreviewItem {
-  method: string; path: string; url: string; name: string; field_count: number
-  fields: HarPreviewField[]; is_array_body: boolean; content_type: string
-  _selected?: boolean  // 前端勾选状态
 }
 export type CaseGroup = components['schemas']['CaseGroupOut']
 // ============ 四来源参数模型（2026-09-30 定案：节点入参取值单选四来源） ============
@@ -190,11 +168,7 @@ export interface NodeParams {
   body?: Record<string, ParamSpec>
   headers?: Record<string, ParamSpec>
 }
-/** 数据集行内单节点入参配置（入参唯一收敛到数据集；字段设置=参数取值来源声明） */
-export interface DatasetNodeParams {
-  params: NodeParams
-}
-// ============ 契约同步（2026-10-10 定案：数据集参数 ↔ 接口字段一致性） ============
+// ============ 契约缺口（执行摘要回显；契约同步面已随数据集裁撤） ============
 /** 契约外参数（动态来源红线：只标注不删） */
 export interface ContractGapExtra {
   path: string
@@ -204,17 +178,6 @@ export interface ContractGapExtra {
 export interface ContractGaps {
   missing?: string[]        // 接口字段无参数覆盖（执行按空值占位发送）
   extra?: ContractGapExtra[] // 参数路径不在接口契约内
-}
-/** 接口契约变更影响面条目（一个引用数据集节点） */
-export interface ContractImpactItem {
-  dataset_id: number; dataset_name: string
-  case_id: number; case_name: string
-  node_id: string; node_label: string
-  gaps: ContractGaps
-}
-export interface ContractSyncResult {
-  total: { nodes: number; added: number; removed: number; skipped_dynamic: number }
-  details: Array<{ dataset_id: number; dataset_name: string; node_id: string; added: number; removed: number; skipped_dynamic: number }>
 }
 /** 节点后置提取配置行（PostExtractTable 编辑形状） */
 export interface PostExtractSpec {
@@ -491,68 +454,6 @@ export const envApi = {
     http.post<{ message: string; updated: number }>('/environments/reorder', { items }).then((r) => r.data),
 }
 
-// ============ ApiGroup ============
-export const apiGroupApi = {
-  list: (projectId: number) => http.get<ApiGroup[]>('/api-groups', { params: { project_id: projectId } }).then((r) => r.data),
-  create: (data: { project_id: number; parent_id?: number | null; name: string; sort_order?: number }) => http.post<ApiGroup>('/api-groups', data).then((r) => r.data),
-  update: (id: number, data: Partial<ApiGroup>) => http.put<ApiGroup>(`/api-groups/${id}`, data).then((r) => r.data),
-  remove: (id: number) => http.delete(`/api-groups/${id}`),
-}
-
-// ============ Api ============
-export const apiApi = {
-  list: (projectId?: number, createdBy?: number, updatedBy?: number) => http.get<ApiDef[]>('/apis', { params: { project_id: projectId, created_by: createdBy, updated_by: updatedBy } }).then((r) => r.data),
-  get: (id: number) => http.get<ApiDef>(`/apis/${id}`).then((r) => r.data),
-  create: (data: Partial<ApiDef>) => http.post<ApiDef>('/apis', data).then((r) => r.data),
-  update: (id: number, data: Partial<ApiDef>) => http.put<ApiDef>(`/apis/${id}`, data).then((r) => r.data),
-  remove: (id: number) => http.delete(`/apis/${id}`),
-  copy: (id: number) => http.post<ApiDef>(`/apis/${id}/copy`).then((r) => r.data),
-  // 契约影响面/同步（接口保存或数据集保存后弹窗预览 + 用户许可后全量同步）
-  contractImpact: (id: number) =>
-    http.get<ContractImpactItem[]>(`/apis/${id}/contract-impact`).then((r) => r.data),
-  contractSync: (id: number) =>
-    http.post<ContractSyncResult>(`/apis/${id}/contract-sync`).then((r) => r.data),
-  batchMove: (apiIds: number[], groupId: number | null) =>
-    http.post<{ message: string; updated: number }>('/apis/batch-move', { api_ids: apiIds, group_id: groupId }).then((r) => r.data),
-  reorder: (items: { id: number; sort_order: number }[]) =>
-    http.post<{ message: string; updated: number }>('/apis/reorder', { items }).then((r) => r.data),
-  importSpec: (projectId: number, spec: Record<string, any>, groupId?: number | null) =>
-    http.post<{ message: string; imported: any[]; skipped: string[] }>('/apis/import', { project_id: projectId, group_id: groupId ?? null, spec }).then((r) => r.data),
-  previewHar: (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    return http.post<{ total: number; previews: HarPreviewItem[] }>('/apis/import-har/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then((r) => r.data)
-  },
-  importHar: (projectId: number, previews: HarPreviewItem[], groupId?: number | null) =>
-    http.post<{ message: string; imported: any[]; skipped: string[] }>('/apis/import-har', { project_id: projectId, group_id: groupId ?? null, previews }).then((r) => r.data),
-  previewCurl: (text: string) =>
-    http.post<{ total: number; previews: HarPreviewItem[]; errors: string[] }>('/apis/import-curl/preview', { text }).then((r) => r.data),
-  importCurl: (projectId: number, previews: HarPreviewItem[], groupId?: number | null) =>
-    http.post<{ message: string; imported: any[]; skipped: string[] }>('/apis/import-curl', { project_id: projectId, group_id: groupId ?? null, previews }).then((r) => r.data),
-  importFields: (apiId: number, method: string, path: string, spec: Record<string, any>) =>
-    http.post<{
-      matched: boolean; method: string; path: string; operation_summary: string | null
-      fields: ApiField[]
-    }>(`/apis/${apiId}/import-fields`, { method, path, spec }).then((r) => r.data),
-  debug: (apiId: number, envId: number, bodyOverride?: Record<string, any>) =>
-    http.post<{
-      api_id: number; api_name: string; method: string; path: string
-      request_headers: Record<string, any>; request_body: any
-      response_status: number; response_body: any; response_time_ms: number
-      started_at: string; ok: boolean; login_failed: boolean; error: string | null
-    }>(`/apis/${apiId}/debug`, { env_id: envId, body_override: bodyOverride ?? null }).then((r) => r.data),
-  // 列表导出：excel=简表 / json=全量 / openapi=OpenAPI 3.0（Postman/Apifox 可导入）；ids=勾选导出（优先于筛选）
-  exportList: (params: { project_id: number; format: 'excel' | 'json' | 'openapi'; ids?: number[]; created_by?: number; updated_by?: number }) => {
-    const { ids, ...rest } = params
-    return http.get<Blob>('/apis/export', {
-      responseType: 'blob',
-      params: { ...rest, ids: ids?.length ? ids.join(',') : undefined },
-    }).then((r) => r.data)
-  },
-}
-
 // ============ CaseGroup ============
 export const caseGroupApi = {
   list: (projectId: number) => http.get<CaseGroup[]>('/case-groups', { params: { project_id: projectId } }).then((r) => r.data),
@@ -574,9 +475,8 @@ export const caseApi = {
   reorder: (items: { id: number; sort_order: number }[]) =>
     http.post<{ message: string; updated: number }>('/testcases/reorder', { items }).then((r) => r.data),
   // 环境严格绑定：执行环境=用例绑定环境（case.env_id），不再传 env_id
-  execute: (caseId: number, opts?: { dataset_id?: number | null }) =>
-    http.post<ExecutionRecord>(`/testcases/${caseId}/execute`,
-      { case_id: caseId, dataset_id: opts?.dataset_id ?? undefined }).then((r) => r.data),
+  execute: (caseId: number) =>
+    http.post<ExecutionRecord>(`/testcases/${caseId}/execute`, { case_id: caseId }).then((r) => r.data),
   batchExecute: (caseIds: number[], counts?: number[], concurrency: number = 4) =>
     http.post<ExecutionRecord[]>('/testcases/batch-execute',
       { case_ids: caseIds, counts, concurrency }).then((r) => r.data),
@@ -623,58 +523,6 @@ export const scheduleApi = {
     http.put<TestSchedule>(`/schedules/${id}`, data).then((r) => r.data),
   remove: (id: number) => http.delete(`/schedules/${id}`),
   run: (id: number) => http.post<{ message: string }>(`/schedules/${id}/run`).then((r) => r.data),
-}
-
-// ============ DataSet 数据集（入参配置中心：每个数据集 = 各节点入参的一套完整取值） ============
-/** 行数据：{"nodes": {节点ID: {params}}}（单行收敛，多数据集 = 多场景） */
-export interface DataSetRow {
-  id: number; dataset_id: number; row_index: number; data: { nodes?: Record<string, DatasetNodeParams> }
-}
-export interface DataSet {
-  id: number; project_id: number; case_id: number; name: string; description?: string | null
-  rows: DataSetRow[]
-  case_bound_count?: number  // >0 时删除需先解绑
-  created_at?: string; updated_at?: string
-  created_by?: number | null; created_by_name?: string | null
-  updated_by?: number | null; updated_by_name?: string | null
-}
-/** 参数视图单节点：接口字段定义 × 行内现值 × 静态产出（引用下拉数据源） */
-export interface DatasetNodeView {
-  node_id: string
-  label: string
-  api_id?: number | null
-  api_name?: string
-  fields: Record<string, any>[]
-  params: NodeParams
-  productions: string[]
-}
-export interface DatasetParamsView {
-  dataset_id: number
-  case_id: number
-  nodes: DatasetNodeView[]
-  edges: { source: string; target: string }[]
-  orphan_node_ids: string[]  // 行内已配置但画布已删的节点（提示清理）
-}
-
-export const datasetApi = {
-  list: (params?: { project_id?: number; case_id?: number; with_rows?: boolean }) =>
-    http.get<DataSet[]>('/datasets', { params }).then((r) => r.data),
-  create: (data: { project_id: number; case_id: number; name: string; description?: string }) =>
-    http.post<DataSet>('/datasets', data).then((r) => r.data),
-  update: (id: number, data: { name?: string; description?: string }) =>
-    http.put<DataSet>(`/datasets/${id}`, data).then((r) => r.data),
-  remove: (id: number) => http.delete(`/datasets/${id}`),
-  // 复制：行内全部节点入参配置深拷贝，归属同用例（多场景复用）
-  copy: (id: number) => http.post<DataSet>(`/datasets/${id}/copy`).then((r) => r.data),
-  // 参数视图：按归属用例 DAG 节点组织（数据集页节点 tab 数据源）
-  paramsView: (id: number) =>
-    http.get<DatasetParamsView>(`/datasets/${id}/params-view`).then((r) => r.data),
-  // 保存单节点入参配置（整体替换该节点 params，服务端含静态校验）
-  saveNodeConfig: (id: number, data: { node_id: string; params: NodeParams }) =>
-    http.put<DataSet>(`/datasets/${id}/node-config`, data).then((r) => r.data),
-  // 清理悬空节点配置（画布节点已删）
-  removeNodeConfig: (id: number, nodeId: string) =>
-    http.delete(`/datasets/${id}/node-config/${encodeURIComponent(nodeId)}`).then((r) => r.data),
 }
 
 // ============ ProjectVersion 项目版本 ============
@@ -729,7 +577,7 @@ export interface HomeRecentExec {
 export const homeApi = {
   summary: (projectId: number, days = 7) =>
     http.get<{
-      api_count: number; case_count: number
+      element_count: number; case_count: number
       stats: { count: number; passed: number; rate: number | null; days: number }
       recent_execs: HomeRecentExec[]
       recent_cases: { id: number; name: string }[]

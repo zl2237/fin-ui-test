@@ -708,7 +708,7 @@ class HomeRecentCaseOut(BaseModel):
 
 class HomeSummaryOut(BaseModel):
     """工作台聚合（一次请求喂饱首页，替代 4 个重列表接口的全量拉取）"""
-    api_count: int
+    element_count: int  # UI 元素库沉淀数（接口注册面已裁撤，原 api_count 随之废止）
     case_count: int
     stats: ExecutionStatsOut
     recent_execs: list[HomeRecentExecOut] = []

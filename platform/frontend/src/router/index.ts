@@ -13,12 +13,9 @@ const routes = [
       { path: '', redirect: '/home' },
       { path: 'home', name: 'Home', component: () => import('@/views/Home.vue'), meta: { title: '首页' } },
       { path: 'projects', name: 'ProjectManage', component: () => import('@/views/ProjectManage.vue'), meta: { title: '项目管理' } },
-      { path: 'apis', name: 'ApiManage', component: () => import('@/views/ApiManage.vue'), meta: { title: '接口管理' } },
-      { path: 'apis/edit/:id?', name: 'ApiEdit', component: () => import('@/views/ApiEdit.vue'), meta: { title: '接口编辑' } },
       { path: 'cases', name: 'CaseList', component: () => import('@/views/CaseList.vue'), meta: { title: '用例管理' } },
       { path: 'cases/designer/:id?', name: 'CaseDesigner', component: () => import('@/views/CaseDesigner.vue'), meta: { title: '用例编排' } },
       { path: 'cases/suite-designer/:id', name: 'SuiteDesigner', component: () => import('@/views/SuiteDesigner.vue'), meta: { title: '套件编排' } },
-      { path: 'datasets', name: 'DatasetManage', component: () => import('@/views/DatasetManage.vue'), meta: { title: '数据集' } },
       { path: 'envs', name: 'EnvManage', component: () => import('@/views/EnvManage.vue'), meta: { title: '环境配置' } },
       { path: 'envs/edit/:id?', name: 'EnvEdit', component: () => import('@/views/EnvEdit.vue'), meta: { title: '环境编辑' } },
       { path: 'executions', name: 'Execution', component: () => import('@/views/Execution.vue'), meta: { title: '执行记录' } },
@@ -71,7 +68,7 @@ router.beforeEach(async (to, _from, next) => {
 // 动态标签标题：index.html 的静态标题仅作首屏兜底
 router.afterEach((to) => {
   const title = to.meta.title
-  document.title = typeof title === 'string' ? `${title} - fin-api-test 测试平台` : 'fin-api-test 测试平台'
+  document.title = typeof title === 'string' ? `${title} - fin-ui-test 平台` : 'fin-ui-test 平台'
 })
 
 export default router

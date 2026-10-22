@@ -63,12 +63,12 @@ def home_summary(project_id: int, days: int = 7,
     """首页聚合（一个接口替代 4 个重列表请求）。"""
     if days < 1 or days > 365:
         raise HTTPException(400, "天数须在 1~365 之间")
-    api_count = (db.query(func.count(models.ApiDefinition.id))
-                 .filter(models.ApiDefinition.project_id == project_id).scalar() or 0)
+    element_count = (db.query(func.count(models.UiElement.id))
+                     .filter(models.UiElement.project_id == project_id).scalar() or 0)
     case_count = (db.query(func.count(models.TestCase.id))
                   .filter(models.TestCase.project_id == project_id).scalar() or 0)
     return schemas.HomeSummaryOut(
-        api_count=api_count, case_count=case_count,
+        element_count=element_count, case_count=case_count,
         stats=schemas.ExecutionStatsOut(**aggregate_stats(db, project_id, days)),
         recent_execs=_recent_execs(db, project_id),
         recent_cases=_recent_cases(db, project_id),

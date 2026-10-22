@@ -2,7 +2,7 @@
   <!-- 上手指南抽屉：从 Home 提取的自包含组件（defineModel 控制显隐；常量/首登逻辑/跳转全部内聚） -->
   <el-drawer v-model="visible" title="上手指南" size="480px" :close-on-click-modal="false">
     <div class="guide-body">
-      <h4 class="guide-section">六步跑通第一个测试</h4>
+      <h4 class="guide-section">五步跑通第一个测试</h4>
       <ol class="guide-steps">
         <li v-for="(s, i) in guideSteps" :key="s.title">
           <span class="g-num" aria-hidden="true">{{ i + 1 }}</span>
@@ -58,21 +58,19 @@ onMounted(() => {
 })
 
 const guideSteps = [
-  { title: '建一个项目', desc: '项目把一个系统的接口和用例装在一起，右上角随时切换', go: '去创建', to: '/projects' },
+  { title: '建一个项目', desc: '项目把一个被测系统的用例与元素装在一起，右上角随时切换', go: '去创建', to: '/projects' },
   { title: '配置环境', desc: '被测系统地址、登录账号、数据库连接，可即时测试连通性', go: '去配置', to: '/envs' },
-  { title: '录入接口', desc: '手动新建或粘贴 cURL 自动识别，参数像填表格一样配置', go: '去录入', to: '/apis' },
-  { title: '编排用例', desc: '画布上把接口连成流程，双击节点添加断言', go: '去编排', to: '/cases' },
-  // 数据集为主流程的可选第五步：行数据承载各节点入参，多场景复制数据集切换
-  { title: '调整数据（可选）', desc: '数据集行承载各节点入参，改参数值即参数化；多场景复制多个数据集切换执行', go: '去看看', to: '/datasets' },
-  { title: '执行看报告', desc: '选环境点执行，每一步请求与校验结果全留档；支持编辑节点参数后重放', go: '去看', to: '/executions' },
+  // 元素库为可选第三步：先在编排抽屉里内联定位，跑通后再沉淀进元素库复用
+  { title: '沉淀元素（可选）', desc: '把常用定位（多策略 + 兜底链）沉淀到元素库，编排时按名引用，系统改版只改一处', go: '去看看', to: '/elements' },
+  { title: '编排用例', desc: '画布上把 UI 操作节点连成流程，双击节点配置动作链、提取与断言', go: '去编排', to: '/cases' },
+  { title: '执行看报告', desc: '点执行由 Playwright 驱动浏览器走完流程，每步事实、截图与校验结果全留档', go: '去看', to: '/executions' },
 ]
 
 const guideCaps = [
   { title: '测试套件', desc: '跨系统串联用例成链：逐成员绑环境，上游变量白名单自动注入下游', tab: null },
-  { title: '数据集执行', desc: '数据集行承载各节点入参，改参数值即参数化；每个数据集一套数据，多场景切换执行', tab: 'dataset' as const },
-  { title: '数据自动生成', desc: '随机单号、日期格式化、唯一 ID：参数来源选「函数」下拉挑选，无需手写表达式', tab: 'expression' as const },
-  { title: '17 种结果校验', desc: 'JSONPath、状态码、DB 交叉校验，支持失败重试', tab: 'assertion' as const },
-  { title: '批量导入接口', desc: 'cURL 粘贴即用，HAR 抓包文件、Swagger 文档批量导入', tab: null },
+  { title: 'UI 动作库', desc: '60+ 浏览器动作（原生/封装/项目自定义），事实结构与失败截图口径统一', tab: 'actions' as const },
+  { title: '数据自动生成', desc: '随机单号、日期格式化、唯一 ID：UI 步骤值里 ${func()} 直接调用内置函数', tab: 'expression' as const },
+  { title: '17 种结果校验', desc: '页面事实 JSONPath、DB 交叉校验，支持失败重试', tab: 'assertion' as const },
 ]
 </script>
 
