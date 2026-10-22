@@ -74,12 +74,9 @@ def _snapshot_cases(db: Session, project_id: int) -> list[dict]:
             "node_configs": [
                 {
                     "node_id": nc.node_id, "api_id": nc.api_id,
-<<<<<<< HEAD
-=======
                     "step_type": nc.step_type or "api",
                     "ui_params": nc.ui_params,
                     "pre_process": nc.pre_process or [],
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
                     "post_extract": nc.post_extract or [],
                     "assertions": nc.assertions or [],
                     "wait_after_ms": nc.wait_after_ms or 0,
@@ -396,12 +393,9 @@ def rollback_project_version(
                 case_id=nc.id,
                 node_id=cfg["node_id"],
                 api_id=new_api_id,
-<<<<<<< HEAD
-=======
                 step_type=cfg.get("step_type") or "api",
                 ui_params=cfg.get("ui_params"),
                 pre_process=cfg.get("pre_process", []),
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
                 post_extract=cfg.get("post_extract", []),
                 assertions=cfg.get("assertions", []),
                 wait_after_ms=cfg.get("wait_after_ms", 0) or 0,

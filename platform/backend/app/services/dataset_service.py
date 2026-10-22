@@ -274,9 +274,7 @@ def ensure_case_dataset(db: Session, case, user_id: int | None = None,
         db.rollback()
 
 
-<<<<<<< HEAD
 # ============ 复制 / 克隆 / 组合合并（纯值操作） ============
-=======
 def filter_row_vars_for_node(row_vars: dict | None, origins: dict | None,
                              api, pre_process: list | None) -> dict | None:
     """快照保真过滤：数据集行值按节点过滤后应用（纯函数，执行层调用）。
@@ -392,7 +390,6 @@ def generate_dataset_from_case(db: Session, case_id: int, name: str | None = Non
     )
     return ds, out["stats"]
 
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
 def copy_dataset(db: Session, dataset_id: int, name: str | None = None, user_id: int | None = None) -> models.DataSet:
     """复制数据集（值全量深拷贝，归属同用例）。默认命名「原名-副本」，重名递增。"""

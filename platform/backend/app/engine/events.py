@@ -42,16 +42,13 @@ class StepResult:
     assertions: list[AssertionResult] = field(default_factory=list)
     post_extract: list[dict[str, Any]] | None = None  # 后置提取规则快照
     extracted_vars: dict[str, Any] | None = None  # 后置提取实际结果 {name: value}
-<<<<<<< HEAD
     retry_count: int = 0  # 环境级失败重试实际发生的次数（重试后成功时 >0）
     # 重试途中被顶替的失败尝试快照 [{attempt, ts, elapsed_ms, status_code, error, response}]；
     # 重试成功后主行响应为成功态，首次失败原因只在此留存（最终失败仍在主行）
     retry_history: list[dict[str, Any]] | None = None
     resumed: bool = False  # 断点续跑段产出的步骤（同 node 重跑成功后顶替旧失败记录）
-=======
     step_kind: str = "api"  # 步骤类型：api 接口调用 / ui 浏览器操作
     screenshot_file_id: int | None = None  # UI 步骤截图的文件中心文件ID
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
 
 class ExecutionSink(Protocol):

@@ -294,15 +294,12 @@ class CaseNodeConfig(Base):
     case_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("test_cases.id"), comment="所属用例ID")
     node_id: Mapped[str] = mapped_column(String(100), nullable=False, comment="DAG 节点唯一ID")
     api_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("api_definitions.id"), comment="关联接口ID")
-<<<<<<< HEAD
-=======
     step_type: Mapped[str] = mapped_column(String(20), default="api", server_default="api",
                        comment="节点类型：api 接口调用 / ui 浏览器操作（ui 节点无需绑定接口，配置走 ui_params）")
     ui_params: Mapped[Any] = mapped_column(JSON, default=dict,
                      comment="UI 节点参数：{action: goto|click|fill|select_option|check|press|wait|screenshot|evaluate, "
                              "url, element:{strategy,value|element_id}, value, values, timeout_ms, wait_for, files}")
     pre_process: Mapped[Any] = mapped_column(JSON, default=list, comment="前置处理动作列表：[{type, path, value}]")
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: Mapped[Any] = mapped_column(JSON, default=list, comment="后置提取规则列表：[{name, source, jsonpath, sql, field}]")
     assertions: Mapped[Any] = mapped_column(JSON, default=list, comment="断言规则列表：[{type, path, expected, sql, ...}]")
     wait_after_ms: Mapped[int] = mapped_column(Integer, default=0, comment="当前节点执行完后到下一节点请求前的等待毫秒数，默认0")
@@ -364,16 +361,12 @@ class StepRecord(Base):
     replay_passed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True,
                     comment="重放验证通过时间：手改请求体重放断言全过时打点，报告页显示「已重放通过」徽标；不改变步骤内容")
     status: Mapped[str | None] = mapped_column(String(20), comment="步骤状态：success 成功 / failed 失败")
-<<<<<<< HEAD
-    pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照（历史遗留列：前置动作已废止，"
-                      "新步骤不再写入，仅老报告回显）")
-=======
     step_kind: Mapped[str] = mapped_column(String(20), default="api", server_default="api",
                      comment="步骤类型：api 接口调用 / ui 浏览器操作（历史行 NULL 视为 api）")
     screenshot_file_id: Mapped[int | None] = mapped_column(Integer, nullable=True,
                             comment="UI 步骤截图的文件中心 test_files.id（失败截图/全程截图），NULL 表示无截图")
-    pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照：[{type, path, value}]")
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
+    pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照（历史遗留列：前置动作已废止，"
+                      "新步骤不再写入，仅老报告回显）")
     post_extract: Mapped[Any] = mapped_column(JSON, comment="后置提取规则快照：[{name, source, jsonpath, sql, field}]")
     extracted_vars: Mapped[Any] = mapped_column(JSON, comment="后置提取实际结果：{name: value}")
 
