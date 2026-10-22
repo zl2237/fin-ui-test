@@ -77,12 +77,9 @@ class DagExecutor:
                  dataset_row: dict[str, Any] | None = None,
                  suite_vars: dict[str, Any] | None = None,
                  suppress_notify: bool = False,
-<<<<<<< HEAD
                  start_node: str | None = None,
-                 context_seed: dict[str, Any] | None = None):
-=======
+                 context_seed: dict[str, Any] | None = None,
                  ui_runtime: Any = None):
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
         self.db = db
         self.case = case
         self.env = env
@@ -127,17 +124,15 @@ class DagExecutor:
             for n in (dag.get("nodes") or [])
             if isinstance(n, dict)
         }
+        # UI 运行时（惰性构建，首个 ui 节点触发浏览器启动）；
+        # 测试可注入替身，避免真实拉起 Chromium
+        self._ui_runtime = ui_runtime
 
     def _pretty_err(self, msg: str) -> str:
         """错误文本里的 node_xxx 引用替换为「中文名(node_xxx)」，报告一眼可读。"""
         return re.sub(r"node_[A-Za-z0-9_]+",
                       lambda m: f"{self._node_labels.get(m.group(0), m.group(0))}({m.group(0)})",
                       msg)
-=======
-        # UI 运行时（惰性构建，首个 ui 节点触发浏览器启动）；
-        # 测试可注入替身，避免真实拉起 Chromium
-        self._ui_runtime = ui_runtime
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
 
     # ---------- 请求发送 ----------
     def _send_request(self, api: models.ApiDefinition, body: Any, headers: dict,
@@ -277,17 +272,14 @@ class DagExecutor:
         finally:
             record.ended_at = datetime.now()
             self.db.commit()
-<<<<<<< HEAD
             # 用例列表「最近执行」回写（统计列，失败静默不影响收尾）
             touch_case_last_exec(self.db, record)
-=======
             # UI 运行时收尾：关浏览器/停 playwright/释放并发闸门（未启动则幂等跳过）
             if self._ui_runtime is not None:
                 try:
                     self._ui_runtime.close()
                 except Exception as e:
                     print(f"[资源清理] UI runtime 关闭失败（忽略）: {e}")
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
             if self.db_client:
                 try:
                     self.db_client.close()
@@ -357,27 +349,12 @@ class DagExecutor:
                                request_body=s.request_body or {})
 
     def _resolve_node_config(self, node_id: str):
-<<<<<<< HEAD
         """节点结构配置来源：用例当前 CaseNodeConfig（编排唯一来源，无快照覆盖）。
-        仅承载结构层（接口绑定/后置提取/断言/等待）；入参配置见 _resolve_param_config。"""
+        仅承载结构层（接口绑定/后置提取/断言/等待，UI 节点为 step_type/ui_params）；
+        入参配置见 _resolve_param_config。"""
         if self._node_cache is not None:
             # execute() 已预载全量配置：缓存未命中即该节点确实无配置行
             return self._node_cache.get(node_id)
-=======
-        """节点配置来源：数据集快照优先（node_id 命中整块替换）→ 回落用例 CaseNodeConfig。"""
-        snap = (self.node_config_overrides or {}).get(node_id)
-        if snap:
-            return SimpleNamespace(
-                node_id=node_id,
-                api_id=snap.get("api_id"),
-                step_type=snap.get("step_type") or "api",
-                ui_params=snap.get("ui_params") or {},
-                pre_process=snap.get("pre_process") or [],
-                post_extract=snap.get("post_extract") or [],
-                assertions=snap.get("assertions") or [],
-                wait_after_ms=snap.get("wait_after_ms") or 0,
-            )
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
         return self.db.query(models.CaseNodeConfig).filter(
             models.CaseNodeConfig.case_id == self.case.id,
             models.CaseNodeConfig.node_id == node_id,

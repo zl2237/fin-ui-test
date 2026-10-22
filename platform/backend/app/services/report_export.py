@@ -346,17 +346,13 @@ input.sp-radio { display: none; }
 .assert-table .fail-msg { color: var(--err); }
 .assert-table .fail-text { color: var(--err); }
 
-<<<<<<< HEAD
-.foot { text-align: center; font-size: 11px; color: var(--text-3); padding: 10px 0 0; border-top: 1px solid var(--border); }
-=======
 /* ===== UI 步骤：类型徽标 / 动作链表 / 截图 ===== */
 .sp-kind { flex-shrink: 0; padding: 1px 9px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--warn-soft); color: var(--warn); }
 .ui-steps th, .ui-steps td { font-size: 11px; }
 .shot-wrap { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--card-2); }
 .shot { display: block; width: 100%; height: auto; cursor: zoom-in; }
 
-.foot { text-align: center; font-size: 11px; color: var(--text-3); padding: 4px 0 0; }
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
+.foot { text-align: center; font-size: 11px; color: var(--text-3); padding: 10px 0 0; border-top: 1px solid var(--border); }
 
 /* ===== 打印兜底：隐藏导航/按钮，全部步骤单列展开（印章随纸面落档） ===== */
 @media print {
@@ -650,14 +646,10 @@ def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
     p: list[str] = []
     p.append(f'<section class="step-pane" data-step="{sid}" data-tabbed="1">')
 
-<<<<<<< HEAD
     # 标题区粘顶容器：节点名 + meta + Tab 栏滚动时常驻视口顶部
     p.append('<div class="sp-sticky">')
 
-    # 头部（步骤名单行截断 + title 悬浮全文）
-=======
     # 头部（步骤名单行截断 + title 悬浮全文；UI 步骤加类型徽标）
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     p.append('<div class="sp-head">')
     p.append(f'<div class="sp-title"><span class="sp-idx">#{idx + 1}</span>'
              + ('<span class="sp-kind">UI</span>' if is_ui else '')
@@ -693,14 +685,10 @@ def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
     p.append(f'<span><em>结束</em>{_esc(s.ended_at or "-")}</span>')
     p.append("</div>")
 
-<<<<<<< HEAD
-    # Tabs（radio 实现：选中态用 :has() 纯 CSS，无 JS 依赖；radio 与 sp-tabs 同在 sp-sticky 内）
-=======
-    # Tabs（radio 实现：选中态纯 CSS，无 JS 依赖；顺序 radio → tabs → panes 满足兄弟选择器；
+    # Tabs（radio 实现：选中态用 :has() 纯 CSS，无 JS 依赖；radio 与 sp-tabs 同在 sp-sticky 内；
     # UI 步骤前两个 tab 语义换成动作链 / 页面截图）
     req_label = f"动作链（{n_steps or 1}）" if is_ui else "请求"
     resp_label = "页面 / 截图" if is_ui else "响应"
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-req" id="tab-{sid}-req" checked>')
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-resp" id="tab-{sid}-resp">')
     p.append(f'<input type="radio" name="tab-{sid}" class="sp-radio sp-radio-extract" id="tab-{sid}-ex">')
@@ -712,31 +700,19 @@ def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
     p.append(f'<label class="sp-tab sp-tab-assert" for="tab-{sid}-as">断言（{len(assertions)}）</label>')
     p.append("</div>")
 
-<<<<<<< HEAD
     p.append("</div>")  # /sp-sticky
 
-    # 请求（前置处理快照不再展示：配置原文与请求体重复，信息噪音大于价值）
-    p.append('<div class="sp-panes">')
-    p.append(f'<div class="sp-pane sp-pane-req">{_json_sec("请求头", s.request_headers)}{_json_sec("请求体", s.request_body)}</div>')
-    # 响应
-    resp = (f'<div class="sp-pane sp-pane-resp">'
-            f'<div class="sec"><div class="sec-title">状态码</div>'
-            f'<span class="kv"><b>{_esc(s.response_status if s.response_status is not None else "-")}</b></span></div>'
-            f'<div class="sec"><div class="sec-title">响应耗时</div>'
-            f'<span class="kv"><b>{_esc(s.response_time_ms if s.response_time_ms is not None else "-")} ms</b></span></div>'
-            f'{_json_sec("响应体", s.response_body)}</div>')
-    p.append(resp)
-=======
+    # 请求（API 前置处理快照不再展示：配置原文与请求体重复，信息噪音大于价值）
     p.append('<div class="sp-panes">')
     if is_ui:
-        # 请求 Tab = 前置处理 + 动作链表（参数×结果逐步对齐，失败组还原 partial 现场）
-        p.append(f'<div class="sp-pane sp-pane-req">{_pre_sec(pre_list)}{_ui_steps_sec(rb, resp)}</div>')
+        # 请求 Tab = 动作链表（参数×结果逐步对齐，失败组还原 partial 现场）
+        p.append(f'<div class="sp-pane sp-pane-req">{_ui_steps_sec(rb, resp)}</div>')
         # 响应 Tab = 截图（base64 内嵌）+ 页面事实（facts 去 steps——steps 已在动作链表展开）
         facts_brief = {k: v for k, v in resp.items() if k != "steps"} or None
         p.append(f'<div class="sp-pane sp-pane-resp">{_ui_screenshot_sec(db, s)}{_json_sec("页面事实", facts_brief)}</div>')
     else:
-        # 请求（前置处理 = 注入情况，置于请求头/请求体之前，与平台详情页顺序一致）
-        p.append(f'<div class="sp-pane sp-pane-req">{_pre_sec(pre_list)}{_json_sec("请求头", s.request_headers)}{_json_sec("请求体", s.request_body)}</div>')
+        # 请求
+        p.append(f'<div class="sp-pane sp-pane-req">{_json_sec("请求头", s.request_headers)}{_json_sec("请求体", s.request_body)}</div>')
         # 响应
         p.append(f'<div class="sp-pane sp-pane-resp">'
                  f'<div class="sec"><div class="sec-title">状态码</div>'
@@ -744,7 +720,6 @@ def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
                  f'<div class="sec"><div class="sec-title">响应耗时</div>'
                  f'<span class="kv"><b>{_esc(s.response_time_ms if s.response_time_ms is not None else "-")} ms</b></span></div>'
                  f'{_json_sec("响应体", s.response_body)}</div>')
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     # 提取
     p.append(_extract_pane(post_extract, extracted_vars))
     # 断言

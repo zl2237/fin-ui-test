@@ -448,12 +448,9 @@ class CaseGroupOut(ORMBase):
 class NodeConfigIn(BaseModel):
     node_id: str
     api_id: int | None = None
-<<<<<<< HEAD
-=======
     step_type: str = "api"  # api 接口调用 / ui 浏览器操作
     ui_params: dict[str, Any] = {}  # UI 节点参数（step_type=ui 时使用）
     pre_process: list[dict[str, Any]] = []
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: list[dict[str, Any]] = []
     assertions: list[dict[str, Any]] = []
     wait_after_ms: int = 0
@@ -464,13 +461,10 @@ class NodeConfigOut(ORMBase):
     case_id: int
     node_id: str
     api_id: int | None = None
-<<<<<<< HEAD
-=======
     step_type: str = "api"
     # 历史用例（UI 集成前创建）该列为 NULL，响应必须容忍 None——否则用例列表 500
     ui_params: dict[str, Any] | None = None
     pre_process: list[dict[str, Any]] = []
->>>>>>> 02b57f4 (feat(ui): Playwright UI 自动化能力全量接入平台)
     post_extract: list[dict[str, Any]] = []
     assertions: list[dict[str, Any]] = []
     wait_after_ms: int = 0
