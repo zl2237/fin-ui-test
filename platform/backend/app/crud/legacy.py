@@ -678,7 +678,6 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
 
 
 def _sync_node_configs(db: Session, case_id: int, node_configs: list[dict]):
-<<<<<<< HEAD
     """全量覆盖用例的节点配置（结构层：接口绑定/提取/断言/等待，入参配置在数据集行不随编排保存；
     含 UI 节点的 step_type/ui_params，缺失即被模型默认值抹平）"""
     db.query(models.CaseNodeConfig).filter(models.CaseNodeConfig.case_id == case_id).delete()
