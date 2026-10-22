@@ -30,10 +30,8 @@ from . import models
 from .database import SessionLocal, init_db
 from .json_safe import BigintSafeJSONResponse
 from .routers import (
-    apis,
     auth,
     custom_actions,
-    datasets,
     environments,
     executions,
     field_dictionaries,
@@ -52,8 +50,8 @@ from .routers import (
 from .services.scheduler import scheduler_service
 
 app = FastAPI(
-    title="fin-api-test 平台",
-    description="API 测试平台：DAG 编排 + 可视化断言/提取 + 结构化报告",
+    title="fin-ui-test 平台",
+    description="UI 自动化测试平台：DAG 编排 + Playwright 动作链 + 元素库 + 结构化报告",
     version="0.1.0",
     # 自定义响应类：把超出 JS 安全整数范围的大整数（如雪花 ID）序列化为字符串，
     # 避免前端 JSON.parse 精度丢失（343557272766513152 → 343557272766513150）
@@ -178,12 +176,9 @@ app.include_router(users.router)
 app.include_router(operation_logs.router)
 app.include_router(projects.router)
 app.include_router(environments.router)
-app.include_router(apis.router)
-app.include_router(apis.group_router)
 app.include_router(testcases.router)
 app.include_router(testcases.group_router)
 app.include_router(schedules.router)
-app.include_router(datasets.router)
 app.include_router(versions.router)
 app.include_router(executions.router)
 app.include_router(home.router)

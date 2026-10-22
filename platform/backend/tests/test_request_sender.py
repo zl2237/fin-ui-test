@@ -300,16 +300,9 @@ class TestSendRequestErrorTaxonomy:
 
 
 class TestNoParallelImplementations:
-    """架构守卫：请求发送只允许一份实现（services.request_sender）"""
-
-    def test_debug_api_reuses_shared_sender(self):
-        import inspect
-
-        from app.routers import apis
-
-        src = inspect.getsource(apis)
-        assert "post_multipart" not in src, "debug_api 内联了 multipart 组装，应复用 services.request_sender"
-        assert "from ..services.request_sender import send_request" in src
+    """架构守卫：请求发送只允许一份实现（services.request_sender）。
+    （原 test_debug_api_reuses_shared_sender 随接口注册面（routers/apis.py）裁撤而移除；
+    DAG 执行器仍保留 step_type=api 分发，故共享 sender 守卫继续有效。）"""
 
     def test_dag_executor_delegates_to_shared_sender(self):
         import inspect
