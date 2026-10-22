@@ -90,15 +90,9 @@
           <el-form-item label="节点ID">
             <el-input :model-value="draft.node_id" disabled />
           </el-form-item>
-          <el-form-item label="绑定接口" required>
-            <el-select v-model="draft.api_id" placeholder="选择接口（必选）" filterable style="width: 100%">
-              <el-option
-                v-for="a in apis"
-                :key="a.id"
-                :label="`${a.name} (${a.method} ${a.path})`"
-                :value="a.id"
-              />
-            </el-select>
+          <el-form-item label="绑定接口">
+            <!-- 接口注册面已裁撤：无可选清单，仅回显历史 api_id；等待/提取/断言仍可调整 -->
+            <el-input :model-value="draft.api_id ? `接口 #${draft.api_id}（历史 API 节点）` : '未绑定'" disabled />
           </el-form-item>
           <el-form-item label="等待时间">
             <el-input-number
@@ -149,7 +143,7 @@ import PostExtractTable from './PostExtractTable.vue'
 import AssertionTable from './AssertionTable.vue'
 import UiActionForm from './UiActionForm.vue'
 import { useAppStore } from '@/stores'
-import { elementApi, customActionApi, uiActionDocApi, type ApiDef, type NodeConfig, type ApiField, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
+import { elementApi, customActionApi, uiActionDocApi, type NodeConfig, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
 import type { RefVarGroup } from './VarRefSelect.vue'
 import { UI_ACTIONS, uiActionName, validateUiStepData } from '@/utils/ui'
 
@@ -158,7 +152,6 @@ const store = useAppStore()
 const props = defineProps<{
   visible: boolean
   config: NodeConfig
-  apis: ApiDef[]
   refGroups?: RefVarGroup[]
 }>()
 const emit = defineEmits<{

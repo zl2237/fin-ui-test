@@ -58,17 +58,9 @@
             <el-icon><HomeFilled /></el-icon>
             <span>测试工作台</span>
           </template>
-          <el-menu-item index="/apis">
-            <el-icon><Connection /></el-icon>
-            <template #title><span>接口管理</span></template>
-          </el-menu-item>
           <el-menu-item index="/cases">
             <el-icon><Share /></el-icon>
             <template #title><span>用例管理</span></template>
-          </el-menu-item>
-          <el-menu-item index="/datasets">
-            <el-icon><Grid /></el-icon>
-            <template #title><span>数据集</span></template>
           </el-menu-item>
           <el-menu-item index="/executions">
             <el-icon><Histogram /></el-icon>
@@ -507,66 +499,6 @@
         </div>
       </el-tab-pane>
 
-      <!-- ========== 数据集（入参配置中心） ========== -->
-      <el-tab-pane label="数据集" name="dataset">
-        <div class="corecap-intro">
-          每个数据集承载<b>全部节点入参的一套完整取值</b>（常量/引用/函数/SQL 四来源）。
-          用例编排负责串联节点与后置提取、断言；多数据集即多场景。
-        </div>
-        <div class="corecap-group">
-          <div class="corecap-group-title">核心概念</div>
-          <div class="corecap-cards">
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">节点 tab</code>
-                <span class="corecap-desc">数据集页按用例编排节点分 tab，每个 tab 配置该节点的 body/headers 入参</span>
-              </div>
-              <div class="corecap-example">节点「新建订单」tab → 入参 bl_no ← 常量/函数/引用/SQL 任选</div>
-            </div>
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">四来源入参</code>
-                <span class="corecap-desc">常量（静态值）/ 函数（12 内置）/ 引用（上游节点产出）/ SQL（{{ SQL_BRACE }} 占位）</span>
-              </div>
-              <div class="corecap-example">SQL 示例：<code>{{ SQL_EXAMPLE }}</code>（结果注册为本节点参数路径供下游引用）</div>
-            </div>
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">套件注入</code>
-                <span class="corecap-desc">套件成员声明 shared_vars 后，下游成员入参经「引用 → 套件」取注入值</span>
-              </div>
-              <div class="corecap-example">套件成员 A 提取 bl_no 并共享 → 成员 B 引用：套件 · bl_no</div>
-            </div>
-          </div>
-        </div>
-        <div class="corecap-group">
-          <div class="corecap-group-title">工作流</div>
-          <div class="corecap-cards">
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">录入</code>
-                <span class="corecap-desc">数据集页左侧选用例 → 新建/选择数据集 → 逐节点 tab 配置入参 → 每节点单独保存（含静态校验）</span>
-              </div>
-              <div class="corecap-example">保存校验：引用拓扑/悬空引用/依赖环，错误直接提示</div>
-            </div>
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">绑定</code>
-                <span class="corecap-desc">用例必须绑定一个数据集才可执行；在用例行内「数据」入口绑定/更换/解绑</span>
-              </div>
-              <div class="corecap-example">多场景：复制数据集后改部分入参，执行前临时换绑</div>
-            </div>
-            <div class="corecap-card">
-              <div class="corecap-card-head">
-                <code class="corecap-syntax">悬空清理</code>
-                <span class="corecap-desc">编排中删除节点后，数据集内其入参配置不再被执行，页面提示一键清理</span>
-              </div>
-              <div class="corecap-example">清理不影响其余节点的入参配置</div>
-            </div>
-          </div>
-        </div>
-      </el-tab-pane>
-
       <!-- ========== UI 动作库解析（按来源分组：原生/非原生；非原生合并项目级用法文档与自定义动作） ========== -->
       <el-tab-pane label="UI 动作解析" name="actions">
         <div class="corecap-intro">
@@ -635,7 +567,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Connection, Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, Grid, QuestionFilled, Aim } from '@element-plus/icons-vue'
+import { Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, QuestionFilled, Aim } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'
 import { useTabStore, type TabItem } from '@/stores/tabs'
 import { authApi, customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
@@ -694,14 +626,13 @@ watch(() => [store.coreCapVisible, store.coreCapTab] as const, ([vis, tab]) => {
 const CORE_CAP_TITLES: Record<string, string> = {
   expression: '参数来源 · 四来源与内置函数',
   assertion: '17 种断言规则 · 用法示例',
-  dataset: '数据集 · 用法',
   actions: 'UI 动作库 · 动作解析（原生/封装/项目自定义）',
 }
 const coreCapTitle = computed(() => CORE_CAP_TITLES[store.coreCapTab] || CORE_CAP_TITLES.expression)
 
 // 侧边菜单项（与模板 el-menu-item index 一一对应，供子路由激活态前缀匹配）
 const MENU_PATHS = [
-  '/apis', '/cases', '/datasets', '/executions',
+  '/cases', '/executions',
   '/projects', '/envs', '/dictionary', '/elements', '/files',
   '/users', '/operation-logs',
 ]

@@ -60,10 +60,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, Share, Connection, Folder, Document, Coin, Monitor, Paperclip, Notebook, WarningFilled } from '@element-plus/icons-vue'
+import { Search, Share, Folder, Document, Monitor, Paperclip, Notebook, WarningFilled } from '@element-plus/icons-vue'
 import {
-  caseApi, apiApi, projectApi, datasetApi, envApi, fileApi, dictApi,
-  type TestCase, type ApiDef, type Project, type DataSet, type Environment, type TestFile, type FieldDictionary,
+  caseApi, projectApi, envApi, fileApi, dictApi,
+  type TestCase, type Project, type Environment, type TestFile, type FieldDictionary,
 } from '@/api'
 import { useAppStore } from '@/stores'
 import { fuzzyMatch } from '@/utils/fuzzy'
@@ -80,14 +80,12 @@ const inputRef = shallowRef<HTMLInputElement | null>(null)
 const activeIdx = ref(0)
 
 const cases = ref<TestCase[]>([])
-const apis = ref<ApiDef[]>([])
 const projects = ref<Project[]>([])
-const datasets = ref<DataSet[]>([])
 const envs = ref<Environment[]>([])
 const files = ref<TestFile[]>([])
 const dicts = ref<FieldDictionary[]>([])
 
-type ItemType = 'case' | 'api' | 'project' | 'dataset' | 'env' | 'file' | 'dict' | 'nav'
+type ItemType = 'case' | 'project' | 'env' | 'file' | 'dict' | 'nav'
 interface CmdItem {
   key: string
   type: ItemType
@@ -99,8 +97,8 @@ interface CmdItem {
 
 function iconComp(type: ItemType) {
   return {
-    case: Share, api: Connection, project: Folder,
-    dataset: Coin, env: Monitor, file: Paperclip, dict: Notebook,
+    case: Share, project: Folder,
+    env: Monitor, file: Paperclip, dict: Notebook,
     nav: Document,
   }[type]
 }
@@ -141,34 +139,16 @@ const results = computed<CmdItem[]>(() => {
     const score = scoreMatch(kw, item.title, item.sub)
     if (!kw || score >= 0) scored.push({ item, score })
   }
-  for (const a of apis.value) {
-    const item: CmdItem = {
-      key: 'api-' + a.id, type: 'api', title: a.name,
-      sub: `${a.method} ${a.code}`, kindLabel: '接口',
-      action: () => { router.push(`/apis/edit/${a.id}`); close() }
-    }
-    const score = scoreMatch(kw, item.title, item.sub, a.code, a.path || '')
-    if (!kw || score >= 0) scored.push({ item, score })
-  }
   for (const p of projects.value) {
     const item: CmdItem = {
       key: 'proj-' + p.id, type: 'project', title: p.name,
       sub: `项目 #${p.id}`, kindLabel: '项目',
-      action: () => { store.setProject(p.id); router.push('/apis'); close() }
+      action: () => { store.setProject(p.id); router.push('/cases'); close() }
     }
     const score = scoreMatch(kw, item.title, item.sub)
     if (!kw || score >= 0) scored.push({ item, score })
   }
-  // 项目内资源：数据集 / 环境 / 文件 / 字典（命中即跳对应管理页）
-  for (const d of datasets.value) {
-    const item: CmdItem = {
-      key: 'ds-' + d.id, type: 'dataset', title: d.name,
-      sub: `数据集 #${d.id}`, kindLabel: '数据集',
-      action: () => { router.push('/datasets'); close() }
-    }
-    const score = scoreMatch(kw, item.title, item.sub)
-    if (!kw || score >= 0) scored.push({ item, score })
-  }
+  // 项目内资源：环境 / 文件 / 字典（命中即跳对应管理页）
   for (const v of envs.value) {
     const item: CmdItem = {
       key: 'env-' + v.id, type: 'env', title: v.name,
@@ -200,9 +180,7 @@ const results = computed<CmdItem[]>(() => {
   const navs: { title: string; path: string }[] = [
     { title: '首页', path: '/home' },
     { title: '项目管理', path: '/projects' },
-    { title: '接口管理', path: '/apis' },
     { title: '用例管理', path: '/cases' },
-    { title: '数据集', path: '/datasets' },
     { title: '执行记录', path: '/executions' },
     { title: '环境配置', path: '/envs' },
     { title: '字段字典', path: '/dictionary' },
@@ -246,23 +224,19 @@ async function loadAll() {
   if (!store.currentProjectId) return
   sourcesError.value = false
   try {
-    // 四类新数据源独立兜底：任一失败不影响其余搜索范围
-    const [cs, as, dss, vs, fs, ds2] = await Promise.all([
+    // 各数据源独立兜底：任一失败不影响其余搜索范围
+    const [cs, vs, fs, ds2] = await Promise.all([
       caseApi.list(store.currentProjectId),
-      apiApi.list(store.currentProjectId),
-      datasetApi.list({ project_id: store.currentProjectId }).catch(() => []),
       envApi.list(store.currentProjectId).catch(() => []),
       fileApi.list(store.currentProjectId).catch(() => []),
       dictApi.list(store.currentProjectId).catch(() => []),
     ])
     cases.value = cs
-    apis.value = as
-    datasets.value = dss
     envs.value = vs
     files.value = fs
     dicts.value = ds2
   } catch {
-    // 主搜索源（用例/接口）失败：不静默，面板顶部降级提示
+    // 主搜索源（用例）失败：不静默，面板顶部降级提示
     sourcesError.value = true
   }
 }

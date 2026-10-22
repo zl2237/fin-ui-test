@@ -197,9 +197,6 @@
                 <el-tooltip content="执行本行用例；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
                 </el-tooltip>
-                <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集启用数据集执行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
-                </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                   <el-button link type="primary" size="small">
@@ -327,9 +324,6 @@
                 <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
                 <el-tooltip content="执行本行用例；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
-                </el-tooltip>
-                <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集启用数据集执行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
                 </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
@@ -476,32 +470,6 @@
       @changed="loadSchedules"
     />
 
-    <!-- 绑定数据集 -->
-    <el-dialog v-model="bindVisible" title="绑定数据集" width="480px">
-      <div class="bind-tip">
-        绑定后执行时使用此数据集的全部节点入参取值；未绑定数据集的用例无法执行。
-        数据集按用例隔离，仅可选本用例名下的数据集；多场景建多个数据集切换执行
-      </div>
-      <el-select v-model="bindDatasetId" placeholder="选择数据集（空=不绑定）" clearable style="width: 100%">
-        <el-option v-for="d in projectDatasets" :key="d.id" :label="`${d.name}（${Object.keys(d.rows?.[0]?.data?.nodes || {}).length} 个节点入参）`" :value="d.id" />
-      </el-select>
-      <div v-if="!projectDatasets.length" class="bind-empty">
-        该用例暂无数据集（数据集为用例私有），
-        <el-button link type="primary" @click="router.push('/datasets')">去创建</el-button>
-      </div>
-      <template #footer>
-        <el-button @click="bindVisible = false">取消</el-button>
-        <el-button type="primary" :loading="bindSaving" @click="saveBind">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 数据集执行确认面板（数据集多选收敛在组件，执行编排在父视图） -->
-    <DataDrivenRunDialog
-      v-model="ddVisible"
-      :case-item="ddCase"
-      :datasets="projectDatasets"
-      @confirm="confirmDataDrivenRun"
-    />
   </div>
 </template>
 
@@ -511,7 +479,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import Sortable from 'sortablejs'
 import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown } from '@element-plus/icons-vue'
-import { caseApi, caseGroupApi, userApi, scheduleApi, datasetApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule, type DataSet } from '@/api'
+import { caseApi, caseGroupApi, userApi, scheduleApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule } from '@/api'
 import { useAppStore } from '@/stores'
 import { formatTime, formatRelativeTime, execStatusText, execStatusType, fileTimestamp } from '@/utils/format'
 import { useGroupedTable, setGroupSwitchNotifier } from '@/composables/useGroupedTable'
@@ -519,7 +487,6 @@ import { useGroupMasterDetail } from '@/composables/useGroupMasterDetail'
 import GroupManageDialog from '@/components/GroupManageDialog.vue'
 import BatchMoveDialog from '@/components/BatchMoveDialog.vue'
 import ScheduleDialog from '@/components/ScheduleDialog.vue'
-import DataDrivenRunDialog from '@/components/DataDrivenRunDialog.vue'
 import BatchRunDialog from '@/components/BatchRunDialog.vue'
 import { useFaviconStatus } from '@/composables/useFaviconStatus'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
@@ -876,18 +843,6 @@ async function runCase(row: TestCase) {
     }
     return
   }
-  // 绑定数据集的用例：名下仅一个数据集→直接执行（零多余点击）；
-  // 多个数据集（多场景）→弹确认面板勾选（可多选各执行一次，临时换不改绑定）
-  if (row.dataset_id) {
-    await loadDatasets(row.id)
-    ddCase.value = row
-    if (projectDatasets.value.length <= 1) {
-      await confirmDataDrivenRun({ datasetIds: [row.dataset_id] })
-    } else {
-      ddVisible.value = true
-    }
-    return
-  }
   try {
     // 执行→进度消息→轮询→三态 favicon→结果提示（超时返回 running 态记录，同样跳报告页）
     const cur = await runner.runWithFeedback(row.id, {
@@ -1043,93 +998,6 @@ function openSchedule(row: TestCase) {
   scheduleVisible.value = true  // 有无配置决定列表/表单首屏，由弹窗组件打开时自判
 }
 
-// ============ 数据集绑定 + 数据集执行 ============
-
-const projectDatasets = ref<DataSet[]>([])
-const bindVisible = ref(false)
-const bindSaving = ref(false)
-const bindCase = ref<TestCase | null>(null)
-const bindDatasetId = ref<number | null>(null)
-
-async function loadDatasets(caseId: number) {
-  if (!store.currentProjectId) return
-  try {
-    projectDatasets.value = await datasetApi.list({
-      project_id: store.currentProjectId, case_id: caseId, with_rows: true,
-    })
-  } catch {
-    projectDatasets.value = []  // 数据集加载失败不阻塞列表主体
-  }
-}
-
-async function openBind(row: TestCase) {
-  bindCase.value = row
-  bindDatasetId.value = row.dataset_id ?? null
-  await loadDatasets(row.id)
-  bindVisible.value = true
-}
-
-async function saveBind() {
-  if (!bindCase.value) return
-  bindSaving.value = true
-  try {
-    await caseApi.update(bindCase.value.id, { dataset_id: bindDatasetId.value ?? null })
-    bindCase.value.dataset_id = bindDatasetId.value ?? null
-    ElMessage.success(bindDatasetId.value ? '已绑定数据集' : '已解绑')
-    bindVisible.value = false
-  } catch (e: any) {
-    ElMessage.error(e.message || '保存失败')
-  } finally {
-    bindSaving.value = false
-  }
-}
-
-// ---------- 数据集执行确认面板（多数据集用例勾选执行；见 DataDrivenRunDialog） ----------
-const ddVisible = ref(false)
-const ddRunning = ref(false)
-const ddCase = ref<TestCase | null>(null)
-
-/** 数据集执行确认回调：所选数据集并行各执行一次（每个单套数据），轮询完成态汇总 */
-async function confirmDataDrivenRun({ datasetIds }: { datasetIds: number[] }) {
-  if (!ddCase.value || !datasetIds.length) return
-  ddRunning.value = true
-  favicon.running()
-  const msg = ElMessage({
-    message: datasetIds.length > 1
-      ? `数据集执行中（${datasetIds.length} 套数据并行）...`
-      : '数据集执行中（单套数据）...',
-    type: 'info',
-    duration: 0,
-  })
-  try {
-    const statuses = await Promise.all(datasetIds.map(async (dsId) => {
-      const cur = await caseApi.execute(ddCase.value!.id, {
-        dataset_id: dsId,
-      })
-      const fin = await runner.pollUntilDone(cur.id)
-      return fin.status
-    }))
-    msg.close()
-    const ok = statuses.filter((s) => s === 'success').length
-    if (ok === statuses.length) {
-      favicon.success()
-      ElMessage.success(statuses.length > 1
-        ? `${statuses.length} 个数据集全部执行完成：通过`
-        : '数据集执行完成：通过')
-    } else {
-      favicon.failed()
-      ElMessage.warning(`执行完成：${ok}/${statuses.length} 个数据集通过，详见执行记录`)
-    }
-    router.push({ path: '/executions', query: { case_id: ddCase.value.id } })
-  } catch (e: any) {
-    msg.close()
-    favicon.reset()
-    ElMessage.error(e.message || '执行失败')
-  } finally {
-    ddRunning.value = false
-  }
-}
-
 /** GroupManageDialog 变更回调：重载分组；删除时同步重载用例（其余变更不影响条目） */
 async function onGroupsChanged(kind: 'add' | 'rename' | 'delete' | 'reorder') {
   await loadGroups()
@@ -1145,7 +1013,6 @@ watch(() => store.currentProjectId, () => {
   load()
   loadGroups()
   loadSchedules()
-  projectDatasets.value = []  // 数据集按项目隔离，切换后按需重载
 })
 onMounted(() => {
   load()

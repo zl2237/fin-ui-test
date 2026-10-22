@@ -6,74 +6,13 @@
       <el-button size="small" @click="initialLoad">重试</el-button>
     </div>
     <template v-else>
-    <!-- 左侧组件面板：接口列表 / UI 操作 两个页签（DAG 支持 API+UI 混排） -->
+    <!-- 左侧组件面板：UI 操作动作库（纯 UI 编排，接口注册面已裁撤） -->
     <div class="api-panel">
       <div class="panel-title">
-        <span class="title-text">{{ panelTab === 'api' ? '接口列表' : 'UI 操作' }}</span>
-        <el-radio-group v-model="panelTab" size="small">
-          <el-radio-button value="api">接口</el-radio-button>
-          <el-radio-button value="ui">UI 操作</el-radio-button>
-        </el-radio-group>
+        <span class="title-text">UI 操作</span>
       </div>
-      <!-- 接口视图：按分组树折叠（继承接口管理的分组与排序），点击添加为 DAG 节点 -->
-      <template v-if="panelTab === 'api'">
-      <!-- 接口搜索：接口上百时免逐级展开找目标（与节点配置抽屉的 filterable 对等） -->
-      <el-input
-        v-model="apiKeyword"
-        size="small"
-        clearable
-        placeholder="搜索接口名称/路径"
-        class="panel-search"
-      >
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
+      <!-- 浏览器动作面板（基础+组合动作，点击添加为 UI 节点） -->
       <div class="api-list">
-        <div
-          v-for="row in visibleGroupRows"
-          :key="row.key"
-          class="group-block"
-        >
-          <!-- 分组头（可折叠/展开；语义化 button 键盘可达） -->
-          <button
-            type="button"
-            class="group-header"
-            :style="{ paddingLeft: 10 + row.depth * 14 + 'px' }"
-            :aria-expanded="row.expandable ? isGroupExpanded(row.groupId!) : undefined"
-            @click="onToggleGroup(row)"
-          >
-            <el-icon
-              v-if="row.expandable"
-              class="expand-icon"
-              :class="{ expanded: isGroupExpanded(row.groupId!) }"
-            ><CaretRight /></el-icon>
-            <span v-else class="expand-spacer" />
-            <span class="group-name">{{ row.name }}</span>
-            <span class="group-count">{{ row.isUngrouped ? apisOf(null, apiKeyword || undefined).length : countApisWithDescendants(row.groupId!) }}</span>
-          </button>
-          <!-- 分组下的直接接口（仅展开时显示；点击添加为画布节点，语义化 button） -->
-          <div
-            v-if="row.isUngrouped || isGroupExpanded(row.groupId!)"
-            :style="{ paddingLeft: 10 + row.depth * 14 + 'px' }"
-          >
-            <button
-              v-for="a in apisOf(row.groupId, apiKeyword || undefined)"
-              :key="a.id"
-              type="button"
-              class="api-item"
-              :title="`${a.method} ${a.path}`"
-              @click="onAddNode(a)"
-            >
-              <span class="api-item-name">{{ a.name }}</span>
-              <span class="api-item-path">{{ a.method }} {{ a.path }}</span>
-            </button>
-          </div>
-        </div>
-        <EmptyState v-if="apiList.length && apiKeyword && !filteredApiCount" description="无匹配接口" :image-size="60" />
-        <EmptyState v-if="!apiList.length" description="暂无接口，请先到接口管理新增" :image-size="60" />
-      </div>
-      </template>
-      <!-- UI 视图：浏览器动作面板（基础+组合动作，点击添加为 UI 节点） -->
-      <div v-else class="api-list">
         <button
           v-for="a in UI_ACTIONS"
           :key="a.action"
@@ -85,7 +24,7 @@
           <span class="api-item-name">{{ a.name }}<span class="ui-action-key">{{ a.action }}</span></span>
           <span class="api-item-path">{{ a.desc }}</span>
         </button>
-        <p class="ui-panel-tip">UI 节点由 Playwright 驱动浏览器执行，与接口节点在 DAG 中自由混排连线。</p>
+        <p class="ui-panel-tip">UI 节点由 Playwright 驱动浏览器执行，节点间在 DAG 中自由连线编排。</p>
       </div>
     </div>
 
@@ -160,7 +99,7 @@
           </el-tooltip>
         </div>
         <div class="canvas-hint">
-          提示：点击接口添加节点；单击选中、双击或 Enter 打开配置；Delete 删除选中节点；Ctrl+C/V 复制粘贴；Ctrl+S 保存用例；双击连线删除。
+          提示：点击左侧 UI 操作添加节点；单击选中、双击或 Enter 打开配置；Delete 删除选中节点；Ctrl+C/V 复制粘贴；Ctrl+S 保存用例；双击连线删除。
         </div>
       </div>
     </div>
@@ -169,7 +108,6 @@
     <NodeConfigDrawer
       v-model:visible="drawerVisible"
       :config="currentConfig"
-      :apis="apiList"
       :ref-groups="refGroups"
       @save="onConfigSave"
     />
@@ -224,22 +162,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, toRef, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, CaretRight, Search, Grid, Share, Scissor, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled } from '@element-plus/icons-vue'
 import DagCanvas from '@/components/DagCanvas.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
-import { caseApi, apiApi, apiGroupApi, datasetApi, type ApiDef, type ApiGroup, type TestCase, type NodeConfig, type UiParams, type UiStep, type SplitVar } from '@/api'
+import { caseApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
-import { useGroupTree, collectDescendantIds, type FlatGroup } from '@/composables/useGroupTree'
 import { buildRefGroups, type RefGraphCtx } from '@/composables/useRefGroups'
 import type { RefVarGroup } from '@/components/VarRefSelect.vue'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
 import { UI_ACTIONS, uiActionName } from '@/utils/ui'
-import EmptyState from '@/components/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -249,59 +185,6 @@ const tabStore = useTabStore()
 // 执行轮询统一走 useExecutionRunner（定时器注册/卸载清理/超时策略单点管理）
 const runner = useExecutionRunner()
 
-const apiList = ref<ApiDef[]>([])
-const apiGroups = ref<ApiGroup[]>([])
-
-// 左侧组件面板页签：api 接口列表（默认） / ui UI 操作
-const panelTab = ref<'api' | 'ui'>('api')
-
-// ===== 多级分组树（继承接口管理的分组层级与排序） =====
-const flatGroups = computed<FlatGroup[]>(() =>
-  apiGroups.value.map((g) => ({ id: g.id, parent_id: g.parent_id, name: g.name, sort_order: g.sort_order })),
-)
-const {
-  tree,
-  isExpanded: isGroupExpanded,
-  toggleExpand: toggleGroupExpand,
-  applyDefaultExpand,
-  computeVisibleRows,
-} = useGroupTree(flatGroups, toRef(store, 'currentProjectId'), 'caseDesigner')
-
-/** 主列表可见行：树扁平化 + 祖先展开可见性 + 未分组行（叶子分组有数据也可展开） */
-const visibleGroupRows = computed(() => computeVisibleRows(apiList.value.some((a) => !a.group_id), (id) => apisOf(id).length))
-
-/** 统计分组的接口数量（含所有子孙分组；搜索时只统计命中关键词的接口，与列表过滤口径一致） */
-function countApisWithDescendants(groupId: number): number {
-  const ids = [groupId, ...collectDescendantIds(tree.value, groupId)]
-  const kw = apiKeyword.value.trim().toLowerCase()
-  return apiList.value.filter(
-    (a) => a.group_id != null && ids.includes(a.group_id) && (a.name.toLowerCase().includes(kw) || a.path.toLowerCase().includes(kw)),
-  ).length
-}
-
-// 左侧接口搜索关键词（过滤分组内接口列表）
-const apiKeyword = ref('')
-const filteredApiCount = computed(() => {
-  if (!apiKeyword.value) return apiList.value.length
-  const kw = apiKeyword.value.toLowerCase()
-  return apiList.value.filter((a) => a.name.toLowerCase().includes(kw) || a.path.toLowerCase().includes(kw)).length
-})
-
-/** 获取分组的直接接口（可按名称/路径关键词过滤） */
-function apisOf(groupId: number | null, keyword?: string): ApiDef[] {
-  let list: ApiDef[]
-  if (groupId === null) list = apiList.value.filter((a) => !a.group_id)
-  else list = apiList.value.filter((a) => a.group_id === groupId)
-  if (!keyword) return list
-  const kw = keyword.toLowerCase()
-  return list.filter((a) => a.name.toLowerCase().includes(kw) || a.path.toLowerCase().includes(kw))
-}
-
-/** 切换分组展开/折叠（未分组行与不可展开的空分组不响应） */
-function onToggleGroup(row: { groupId: number | null; isUngrouped: boolean; expandable?: boolean }) {
-  if (row.isUngrouped || row.groupId == null || row.expandable === false) return
-  toggleGroupExpand(row.groupId)
-}
 const caseData = ref<TestCase>(emptyCase())
 const nodes = ref<any[]>([])
 const edges = ref<any[]>([])
@@ -335,8 +218,6 @@ async function initialLoad() {
   loading.value = !!id
   loadError.value = ''
   try {
-    await loadApis()
-    await loadApiGroups()
     if (id) await loadCase(id)
   } catch (e: any) {
     loadError.value = e?.message || '加载用例编排数据失败'
@@ -389,33 +270,10 @@ const currentConfig = computed<NodeConfig>(() => {
   return fresh
 })
 
-async function loadApis() {
-  if (!store.currentProjectId) return
-  apiList.value = await apiApi.list(store.currentProjectId)
-}
-
-async function loadApiGroups() {
-  if (!store.currentProjectId) return
-  apiGroups.value = await apiGroupApi.list(store.currentProjectId)
-  // 无记忆时默认全部展开
-  applyDefaultExpand()
-}
-
 async function loadCase(id: number) {
   const c = await caseApi.get(id)
   caseData.value = c
-  // 加载节点时，用最新接口信息同步节点的 label/method/path
-  // 避免接口名称修改后，用例内节点的旧名称仍残留
-  nodes.value = (c.dag_config?.nodes || []).map((n: any) => {
-    const apiId = n.data?.api_id
-    const api = apiId ? apiList.value.find(a => a.id === apiId) : null
-    if (!api) return { ...n }
-    return {
-      ...n,
-      data: { ...n.data, label: api.name, api_method: api.method, api_path: api.path },
-      label: api.name,
-    }
-  })
+  nodes.value = (c.dag_config?.nodes || []).map((n: any) => ({ ...n }))
   edges.value = (c.dag_config?.edges || []).map((e: any) => ({ ...e }))
   configs.value = (c.node_configs || []).map((nc: NodeConfig) => ({ ...nc }))
   // deep watch(nodes/edges) 是异步批处理：同步置 false 会被随后触发的回调翻回 true，
@@ -442,29 +300,10 @@ function nodeLabel(id: string): string {
   return n?.data?.label || n?.label || id
 }
 
-// ===== 引用选择器数据源（上游产出 / 本节点 SQL 参数）：产出 = 提取名 ∪ 数据集行内静态产出 =====
-// 入参已收敛到数据集行：绑定数据集的参数视图提供行内产出与 SQL 参数（未绑定则仅提取名）
-const dsProductions = ref<Record<string, string[]>>({})
-const dsSelfParams = ref<Record<string, any>>({})
-watch(
-  () => caseData.value.dataset_id,
-  async (dsId) => {
-    dsProductions.value = {}
-    dsSelfParams.value = {}
-    if (!dsId) return
-    try {
-      const pv = await datasetApi.paramsView(dsId)
-      dsProductions.value = Object.fromEntries(pv.nodes.map((n) => [n.node_id, n.productions]))
-      dsSelfParams.value = Object.fromEntries(pv.nodes.map((n) => [n.node_id, n.params || {}]))
-    } catch { /* 引用选择器降级为仅提取名 */ }
-  },
-  { immediate: true },
-)
-
-/** 节点静态产出变量（与后端 validation._productions 对齐）：
- *  提取名（节点配置）∪ SQL 参数键/set/add 末段（数据集行，服务端 paramsView 已算好） */
+// ===== 引用选择器数据源：产出 = 本节点/上游节点的提取名（数据集面已裁撤，UI 步骤值走 ${} 表达式） =====
+/** 节点静态产出变量（与后端 validation._productions 对齐）：节点配置的提取名 */
 function nodeProductions(nid: string): string[] {
-  const out = new Set<string>(dsProductions.value[nid] || [])
+  const out = new Set<string>()
   const cfg = configs.value.find((c) => c.node_id === nid)
   for (const r of cfg?.post_extract || []) {
     if (r?.name) out.add(r.name)
@@ -472,13 +311,13 @@ function nodeProductions(nid: string): string[] {
   return [...out]
 }
 
-/** 反向 BFS 与上游/本节点分组构建已收敛至 composables/useRefGroups（与 DatasetManage 共用） */
+/** 反向 BFS 与上游/本节点分组构建已收敛至 composables/useRefGroups */
 const refGraphCtx: RefGraphCtx = {
   orderedIds: () => nodes.value.map((n) => n.id),
   labelOf: nodeLabel,
   edges: () => edges.value,
   productionsOf: nodeProductions,
-  selfBodyOf: (nid) => dsSelfParams.value[nid]?.body,
+  selfBodyOf: () => undefined,
   selfLabel: '本节点参数值（请求后可引用）',
   // 本节点提取变量：提取按配置顺序逐行注册，后面的行可 {{本节点.提取名}} 引用前面的行
   extraGroups: (nid) => {
@@ -562,28 +401,6 @@ const onBeforeUnload = (e: BeforeUnloadEvent) => {
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
-function onAddNode(api: ApiDef) {
-  const id = `node_${Date.now()}`
-  // 从画布获取一个空闲位置（视口中心附近，避免覆盖已有节点）
-  const position = canvasRef.value?.findFreePosition?.() ?? { x: 80, y: 60 }
-  const node = {
-    id,
-    position,
-    data: { label: api.name, api_id: api.id, api_method: api.method, api_path: api.path },
-    label: api.name,
-  }
-  nodes.value.push(node)
-  canvasRef.value?.addNode(node)
-  configs.value.push({
-    node_id: id,
-    api_id: api.id,
-    post_extract: [],
-    assertions: [],
-    wait_after_ms: 0,
-  })
-  dirty.value = true
-}
-
 /** 添加 UI 操作节点：不绑 api_id，页面级动作组（steps），首步为拖选的动作 */
 function onAddUiNode(action: string) {
   const id = `node_${Date.now()}`
@@ -635,24 +452,10 @@ function onConfigSave(_config: NodeConfig) {
   const idx = configs.value.findIndex((c) => c.node_id === _config.node_id)
   if (idx >= 0) configs.value[idx] = { ..._config }
   const nd = nodes.value.find((n) => n.id === _config.node_id)
-  if (nd) {
-    if (_config.step_type === 'ui' && _config.ui_params?.steps?.length) {
-      // UI 组节点：同步画布徽标（UI·组N动作）与首步名，保持画布可读
-      nd.data.ui_action = 'steps'
-      nd.data.ui_steps_len = _config.ui_params.steps.length
-    } else if (_config.api_id) {
-      // 换绑接口：同步画布名称/method/path 与 data.api_id。
-      // 运行时按 node_configs.api_id 取接口（dag_executor._resolve_node_config），
-      // 若此处不同步，保存的 dag_config 残留旧 api_id，重开用例时 loadCase 会把名称刷回旧接口
-      const api = apiList.value.find((a) => a.id === _config.api_id)
-      if (api) {
-        nd.data.label = api.name
-        nd.data.api_id = api.id
-        nd.data.api_method = api.method
-        nd.data.api_path = api.path
-        nd.label = api.name
-      }
-    }
+  if (nd && _config.step_type === 'ui' && _config.ui_params?.steps?.length) {
+    // UI 组节点：同步画布徽标（UI·组N动作）与首步名，保持画布可读
+    nd.data.ui_action = 'steps'
+    nd.data.ui_steps_len = _config.ui_params.steps.length
   }
   dirty.value = true
 }
@@ -766,11 +569,6 @@ function onKeydown(e: KeyboardEvent) {
     onSave()
   }
 }
-
-watch(() => store.currentProjectId, async () => {
-  await loadApis()
-  await loadApiGroups()
-})
 </script>
 
 <style scoped>

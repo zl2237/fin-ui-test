@@ -35,9 +35,9 @@
 
       <!-- ===== 统计行：当前项目概览（点击直达对应页面；语义化 <button> 保证键盘可达） ===== -->
       <section class="stats">
-        <button type="button" class="stat" @click="router.push('/apis')">
-          <b>{{ loading ? '…' : apiCount }}</b>
-          <span>接口</span>
+        <button type="button" class="stat" @click="router.push('/elements')">
+          <b>{{ loading ? '…' : elementCount }}</b>
+          <span>元素</span>
         </button>
         <button type="button" class="stat" @click="router.push('/cases')">
           <b>{{ loading ? '…' : caseCount }}</b>
@@ -145,7 +145,7 @@
           <section class="panel guide-panel">
             <header class="panel-head"><h3>上手指南</h3></header>
             <div class="guide-links">
-              <el-button text type="primary" @click="openGuide">六步上手流程</el-button>
+              <el-button text type="primary" @click="openGuide">五步上手流程</el-button>
               <el-button text type="primary" @click="store.openCoreCapability('expression')">表达式语法</el-button>
               <el-button text type="primary" @click="store.openCoreCapability('assertion')">17 种断言</el-button>
             </div>
@@ -182,7 +182,7 @@ const store = useAppStore()
 // GET /apis 全量字段表、testcases 全量 dag_config、executions limit=200） =====
 const loading = ref(false)
 const loadError = ref('')
-const apiCount = ref(0)
+const elementCount = ref(0)
 const caseCount = ref(0)
 const recentCases = ref<{ id: number; name: string }[]>([])
 const recentExecs = ref<HomeRecentExec[]>([])
@@ -208,7 +208,7 @@ async function loadHome() {
   loadError.value = ''
   try {
     const s = await homeApi.summary(store.currentProjectId)
-    apiCount.value = s.api_count
+    elementCount.value = s.element_count
     caseCount.value = s.case_count
     recentCases.value = s.recent_cases
     recentExecs.value = s.recent_execs

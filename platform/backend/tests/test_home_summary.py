@@ -60,9 +60,9 @@ class _Chain:
 class HomeDb:
     """按 query 首实参路由：count 聚合 / stats / 最近执行 / 环境名 / 快速执行候选"""
 
-    def __init__(self, *, api_count=0, case_count=0, statuses=(),
+    def __init__(self, *, element_count=0, case_count=0, statuses=(),
                  recent_rows=(), env_rows=(), recent_case_rows=()):
-        self.api_count = api_count
+        self.element_count = element_count
         self.case_count = case_count
         self.statuses = list(statuses)
         self.recent_rows = list(recent_rows)
@@ -71,11 +71,11 @@ class HomeDb:
 
     def query(self, *entities, **kw):
         first = entities[0]
-        # count 聚合：func.count(api_definitions.id / test_cases.id)
+        # count 聚合：func.count(ui_elements.id / test_cases.id)
         s = str(first)
         if s.startswith("count("):
-            if "api_definitions" in s:
-                return _Chain(self.api_count)
+            if "ui_elements" in s:
+                return _Chain(self.element_count)
             if "test_cases" in s:
                 return _Chain(self.case_count)
         # stats：ORM 实体查询（aggregate_stats 内部）
@@ -101,7 +101,7 @@ class TestHomeSummary:
         from datetime import datetime
 
         t1, t2 = datetime(2026, 10, 12, 16, 0), datetime(2026, 10, 12, 15, 0)
-        db = HomeDb(api_count=225, case_count=41,
+        db = HomeDb(element_count=225, case_count=41,
                     statuses=["success", "success", "failed"],
                     recent_rows=[
                         (11, 7, "对账用例", 2, "success", {"total": 17, "passed": 17}, t1),
@@ -110,7 +110,7 @@ class TestHomeSummary:
                     env_rows=[(2, "预发")])
         out = home_summary(project_id=1, days=7, db=db, user=SimpleNamespace())
 
-        assert out.api_count == 225
+        assert out.element_count == 225
         assert out.case_count == 41
         assert (out.stats.count, out.stats.passed, out.stats.rate, out.stats.days) == (3, 2, 67, 7)
         assert [e.id for e in out.recent_execs] == [11, 10]
