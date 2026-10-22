@@ -203,8 +203,8 @@ class TestUiNodeDispatch:
         assert ev.api_name == "打开订单页"
         assert ev.api_path == "https://sut.example.com/order"
         assert ev.response_body["url"] == "https://sut.example.com/order"
-        # 提取变量入上下文池，供后续节点 ${page_url} 引用
-        assert ex.context.extracted["page_url"] == "https://sut.example.com/order"
+        # 提取变量入节点命名空间注册表，供后续节点 ${n1.page_url} / 平铺 ${page_url} 引用
+        assert ex.context.registry.read("n1", "page_url") == "https://sut.example.com/order"
         # 断言对 facts 求值通过
         assert ev.assertions[0].passed is True
 
@@ -285,25 +285,9 @@ class TestUiNodeDispatch:
 
 
 class TestSnapshotCarriesUiFields:
-    def test_node_config_overrides_include_step_type_and_ui_params(self):
-        """数据集快照命中 ui 节点：step_type/ui_params 整块替换生效"""
-        ex = _executor(FakeDb(), MemorySink())
-        ex.node_config_overrides = {
-            "n1": {"step_type": "ui", "ui_params": {"action": "click", "element": {"strategy": "text", "value": "保存"}},
-                   "api_id": None, "pre_process": [], "post_extract": [], "assertions": [], "wait_after_ms": 100},
-        }
-        snap = ex._resolve_node_config("n1")
-        assert snap.step_type == "ui"
-        assert snap.ui_params["action"] == "click"
-        assert snap.wait_after_ms == 100
-
-    def test_snapshot_defaults_to_api(self):
-        """旧数据集快照无 step_type 字段：默认回落 api（向后兼容）"""
-        ex = _executor(FakeDb(), MemorySink())
-        ex.node_config_overrides = {"n1": {"api_id": 10}}
-        snap = ex._resolve_node_config("n1")
-        assert snap.step_type == "api"
-        assert snap.ui_params == {}
+    """数据集快照整块覆盖节点的旧架构已随「入参收敛到数据集」定案（2026-09-30）废止：
+    结构层配置（含 UI 节点 step_type/ui_params）唯一来源是 CaseNodeConfig，
+    由 legacy._sync_node_configs 全量写回（UI 字段含其中，见 test_ui_actions）。"""
 
 
 class TestUiRuntimeLifecycle:

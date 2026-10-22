@@ -622,20 +622,11 @@ class DagExecutor:
             facts = {"action": params.get("action"), "error": error}
         elapsed = int((time.time() - start_ts) * 1000)
 
-        # 后置提取：对 facts 做 json_path 提取（与 API 管线同一实现）
-        extracted: dict = {}
-        if config and config.post_extract and facts is not None:
-            self.extractor.set_extracted_vars(self.context.extracted)
-            extracted = self.extractor.extract(facts, config.post_extract)
-            self.context.update_extracted(extracted)
+        # 后置提取 + 断言：对 facts（$.url/$.text/$.title 等）复用 API 管线同一收口
+        extracted, assertion_results, tail_passed = self._extract_and_assert(
+            node_id, config, facts, 0, elapsed)
 
-        # 断言：json_path_* 对 facts 求值（$.url/$.text/$.title 等）
-        assertion_results: list[dict] = []
-        if config and config.assertions:
-            engine = AssertionEngine(self.context.to_dict(), self.db_client)
-            assertion_results = engine.evaluate_all(facts, 0, elapsed, config.assertions)
-
-        step_passed = (error is None) and all(r["pass"] for r in assertion_results)
+        step_passed = (error is None) and tail_passed
 
         # 截图策略：on_failure（默认）/ always / off；动作执行前浏览器可能未启动（如
         # playwright 缺失），take_screenshot 内部返回 None 兜底。
@@ -663,7 +654,6 @@ class DagExecutor:
             response_status=0, response_body=facts,
             response_time_ms=elapsed, started_at=started_at, ended_at=datetime.now(),
             status="success" if step_passed else "failed",
-            pre_process=(config.pre_process if config else None) or None,
             post_extract=(config.post_extract if config else None) or None,
             extracted_vars=extracted,
             step_kind="ui", screenshot_file_id=screenshot_file_id,
