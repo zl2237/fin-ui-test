@@ -41,7 +41,7 @@
                   stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </span>
-        <span v-if="!collapsed" class="brand-text">Fin API Test</span>
+        <span v-if="!collapsed" class="brand-text">Fin UI Test</span>
         </router-link>
       </el-tooltip>
       <el-menu
