@@ -59,7 +59,7 @@ def main():
     print(f"[RUN] case={case.id} {case.name}")
     print(f"[RUN] env={env.name} {env.base_url}  数据行变量: {len(row_vars or {})} 个")
     started = time.time()
-    ex = DagExecutor(db, case, env, row_vars=row_vars, suppress_notify=True)
+    ex = DagExecutor(db, case, env, dataset_row=row_vars, suppress_notify=True)
     record = ex.execute()
     elapsed = time.time() - started
 

@@ -365,10 +365,10 @@ class StepRecord(Base):
                      comment="步骤类型：api 接口调用 / ui 浏览器操作（历史行 NULL 视为 api）")
     screenshot_file_id: Mapped[int | None] = mapped_column(Integer, nullable=True,
                             comment="UI 步骤截图的文件中心 test_files.id（失败截图/全程截图），NULL 表示无截图")
-    pre_process: Mapped[Any] = mapped_column(JSON, comment="前置处理快照（历史遗留列：前置动作已废止，"
+    pre_process: Mapped[Any] = mapped_column(JSON, default=list, comment="前置处理快照（历史遗留列：前置动作已废止，"
                       "新步骤不再写入，仅老报告回显）")
-    post_extract: Mapped[Any] = mapped_column(JSON, comment="后置提取规则快照：[{name, source, jsonpath, sql, field}]")
-    extracted_vars: Mapped[Any] = mapped_column(JSON, comment="后置提取实际结果：{name: value}")
+    post_extract: Mapped[Any] = mapped_column(JSON, default=list, comment="后置提取规则快照：[{name, source, jsonpath, sql, field}]")
+    extracted_vars: Mapped[Any] = mapped_column(JSON, default=dict, comment="后置提取实际结果：{name: value}")
 
     execution: Mapped["ExecutionRecord"] = relationship("ExecutionRecord", back_populates="steps")
     assertions: Mapped[list["AssertionRecord"]] = relationship("AssertionRecord", back_populates="step", cascade="all, delete-orphan")
