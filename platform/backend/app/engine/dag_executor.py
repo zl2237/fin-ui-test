@@ -102,7 +102,6 @@ class DagExecutor:
         self._precreated_record = execution_record
         # 事件出口：默认落库；测试/dry-run 注入内存 sink（持久化接缝）
         self.sink: ExecutionSink = sink or DbSink(db)
-<<<<<<< HEAD
         # 断点续跑：从 start_node（首个未成功节点）起执行，其前缀为已成功节点
         # （不发请求直接计入 passed）；context_seed 为报告虚拟上下文（前缀成功
         # 步骤的提取值），注入 ${} 统一池供后续节点引用
