@@ -35,6 +35,7 @@ class LaunchPlan:
 def build_launch_plan(db: Session, case, user_id: int, *,
                       trigger_type: str = "manual",
                       dataset_id: int | None = None,
+                      dataset_row_index: int | None = None,
                       run_count: int = 1) -> LaunchPlan:
     """规划一个用例的一次发射：展开 → 建记录 → 组装 specs。
 
@@ -50,7 +51,8 @@ def build_launch_plan(db: Session, case, user_id: int, *,
             raise ValueError(f"用例「{case.name}」未绑定执行环境，请先在用例编辑中选择")
         if not crud.get_environment(db, case.env_id):
             raise ValueError(f"用例「{case.name}」绑定的环境已不存在（id={case.env_id}），请重新绑定")
-        plan_items = dataset_service.plan_case_expansion(db, case, dataset_id=dataset_id)
+        plan_items = dataset_service.plan_case_expansion(
+            db, case, dataset_id=dataset_id, row_index=dataset_row_index)
 
     # 执行记录与 spec 的环境：普通用例=绑定环境；套件=空（run_suite 内对齐首成员环境）
     launch_env_id = None if is_suite else case.env_id

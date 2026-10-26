@@ -75,12 +75,13 @@ export function useExecutionRunner() {
    * + 结果提示。返回最终记录（超时时 status 为 running）；execute 失败或轮询
    * 网络错误在关闭进度消息、复位 favicon 后原样抛出。
    * 环境严格绑定：执行环境=用例绑定环境，此处不再接收 envId。
+   * datasetId/rowIndex：执行时临时换数据集/选行（缺省=绑定数据集第 1 行）。
    */
   async function runWithFeedback(
     caseId: number,
-    opts: PollOptions & { runningMsg?: string } = {},
+    opts: PollOptions & { runningMsg?: string; datasetId?: number; rowIndex?: number } = {},
   ): Promise<ExecRecordLike> {
-    const rec: ExecRecordLike = await caseApi.execute(caseId)
+    const rec: ExecRecordLike = await caseApi.execute(caseId, opts.datasetId, opts.rowIndex)
     favicon.running()
     const msg = ElMessage({ message: opts.runningMsg ?? '执行中...', type: 'info', duration: 0 })
     try {

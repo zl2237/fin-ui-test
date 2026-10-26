@@ -474,9 +474,14 @@ export const caseApi = {
     http.post<{ message: string; updated: number }>('/testcases/batch-move', { case_ids: caseIds, group_id: groupId }).then((r) => r.data),
   reorder: (items: { id: number; sort_order: number }[]) =>
     http.post<{ message: string; updated: number }>('/testcases/reorder', { items }).then((r) => r.data),
-  // 环境严格绑定：执行环境=用例绑定环境（case.env_id），不再传 env_id
-  execute: (caseId: number) =>
-    http.post<ExecutionRecord>(`/testcases/${caseId}/execute`, { case_id: caseId }).then((r) => r.data),
+  // 环境严格绑定：执行环境=用例绑定环境（case.env_id），不再传 env_id。
+  // datasetId/rowIndex 执行时临时换数据集/选行（缺省=绑定数据集第 1 行；不改绑定与数据集内容）
+  execute: (caseId: number, datasetId?: number, rowIndex?: number) =>
+    http.post<ExecutionRecord>(`/testcases/${caseId}/execute`,
+      { case_id: caseId, dataset_id: datasetId ?? null, dataset_row_index: rowIndex ?? null }).then((r) => r.data),
+  // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源）
+  datasets: (caseId: number) =>
+    http.get<{ id: number; name: string; rows: { row_index: number; data: Record<string, any> }[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
   batchExecute: (caseIds: number[], counts?: number[], concurrency: number = 4) =>
     http.post<ExecutionRecord[]>('/testcases/batch-execute',
       { case_ids: caseIds, counts, concurrency }).then((r) => r.data),
@@ -503,6 +508,34 @@ export interface SplitVar {
   var: string
   providers: string[]
   consumer: string
+}
+
+// ============ DataSet 数据集维护（多套数据 = 多场景；按用例 1:N 隔离） ============
+export interface DataSetManage {
+  id: number
+  project_id: number
+  case_id: number
+  name: string
+  description?: string | null
+  rows: { row_index: number; data: Record<string, any> }[]
+  case_bound_count?: number
+}
+
+export const datasetApi = {
+  // 项目级清单（独立数据集管理页：按归属用例过滤，含绑定计数与行数据）
+  list: (params: { project_id: number }) =>
+    http.get<DataSetManage[]>('/datasets', { params }).then((r) => r.data),
+  // 新建（copy_from_dataset_id 传本用例已有数据集 id = 值全量拷贝起步）
+  create: (data: { case_id: number; name: string; description?: string; copy_from_dataset_id?: number }) =>
+    http.post<DataSetManage>('/datasets', data).then((r) => r.data),
+  update: (id: number, data: { name?: string; description?: string }) =>
+    http.put<DataSetManage>(`/datasets/${id}`, data).then((r) => r.data),
+  // 复制数据集（默认名「原名-副本」，多场景标准起步）
+  copy: (id: number) => http.post<DataSetManage>(`/datasets/${id}/copy`).then((r) => r.data),
+  remove: (id: number) => http.delete(`/datasets/${id}`),
+  // 行整体替换（编辑完一次保存，行号后端重编 1..n；至少一行）
+  replaceRows: (id: number, rows: Record<string, any>[]) =>
+    http.put<DataSetManage>(`/datasets/${id}/rows`, { rows }).then((r) => r.data),
 }
 
 // ============ TestSchedule 定时任务 ============
@@ -599,6 +632,14 @@ export const dictApi = {
   remove: (id: number) => http.delete(`/field-dictionaries/${id}`),
   batch: (projectId: number, items: { key: string; label: string }[]) =>
     http.post<{ message: string; count: number }>('/field-dictionaries/batch', { project_id: projectId, items }).then((r) => r.data),
+}
+
+// ============ PageScopeLabel 页面域字典 ============
+export const scopeLabelApi = {
+  getMap: (projectId: number) =>
+    http.get<Record<string, string>>('/page-scope-labels/map', { params: { project_id: projectId } }).then((r) => r.data),
+  batch: (projectId: number, items: { page_scope: string; label: string }[]) =>
+    http.post<{ message: string; count: number }>('/page-scope-labels/batch', { project_id: projectId, items }).then((r) => r.data),
 }
 
 // ============ FileCenter 文件中心 ============

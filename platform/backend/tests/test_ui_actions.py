@@ -573,3 +573,76 @@ class TestCustomAction:
             ]})
         assert len(ei.value.partial) == 1  # 第 1 步现场保留
         assert rt._page.evaluate("window.__saved") == 1
+
+
+# ---------- popper_pick 整页 reload 容错（execution 868 实证场景） ----------
+
+class _FakePage:
+    """脚本化假 page：按脚本依次抛错/返回，模拟 evaluate 被导航撕毁的序列。"""
+
+    def __init__(self, evaluate_script, popper_open=True):
+        self._script = list(evaluate_script)  # 每项: Exception 实例或返回值
+        self._popper_open = popper_open
+        self.load_state_waits = []
+        self.url = "http://test.local/#/fake"
+
+    def evaluate(self, js, *args):
+        if "offsetParent" in js and "some(" in js:  # still_open 探测
+            return self._popper_open
+        item = self._script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def wait_for_load_state(self, state, timeout=None):
+        self.load_state_waits.append(state)
+
+
+def _rt_with_page(page):
+    from types import SimpleNamespace
+    runtime = UiRuntime(
+        db=None,
+        env=SimpleNamespace(id=1, base_url="http://test.local", browser_config={}),
+        context=None,
+        project_id=1,
+    )
+    runtime._evaluate = lambda v: v
+    runtime._page = page
+    return runtime
+
+
+DESTROYED = RuntimeError(
+    "Page.evaluate: Execution context was destroyed, most likely because of a navigation.")
+
+
+class TestPopperPickReloadTolerance:
+    def test_destroyed_then_retry_picks(self):
+        """第一轮撕毁 → 重载后重试点到：正常 picked"""
+        page = _FakePage([DESTROYED, "picked"])
+        facts = _rt_with_page(page).run_action({"action": "popper_pick", "value": "保险"})
+        assert facts["result"] == "picked"
+        assert page.load_state_waits == ["domcontentloaded"]
+
+    def test_destroyed_twice_optimistic_pass(self):
+        """两轮都撕毁（文档持续重载）：乐观放行，交后续步骤校验"""
+        page = _FakePage([DESTROYED, DESTROYED])
+        facts = _rt_with_page(page).run_action({"action": "popper_pick", "value": "保险"})
+        assert facts["result"] == "picked(still-reloading)"
+
+    def test_destroyed_retry_no_li_popper_closed(self):
+        """重试 no-li 且浮层已收：判定第一轮点击已生效"""
+        page = _FakePage([DESTROYED, "no-li"], popper_open=False)
+        facts = _rt_with_page(page).run_action({"action": "popper_pick", "value": "保险"})
+        assert facts["result"] == "picked(popper-closed)"
+
+    def test_destroyed_retry_no_li_popper_open_raises(self):
+        """重试 no-li 且浮层仍开：真失败（选项不存在）"""
+        page = _FakePage([DESTROYED, "no-li"], popper_open=True)
+        with pytest.raises(UiActionError, match="浮层选项"):
+            _rt_with_page(page).run_action({"action": "popper_pick", "value": "保险"})
+
+    def test_other_evaluate_error_propagates(self):
+        """非导航撕毁类异常：不吞，原样上抛"""
+        page = _FakePage([RuntimeError("Timeout 30000ms exceeded")])
+        with pytest.raises(RuntimeError, match="Timeout"):
+            _rt_with_page(page).run_action({"action": "popper_pick", "value": "保险"})

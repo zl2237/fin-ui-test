@@ -595,6 +595,9 @@ class ExecutionCreate(BaseModel):
     case_id: int
     env_id: int | None = None  # 已废止：环境为用例属性（case.env_id），此处兼容旧客户端忽略
     dataset_id: int | None = None  # 执行时临时换数据集（不改用例绑定；单套语义，执行一次）
+    # 执行时临时选行（配合 dataset_id 或用例绑定数据集；值=数据行 row_index，
+    # 缺省第 1 行。同样不改数据集内容，只影响本次执行注入的值集）
+    dataset_row_index: int | None = None
     # 并发执行数：1=逐个串行（一个结束再下一个，避免并发问题），默认 4
     concurrency: int = 4
 
@@ -785,6 +788,19 @@ class FieldDictionaryOut(ORMBase, AuditMixin):
     updated_at: datetime | None = None
     updated_by: int | None = None
     updated_by_name: str | None = None
+
+
+# ============ PageScopeLabel 页面域字典 ============
+class PageScopeLabelItemIn(BaseModel):
+    """批量保存单行：page_scope=label（label 为空表示清除该域语义）"""
+    page_scope: str
+    label: str
+
+
+class PageScopeLabelBatchIn(BaseModel):
+    """批量保存：覆盖式写入（同 page_scope 更新 label；空 label 删除映射）"""
+    project_id: int
+    items: list[PageScopeLabelItemIn]
 
 
 # ============ UiElement UI 元素库 ============
@@ -983,7 +999,7 @@ class DataSetOut(ORMBase, AuditMixin):
     case_id: int
     name: str
     description: str | None = None
-    rows: list[DataSetRowOut] = []  # 单套语义：存储上恒为一行（数据值集）
+    rows: list[DataSetRowOut] = []  # 多行=多变体（执行面板可选行；缺省第 1 行）
     case_bound_count: int = 0  # 被引用用例数（列表展示）
     updated_at: datetime | None = None
     updated_by: int | None = None

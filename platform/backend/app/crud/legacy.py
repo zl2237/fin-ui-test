@@ -835,6 +835,44 @@ def get_field_dict_map(db: Session, project_id: int) -> dict:
     return {r[0]: r[1] for r in rows}
 
 
+# ============ PageScopeLabel 页面域字典 ============
+def get_page_scope_label_map(db: Session, project_id: int) -> dict:
+    """返回 {page_scope: label} 映射，元素库侧栏树展示中文语义"""
+    rows = db.query(models.PageScopeLabel.page_scope, models.PageScopeLabel.label).filter(
+        models.PageScopeLabel.project_id == project_id
+    ).all()
+    return {r[0]: r[1] for r in rows}
+
+
+def batch_upsert_page_scope_labels(db: Session, project_id: int, items: list[schemas.PageScopeLabelItemIn], user_id: int | None = None) -> int:
+    """批量覆盖式写入：同 page_scope 更新 label；label 为空删除映射。返回生效条数。"""
+    count = 0
+    for item in items:
+        existing = db.query(models.PageScopeLabel).filter(
+            models.PageScopeLabel.project_id == project_id,
+            models.PageScopeLabel.page_scope == item.page_scope,
+        ).first()
+        if item.label:
+            if existing:
+                existing.label = item.label
+                if user_id is not None:
+                    existing.updated_by = user_id
+            else:
+                db.add(models.PageScopeLabel(
+                    project_id=project_id,
+                    page_scope=item.page_scope,
+                    label=item.label,
+                    created_by=user_id,
+                    updated_by=user_id,
+                ))
+            count += 1
+        elif existing:
+            db.delete(existing)
+            count += 1
+    db.commit()
+    return count
+
+
 # ============ FileCategory 文件分类 ============
 def create_file_category(db: Session, data: schemas.FileCategoryCreate, user_id: int | None = None) -> models.FileCategory:
     obj = models.FileCategory(

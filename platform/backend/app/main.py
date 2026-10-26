@@ -32,12 +32,14 @@ from .json_safe import BigintSafeJSONResponse
 from .routers import (
     auth,
     custom_actions,
+    datasets,
     environments,
     executions,
     field_dictionaries,
     files,
     home,
     operation_logs,
+    page_scope_labels,
     projects,
     reports,
     schedules,
@@ -178,12 +180,14 @@ app.include_router(projects.router)
 app.include_router(environments.router)
 app.include_router(testcases.router)
 app.include_router(testcases.group_router)
+app.include_router(datasets.router)
 app.include_router(schedules.router)
 app.include_router(versions.router)
 app.include_router(executions.router)
 app.include_router(home.router)
 app.include_router(reports.router)
 app.include_router(field_dictionaries.router)
+app.include_router(page_scope_labels.router)
 app.include_router(ui_elements.router)
 app.include_router(custom_actions.router)
 app.include_router(ui_action_docs.router)
