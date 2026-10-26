@@ -1,6 +1,5 @@
 """DatasetDialog 浏览器冒烟（只读）：本地前端注入平台 token → 用例列表 →
 283 行 更多→数据集 → 转储弹窗渲染（数据集条目/行卡/键值）+ 截图。不保存任何修改。"""
-import json
 import sys
 from pathlib import Path
 

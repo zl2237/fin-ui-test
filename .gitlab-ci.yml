@@ -63,6 +63,8 @@ backend-lint:
     - if: $CI_COMMIT_BRANCH == "main"
 
 # 全量单测（fake-db，不连真实 MySQL）；DB_PASSWORD/JWT 为空会 import 即炸，给哑值
+# UI 引擎测试会真启 chromium：浏览器放 runner /cache 卷跨流水线复用（~120MB 只下一次），
+# 系统库随容器销毁，每次 apt 装（换清华源提速）
 backend-check:
   stage: lint
   image: python:3.12-slim
@@ -70,6 +72,9 @@ backend-check:
     - cd platform/backend
     - pip install -r requirements.txt pytest -i $PIP_INDEX
     - export DB_PASSWORD=ci-dummy JWT_SECRET_KEY=ci-dummy
+    - sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true
+    - export PLAYWRIGHT_BROWSERS_PATH=/cache/ms-playwright PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/
+    - python -m playwright install --with-deps chromium
     - python -m pytest tests -q
   rules:
     - if: $CI_COMMIT_BRANCH == "main"

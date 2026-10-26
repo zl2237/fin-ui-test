@@ -107,7 +107,6 @@ def main() -> int:
         print("===== 初始进入列表页")
         q = page.evaluate(DUMP_JS)
         print("页面:", json.dumps(q, ensure_ascii=False)[:900])
-        n0 = len(captured)
         for c in captured[:4]:
             print("初始API:", json.dumps(c, ensure_ascii=False)[:500])
 
