@@ -3,7 +3,6 @@
 2. 归一化（去分隔符/小写）找高度相似域
 3. 每个域被用例节点真实引用的元素数（ui_params.element.element_id）
 """
-import json
 import os
 import re
 import sys

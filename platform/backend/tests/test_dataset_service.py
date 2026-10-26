@@ -280,6 +280,9 @@ class TestReplaceRows:
             def order_by(self, *a, **k):
                 return self
 
+            def all(self):
+                return [r1, r2]  # 多行在场，_ensure_row 只取首行
+
             def first(self):
                 return r1
 

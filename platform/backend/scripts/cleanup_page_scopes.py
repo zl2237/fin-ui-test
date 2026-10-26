@@ -9,7 +9,6 @@
 dataproccess/order_document（拼写）与 workbench/approval_center 保留不动。
 执行前校验各域元素数与预期一致，不一致即中止（防止分析过期）。
 """
-import json
 import os
 import sys
 from collections import defaultdict
