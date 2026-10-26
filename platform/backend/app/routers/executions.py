@@ -28,7 +28,8 @@ def execute(case_id: int, data: schemas.ExecutionCreate, db: Session = Depends(g
     """触发用例执行（异步）：立即创建 running 状态的执行记录并返回，后台线程池执行。
     前端通过 GET /executions/{id} 轮询执行状态。
     环境严格绑定：一律用用例绑定的环境（case.env_id），请求里的 env_id 兼容忽略。
-    数据驱动：绑定数据集的用例用其单套数据执行（dataset_id 可临时换数据集）。"""
+    数据驱动：绑定数据集的用例用其单套数据执行（dataset_id 可临时换数据集，
+    dataset_row_index 可临时选行；均不改用例绑定与数据集内容）。"""
     if data.case_id != case_id:
         raise HTTPException(400, "case_id 不一致")
     case = crud.get_testcase(db, case_id)
@@ -37,7 +38,8 @@ def execute(case_id: int, data: schemas.ExecutionCreate, db: Session = Depends(g
 
     try:
         plan = build_launch_plan(db, case, user.id,
-                                 dataset_id=data.dataset_id)
+                                 dataset_id=data.dataset_id,
+                                 dataset_row_index=data.dataset_row_index)
     except ValueError as e:
         raise HTTPException(400, str(e))
     _validate_concurrency(data.concurrency)

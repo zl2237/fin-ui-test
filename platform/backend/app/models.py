@@ -473,6 +473,26 @@ class UiElement(Base):
     project: Mapped["Project"] = relationship("Project")
 
 
+class PageScopeLabel(Base):
+    """页面域字典：项目级页面域英文标识 → 中文语义映射（如
+    ordermanage/business_order_add → 新建委托订单），元素库侧栏树展示用"""
+    __tablename__ = "page_scope_labels"
+    __table_args__ = (
+        UniqueConstraint("project_id", "page_scope", name="uq_page_scope_label_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, comment="主键ID")
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True, comment="所属项目ID")
+    page_scope: Mapped[str] = mapped_column(String(200), nullable=False, comment="页面域英文标识：如 ordermanage/business_order_add")
+    label: Mapped[str] = mapped_column(String(100), nullable=False, comment="中文语义：如 新建委托订单")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, comment="最近更新时间")
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
+
+    project: Mapped["Project"] = relationship("Project")
+
+
 class CustomAction(Base):
     """自定义 UI 动作：项目级 JS 动作模板（编排时像预设动作一样选用）。
 

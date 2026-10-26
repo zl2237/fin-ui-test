@@ -278,7 +278,7 @@ class UiRuntime:
             return
         try:
             from .token_cache import EnvTokenCache
-            token = EnvTokenCache.get(self.env.id)
+            token = EnvTokenCache.get(self.env.id) or self._shared_login()
             if token:
                 browser_context.add_cookies([{
                     "name": cookie_name,
@@ -287,6 +287,24 @@ class UiRuntime:
                 }])
         except Exception as e:  # noqa: BLE001 注入失败降级为无 cookie（走页面登录）
             print(f"[UI会话] token cookie 注入失败（忽略）: {e}")
+
+    def _shared_login(self) -> str | None:
+        """空缓存兜底：借 API 管线的 shared 登录入缓存，返回 token。
+
+        后端重启后 EnvTokenCache 清空，若套件首个节点是 UI 节点（无 API 节点
+        先跑触发登录），原实现静默无 cookie → 落登录页整轮全挂（execution 867）。
+        这里构造一次性 HttpClient 走 login()，与 API 节点首跑完全同路径
+        （含 login_shared 加锁、验证码、session 模式跳过）；失败降级返回 None。
+        """
+        try:
+            from .runtime_service import build_http_client
+            from .runtime_service import login as api_login
+            from .token_cache import EnvTokenCache
+            api_login(build_http_client(self.env), self.env)
+            return EnvTokenCache.get(self.env.id)
+        except Exception as e:  # noqa: BLE001 未配登录/登录失败均降级为无 cookie
+            print(f"[UI会话] 空缓存自动登录失败（降级无 cookie）: {e}")
+            return None
 
     def close(self):
         """收尾：关浏览器 + 停 playwright + 释放并发闸门（幂等，失败安全）。"""
@@ -738,6 +756,9 @@ class UiRuntime:
             raise UiActionError("click_text 需要 value（按钮文本，支持 ${变量}）")
         idx = int(params.get("index") or 0)
         optional = bool(params.get("optional"))
+        # 轮询预算跟随节点超时：订单编辑页等重页面按钮渲染可超 3s（run#278-n3
+        # 实证 6×500ms 固定窗口早退，失败截图里按钮已在），下限保留 6 次
+        attempts = max(6, timeout_ms // 500)
         if params.get("match") == "contains":
             js = ("t=>{const v=(e)=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
                   "const n=(x)=>(x.textContent||'').replace(/\\s+/g,'');"
@@ -745,7 +766,7 @@ class UiRuntime:
                   "const b=[...document.querySelectorAll('button')].filter(v)"
                   ".find(b=>n(b).includes(t));"
                   "if(!b)return '';b.click();return 'clicked:'+n(b)}")
-            result = self._retry_evaluate(page, js, str(text), 6, 500)
+            result = self._retry_evaluate(page, js, str(text), attempts, 500)
             if not result:
                 if optional:
                     return {"value": text, "match": "contains", "optional": True, "result": "absent"}
@@ -774,7 +795,7 @@ class UiRuntime:
               "if(!s)return '';s.click();"
               "return 'clicked:'+uniq.length}"
               )
-        result = self._retry_evaluate(page, js, [str(text), idx], 6, 500)
+        result = self._retry_evaluate(page, js, [str(text), idx], attempts, 500)
         if not result:
             if optional:
                 return {"value": text, "index": idx, "optional": True, "result": "absent"}
@@ -933,7 +954,12 @@ class UiRuntime:
 
     def _do_popper_pick(self, page, params, timeout_ms):
         """浮层选项点选（如「编辑费用」下拉里的服务项）：轮询可见 popper
-        中精确文本匹配的 li 并点击（下拉渲染有动画时序，一次性查找会落空）。"""
+        中精确文本匹配的 li 并点击（下拉渲染有动画时序，一次性查找会落空）。
+
+        业务系统偶发整页 reload 会把 8s 轮询 evaluate 撕毁（execution 868 实证：
+        li.click 已发出但结果随上下文丢失）。容错：等新文档就绪后重试一轮；
+        若浮层已收起或文档仍在重载，按已选乐观放行——真实状态由后续步骤
+        （导入/confirm_wait 等）校验兜底，错选只晚一步暴露且错误信息更清晰。"""
         val = self._evaluate(params.get("value"))
         if not val:
             raise UiActionError("popper_pick 需要 value（选项文本）")
@@ -944,7 +970,29 @@ class UiRuntime:
               ".find(l=>l.textContent.trim()===v);"
               "if(li){li.click();clearInterval(iv);res('picked')}}"
               "if(Date.now()-t0>8000){clearInterval(iv);res('no-li')}},300)})")
-        result = page.evaluate(js, str(val))
+        try:
+            result = page.evaluate(js, str(val))
+        except Exception as e:  # noqa: BLE001
+            if "context was destroyed" not in str(e).lower():
+                raise
+            print(f"[popper_pick] evaluate 被导航撕毁，等重载后重试: {e}")
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:  # noqa: BLE001 页面可能仍在跳转，尽力而为
+                pass
+            try:
+                result = page.evaluate(js, str(val))
+            except Exception as e2:  # noqa: BLE001
+                if "context was destroyed" not in str(e2).lower():
+                    raise
+                return {"value": val, "result": "picked(still-reloading)"}
+            if result != "picked":
+                # 浮层已收 = 第一轮点击大概率已生效；仍开着才认定真失败
+                still_open = page.evaluate(
+                    "() => [...document.querySelectorAll('[class*=popper]')]"
+                    ".some(x => x.offsetParent)")
+                if not still_open:
+                    return {"value": val, "result": "picked(popper-closed)"}
         if result != "picked":
             raise UiActionError(f"8s 内未见浮层选项 {val!r}（下拉未打开或选项不存在）")
         return {"value": val, "result": result}
@@ -1070,6 +1118,7 @@ class UiRuntime:
         for val in values:
             picked_ok = False
             last_seen = ""
+            trigger_clicked = False  # 触发器是否至少点成一次（区分两种失败）
             for _attempt in range(3):
                 try:
                     # 清残留下拉（旧 popper 未关完会抢选项点击）。条件化：仅当确有
@@ -1086,6 +1135,7 @@ class UiRuntime:
                         # 视口外/被遮挡的触发器（费用表下方行，run#588 实证）：force 兜底。
                         # 不用 scroll_into_view——费用表内层滚动容器滚动会关掉下拉浮层（run#599 实证）
                         locator.click(force=True, timeout=3000)
+                    trigger_clicked = True
                     if locator.get_attribute("readonly", timeout=timeout_ms) is None:
                         locator.fill(val, timeout=timeout_ms)
                     # 选项点选用轮询+JS click：el-select 关闭后 popper 仍挂载（隐藏 li 与可见 li
@@ -1125,6 +1175,13 @@ class UiRuntime:
                     picked_ok = True
                     break
             if not picked_ok:
+                if not trigger_clicked:
+                    # 3 轮连触发器都没点成（元素未渲染/已改版/被遮挡）——与
+                    # 「点了但选项未生效」是两种病，报错必须可区分（run#21 实证：
+                    # 元素改版失配被误报成「选项未生效」，排查方向全错）
+                    raise UiActionError(
+                        f"pick 触发器不可用（3 次重试均未点击成功 {desc}）——"
+                        f"元素未渲染/定位失配/被遮挡，请核对元素库定位策略")
                 raise UiActionError(
                     f"pick 选项未生效（3 次重试后 input 值仍为 {last_seen!r}，期望 {val!r}）")
             picked.append(val)

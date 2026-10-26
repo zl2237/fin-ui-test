@@ -150,6 +150,20 @@ def combine(data: schemas.CaseCombineRequest, db: Session = Depends(get_db), use
     return obj
 
 
+@router.get("/{case_id}/datasets", response_model=list[schemas.DataSetOut])
+def list_case_datasets(case_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源）。
+    数据集按用例 1:N 隔离；套件无数据集（成员各自绑定），返回空表。"""
+    if not crud.get_testcase(db, case_id):
+        raise HTTPException(404, "用例不存在")
+    dss = (db.query(models.DataSet)
+           .filter(models.DataSet.case_id == case_id)
+           .order_by(models.DataSet.id).all())
+    for ds in dss:
+        ds.rows = crud.list_rows(db, ds.id)
+    return dss
+
+
 @router.get("/{case_id}", response_model=schemas.TestCaseOut)
 def get_one(case_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     obj = crud.get_testcase(db, case_id)

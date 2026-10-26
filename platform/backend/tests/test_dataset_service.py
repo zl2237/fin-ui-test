@@ -61,6 +61,15 @@ class TestDatasetCrud:
             with pytest.raises(ValueError, match="被 2 个用例绑定|先解绑"):
                 svc.delete_dataset(_fake_db(), 1)
 
+    def test_list_by_project(self):
+        """项目级清单：join 归属用例按项目过滤（独立数据集管理页数据源）"""
+        ds = SimpleNamespace(id=1, case_id=9)
+        db = SimpleNamespace(query=lambda *a, **k: SimpleNamespace(
+            join=lambda *a, **k: SimpleNamespace(
+                filter=lambda *a, **k: SimpleNamespace(
+                    order_by=lambda *a, **k: SimpleNamespace(all=lambda: [ds])))))
+        assert svc.list_by_project(db, 7) == [ds]
+
     def test_delete_cascades_rows(self):
         """删除数据集级联删行"""
         deleted = {}
@@ -159,6 +168,9 @@ class TestSaveNodeConfig:
             def all(self):
                 return rows
 
+            def first(self):
+                return rows[0] if rows else None
+
         return SimpleNamespace(
             query=lambda *a, **k: _RowQuery(),
             add=state["added"].append,
@@ -219,6 +231,62 @@ class TestSaveNodeConfig:
         assert state["added"][0].data["nodes"]["n1"]["params"] == params
 
 
+# ============ 行整体替换 / 多行保留（2026-10-23 多套数据维护） ============
+
+class TestReplaceRows:
+    def _db(self, state):
+        class _RowQ:
+            def filter(self, *a, **k):
+                return self
+
+            def delete(self, synchronize_session=False):
+                state["cleared"] = True
+
+        return SimpleNamespace(
+            query=lambda *a, **k: _RowQ(),
+            add=state["added"].append, commit=lambda: None, refresh=lambda o: None)
+
+    def test_replace_renumbers_rows(self):
+        """整体替换：清旧行后按序重编 row_index 1..n，行数据深拷贝落库"""
+        state = {"added": [], "cleared": False}
+        ds = SimpleNamespace(id=1, updated_by=None)
+        with patch.object(svc.crud, "get_dataset", return_value=ds):
+            out = svc.replace_rows(self._db(state), 1, [{"a": 1}, {"a": 2}], user_id=5)
+        assert state["cleared"] is True and out is ds
+        assert [(r.row_index, r.data) for r in state["added"]] == [(1, {"a": 1}), (2, {"a": 2})]
+        assert ds.updated_by == 5
+
+    def test_replace_rejects_empty(self):
+        """清空所有行 → 拒（空数据集无法执行）"""
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            with pytest.raises(ValueError, match="至少保留一行"):
+                svc.replace_rows(self._db({"added": []}), 1, [])
+
+    def test_replace_rejects_non_dict_row(self):
+        """行数据必须是对象"""
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            with pytest.raises(ValueError, match="第 2 行必须是对象"):
+                svc.replace_rows(self._db({"added": []}), 1, [{"a": 1}, "x"])
+
+    def test_ensure_row_keeps_multiple_rows(self):
+        """多行是合法数据（执行面板可选行）：_ensure_row 只取首行，不再收敛为一行"""
+        r1 = SimpleNamespace(dataset_id=1, row_index=1, data={"nodes": {}})
+        r2 = SimpleNamespace(dataset_id=1, row_index=2, data={"bl_no": "B2"})
+
+        class _RowQ:
+            def filter(self, *a, **k):
+                return self
+
+            def order_by(self, *a, **k):
+                return self
+
+            def first(self):
+                return r1
+
+        db = SimpleNamespace(query=lambda *a, **k: _RowQ(), add=lambda o: None, flush=lambda: None)
+        assert svc._ensure_row(db, SimpleNamespace(id=1)) is r1  # 第二行保留在场
+
+
 # ============ 用例绑定校验（用例级隔离：只能绑自己名下的数据集） ============
 
 class TestCaseBinding:
@@ -262,6 +330,9 @@ def _q(results):
 
         def all(self):
             return results
+
+        def first(self):
+            return results[0] if results else None
     return _Q()
 
 

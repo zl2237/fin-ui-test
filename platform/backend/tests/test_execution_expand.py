@@ -32,16 +32,45 @@ class TestPlanCaseExpansion:
             svc.plan_case_expansion(SimpleNamespace(), case)
 
     def test_bound_case_expands_single_set(self):
-        """绑定数据集 → 恒 1 条展开项：取首行（唯一一套数据），快照含 row_index/data/label"""
+        """绑定数据集 → 恒 1 条展开项：取首行（缺省），快照含 row_index/data/label；
+        多行数据集 label 带行号后缀（执行记录可溯源用的哪一行）"""
         case = SimpleNamespace(id=11, dataset_id=7)
-        rows = _rows(3)  # 存量多行：只取第一行（多场景 = 多个数据集）
+        rows = _rows(3)  # 存量多行：缺省取第一行（多场景 = 多个数据集）
         ds = _ds(rows)
         with patch.object(svc.crud, "get_dataset", return_value=ds), \
              patch.object(svc.crud, "list_rows", return_value=rows):
             plan = svc.plan_case_expansion(SimpleNamespace(), case)
         assert len(plan) == 1
         assert plan[0]["dataset_id"] == 7
-        assert plan[0]["row"] == {"row_index": 1, "data": {"bl_no": "BL001"}, "label": "运单数据"}
+        assert plan[0]["row"] == {"row_index": 1, "data": {"bl_no": "BL001"},
+                                  "label": "运单数据 第1行"}
+
+    def test_single_row_label_has_no_suffix(self):
+        """单行数据集 label 不带行号后缀（一行无歧义，保持简洁）"""
+        case = SimpleNamespace(id=11, dataset_id=7)
+        rows = _rows(1)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case)
+        assert plan[0]["row"]["label"] == "运单数据"
+
+    def test_row_index_picks_named_row(self):
+        """row_index 显式选行（执行面板换行）：取该行数据，label 带对应行号"""
+        case = SimpleNamespace(id=11, dataset_id=7)
+        rows = _rows(3)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_index=2)
+        assert plan[0]["row"] == {"row_index": 2, "data": {"bl_no": "BL002"},
+                                  "label": "运单数据 第2行"}
+
+    def test_row_index_out_of_range_rejected(self):
+        """row_index 不存在 → 拒绝并列出现有行号（手填/数据已删时的明确报错）"""
+        case = SimpleNamespace(id=11, dataset_id=7)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(_rows(2))), \
+             patch.object(svc.crud, "list_rows", return_value=_rows(2)):
+            with pytest.raises(ValueError, match="没有第 9 行（现有行：1、2）"):
+                svc.plan_case_expansion(SimpleNamespace(), case, row_index=9)
 
     def test_zero_rows_rejected(self):
         """绑定但数据集无数据 → 拒绝执行（先在变量池录入参数值）"""

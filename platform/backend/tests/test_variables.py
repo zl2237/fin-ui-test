@@ -38,7 +38,8 @@ class TestVariableRegistry:
         assert r.resolve({"node_id": "n_a", "var_path": "bl_no"}) == "SMOKE-1"
 
     def test_suite_pseudo_ns(self):
-        """套件伪命名空间批量注入（__dataset__ 平铺键值注入已随入参收敛退役）。"""
+        """套件伪命名空间批量注入（API 参数侧平铺注入已退役；__dataset__ 仅承载
+        legacy 平铺行键，见 TestDatasetFlatInjection）。"""
         r = VariableRegistry()
         r.inject(SUITE_NS, {"pol": "ANTING", "pod": "AOSHANWEI"})
         assert r.vars_of(SUITE_NS) == {"pol": "ANTING", "pod": "AOSHANWEI"}
@@ -108,3 +109,54 @@ class TestOrderParams:
         }
         with pytest.raises(CycleError):
             order_params(params, "n1")
+
+
+class TestDatasetFlatInjection:
+    """legacy 平铺数据行键 → __dataset__ 伪命名空间（UI 步骤 ${} 数据来源）。
+
+    背景：参数模型 v2 退役了 API 侧平铺解析，但 UI 步骤自由文本 ${} 走平铺池
+    （expression.py），legacy 数据集行（如 {"bl_no": ...}）此前被静默丢弃——
+    用例检索字面量 '${bl_no}'（case#278/282 实证）。"""
+
+    def test_flat_row_keys_resolve_in_expression(self):
+        from app.engine.context import ExecutionContext
+        from app.engine.expression import ExpressionEngine
+
+        ctx = ExecutionContext(dataset_vars={"bl_no": "GOSUQIN9055623"})
+        eng = ExpressionEngine(ctx)
+        assert eng.evaluate("${bl_no}") == "GOSUQIN9055623"
+        assert eng.evaluate("prefix-${bl_no}") == "prefix-GOSUQIN9055623"
+
+    def test_nodes_wrapper_not_injected(self):
+        """v2 格式 {"nodes": {...}} 的行不是平铺变量——不进注册表。"""
+        from app.engine.context import ExecutionContext
+        from app.engine.expression import ExpressionEngine
+
+        ctx = ExecutionContext(dataset_vars={"nodes": {"n1": {"params": {}}}})
+        eng = ExpressionEngine(ctx)
+        assert eng.evaluate("${nodes}") == "${nodes}"  # 未定义保留占位符
+
+    def test_mixed_row_only_flat_keys_injected(self):
+        from app.engine.context import ExecutionContext
+        from app.engine.expression import ExpressionEngine
+
+        ctx = ExecutionContext(dataset_vars={"nodes": {"n1": {}}, "bl_no": "X1"})
+        assert ExpressionEngine(ctx).evaluate("${bl_no}") == "X1"
+
+    def test_priority_suite_overrides_dataset(self):
+        """平铺池后写命名空间优先：套件注入 > 数据集行。"""
+        from app.engine.context import ExecutionContext
+        from app.engine.expression import ExpressionEngine
+
+        ctx = ExecutionContext(dataset_vars={"bl_no": "FROM-DATASET"},
+                               suite_vars={"bl_no": "FROM-SUITE"})
+        assert ExpressionEngine(ctx).evaluate("${bl_no}") == "FROM-SUITE"
+
+    def test_priority_runtime_overrides_dataset(self):
+        """运行时产出（后置提取写节点命名空间）覆盖数据集行同名键。"""
+        from app.engine.context import ExecutionContext
+        from app.engine.expression import ExpressionEngine
+
+        ctx = ExecutionContext(dataset_vars={"bl_no": "FROM-DATASET"})
+        ctx.registry.write("n1", "bl_no", "EXTRACTED")
+        assert ExpressionEngine(ctx).evaluate("${bl_no}") == "EXTRACTED"

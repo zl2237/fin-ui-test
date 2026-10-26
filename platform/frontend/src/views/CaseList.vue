@@ -194,9 +194,22 @@
             <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
-                <el-tooltip content="执行本行用例；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                <el-tooltip content="执行本行用例（绑定数据集第 1 行）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
                 </el-tooltip>
+                <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
+                <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
+                  <el-button link type="success" size="small" class="run-data-caret" title="换套数据/数据行执行（临时生效）">
+                    <el-icon><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item v-for="opt in dataOptionsFor(row)" :key="opt.key" :command="opt" :disabled="opt.disabled">
+                        {{ opt.label }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                   <el-button link type="primary" size="small">
@@ -206,6 +219,7 @@
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
                       <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
+                      <el-dropdown-item command="dataset">数据集</el-dropdown-item>
                       <el-dropdown-item command="copy">复制用例</el-dropdown-item>
                       <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
                     </el-dropdown-menu>
@@ -322,9 +336,22 @@
             <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
-                <el-tooltip content="执行本行用例；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                <el-tooltip content="执行本行用例（绑定数据集第 1 行）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
                 </el-tooltip>
+                <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
+                <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
+                  <el-button link type="success" size="small" class="run-data-caret" title="换套数据/数据行执行（临时生效）">
+                    <el-icon><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item v-for="opt in dataOptionsFor(row)" :key="opt.key" :command="opt" :disabled="opt.disabled">
+                        {{ opt.label }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                   <el-button link type="primary" size="small">
@@ -334,6 +361,7 @@
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
                       <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
+                      <el-dropdown-item command="dataset">数据集</el-dropdown-item>
                       <el-dropdown-item command="copy">复制用例</el-dropdown-item>
                       <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
                     </el-dropdown-menu>
@@ -470,6 +498,14 @@
       @changed="loadSchedules"
     />
 
+    <!-- 数据集管理弹窗（自治子系统：数据集增删改/复制/绑定切换 + 行键值编辑收敛在组件内） -->
+    <DatasetDialog
+      v-model="datasetVisible"
+      :case-item="datasetCase"
+      :bound-dataset-id="datasetCase?.dataset_id ?? null"
+      @changed="onDatasetsChanged"
+    />
+
   </div>
 </template>
 
@@ -487,6 +523,7 @@ import { useGroupMasterDetail } from '@/composables/useGroupMasterDetail'
 import GroupManageDialog from '@/components/GroupManageDialog.vue'
 import BatchMoveDialog from '@/components/BatchMoveDialog.vue'
 import ScheduleDialog from '@/components/ScheduleDialog.vue'
+import DatasetDialog from '@/components/DatasetDialog.vue'
 import BatchRunDialog from '@/components/BatchRunDialog.vue'
 import { useFaviconStatus } from '@/composables/useFaviconStatus'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
@@ -824,7 +861,7 @@ function goDesign(row: TestCase) {
   else router.push(`/cases/designer/${row.id}`)
 }
 
-async function runCase(row: TestCase) {
+async function runCase(row: TestCase, dataOpt?: RunDataOpt) {
   // 环境严格绑定：普通用例须已绑定环境（后端同口径校验兜底）；套件成员各自绑定
   if (row.case_type !== 'suite' && !row.env_id) {
     return ElMessage.warning(`用例「${row.name}」未绑定执行环境，请先在列表「执行环境」列选择`)
@@ -845,14 +882,64 @@ async function runCase(row: TestCase) {
   }
   try {
     // 执行→进度消息→轮询→三态 favicon→结果提示（超时返回 running 态记录，同样跳报告页）
+    // dataOpt：执行时临时换数据集/选行（下拉选择；缺省=绑定数据集第 1 行）
+    const suffix = dataOpt ? `（${dataOpt.label}）` : ''
     const cur = await runner.runWithFeedback(row.id, {
-      runningMsg: `用例「${row.name}」执行中...`,
+      runningMsg: `用例「${row.name}」执行中...${suffix}`,
       maxPolls: 150,
+      datasetId: dataOpt?.datasetId,
+      rowIndex: dataOpt?.rowIndex,
     })
     router.push(`/reports/${cur.id}`)
   } catch (e: any) {
     favicon.reset()
     ElMessage.error(e.message || '轮询执行状态失败')
+  }
+}
+
+// ============ 换套数据执行（执行按钮旁 ▾ 下拉） ============
+interface RunDataOpt {
+  key: string
+  label: string
+  datasetId?: number
+  rowIndex?: number
+  disabled?: boolean
+}
+
+const dataOptionsMap = ref<Record<number, RunDataOpt[]>>({})
+
+function dataOptionsFor(row: TestCase): RunDataOpt[] {
+  return dataOptionsMap.value[row.id] || [{ key: 'loading', label: '加载中...', disabled: true }]
+}
+
+// 下拉展开时按用例懒加载一次（数据集按用例 1:N 隔离；行多时列表可能较长，Element 自带滚动）
+async function loadDataOptions(row: TestCase) {
+  if (dataOptionsMap.value[row.id]) return
+  if (row.case_type === 'suite') {
+    dataOptionsMap.value[row.id] = [{ key: 'suite', label: '套件：成员用例各自绑定数据集', disabled: true }]
+    return
+  }
+  try {
+    const list = await caseApi.datasets(row.id)
+    const opts: RunDataOpt[] = []
+    for (const ds of list) {
+      if (!ds.rows.length) {
+        opts.push({ key: `ds-${ds.id}`, label: `${ds.name}（无数据行）`, datasetId: ds.id, disabled: true })
+        continue
+      }
+      for (const r of ds.rows) {
+        const isDefault = ds.id === row.dataset_id && r.row_index === ds.rows[0].row_index
+        opts.push({
+          key: `ds-${ds.id}-r-${r.row_index}`,
+          label: `${ds.name} · 第${r.row_index}行${isDefault ? '（默认）' : ''}`,
+          datasetId: ds.id,
+          rowIndex: r.row_index,
+        })
+      }
+    }
+    dataOptionsMap.value[row.id] = opts.length ? opts : [{ key: 'none', label: '暂无数据集/数据行', disabled: true }]
+  } catch {
+    dataOptionsMap.value[row.id] = [{ key: 'err', label: '数据集加载失败', disabled: true }]
   }
 }
 
@@ -935,6 +1022,7 @@ function goReport(row: TestCase) {
 function onRowCommand(cmd: string, row: TestCase) {
   if (cmd === 'report') goReport(row)
   else if (cmd === 'schedule') openSchedule(row)
+  else if (cmd === 'dataset') openDatasets(row)
   else if (cmd === 'copy') onCopy(row)
   else if (cmd === 'remove') onRemove(row)
 }
@@ -996,6 +1084,21 @@ async function loadSchedules() {
 function openSchedule(row: TestCase) {
   scheduleCase.value = row
   scheduleVisible.value = true  // 有无配置决定列表/表单首屏，由弹窗组件打开时自判
+}
+
+// ===== 数据集维护（新建/复制/改名/删数据集 + 行编辑 + 绑定切换；弹窗自治见 DatasetDialog）=====
+const datasetVisible = ref(false)
+const datasetCase = ref<TestCase | null>(null)
+
+function openDatasets(row: TestCase) {
+  datasetCase.value = row
+  datasetVisible.value = true
+}
+
+/** DatasetDialog 变更回调：数据集集合/行内容/绑定关系都可能变——失效该行数据集缓存并重载列表（绑定列展示） */
+async function onDatasetsChanged() {
+  if (datasetCase.value) delete dataOptionsMap.value[datasetCase.value.id]
+  await load()
 }
 
 /** GroupManageDialog 变更回调：重载分组；删除时同步重载用例（其余变更不影响条目） */
@@ -1197,6 +1300,14 @@ function onGlobalKey(e: KeyboardEvent) {
 .row-more-icon {
   font-size: 12px;
   margin-left: 1px;
+}
+/* 「执行」旁换套数据下拉触发：仅图标，压缩占位（与链接按钮同色系） */
+.run-data-caret {
+  margin-left: 2px;
+  padding: 2px 2px;
+}
+.run-data-caret .el-icon {
+  font-size: 12px;
 }
 /* 数据集绑定弹窗 */
 .bind-tip {

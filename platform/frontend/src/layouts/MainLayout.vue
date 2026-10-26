@@ -62,6 +62,14 @@
             <el-icon><Share /></el-icon>
             <template #title><span>用例管理</span></template>
           </el-menu-item>
+          <el-menu-item index="/datasets">
+            <el-icon><Grid /></el-icon>
+            <template #title><span>数据集</span></template>
+          </el-menu-item>
+          <el-menu-item index="/elements">
+            <el-icon><Aim /></el-icon>
+            <template #title><span>元素库</span></template>
+          </el-menu-item>
           <el-menu-item index="/executions">
             <el-icon><Histogram /></el-icon>
             <template #title><span>执行记录</span></template>
@@ -84,10 +92,6 @@
           <el-menu-item index="/dictionary">
             <el-icon><Collection /></el-icon>
             <template #title><span>字段字典</span></template>
-          </el-menu-item>
-          <el-menu-item index="/elements">
-            <el-icon><Aim /></el-icon>
-            <template #title><span>元素库</span></template>
           </el-menu-item>
           <el-menu-item index="/files">
             <el-icon><Files /></el-icon>
@@ -567,7 +571,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, QuestionFilled, Aim } from '@element-plus/icons-vue'
+import { Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, QuestionFilled, Aim, Grid } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'
 import { useTabStore, type TabItem } from '@/stores/tabs'
 import { authApi, customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
@@ -632,7 +636,7 @@ const coreCapTitle = computed(() => CORE_CAP_TITLES[store.coreCapTab] || CORE_CA
 
 // 侧边菜单项（与模板 el-menu-item index 一一对应，供子路由激活态前缀匹配）
 const MENU_PATHS = [
-  '/cases', '/executions',
+  '/cases', '/datasets', '/executions',
   '/projects', '/envs', '/dictionary', '/elements', '/files',
   '/users', '/operation-logs',
 ]

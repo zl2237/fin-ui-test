@@ -9,18 +9,18 @@
       <el-table-column label="来源" width="100">
         <template #default="{ row }">
           <el-select v-model="row.source" size="small" style="width: 100%" @change="onSourceChange(row)">
-            <el-option label="响应体" value="response" />
+            <el-option label="页面元素" value="response" />
             <el-option label="数据库" value="db" />
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column label="JSON Path" min-width="200" v-if="hasResponse">
+      <el-table-column label="JSON Path（页面事实）" min-width="200" v-if="hasResponse">
         <template #default="{ row }">
           <el-input
             v-if="row.source === 'response'"
             v-model="row.json_path"
             size="small"
-            placeholder="$.data.order_id"
+            placeholder="$.text / $.value / $.steps[0].value"
           />
           <span v-else class="muted">—</span>
         </template>

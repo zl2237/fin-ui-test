@@ -9,7 +9,9 @@
 - 同名冲突（同名异值 / 同名异型 / 同名嵌套层级不一致）从根上消除：
   不同命名空间互不覆盖，引用永远显式携带命名空间
 - 伪节点：套件白名单注入 "__suite__"（沿用旧 suite_vars 链路语义）；
-  "__dataset__" 平铺键值注入已退役（入参收敛到数据集行 per-node 配置）
+  "__dataset__" 仅承载 legacy 平铺行键（如 {"bl_no": ...}）——API 参数模型 v2
+  已退役平铺注入（spec 走 per-node 配置），但 UI 步骤自由文本 ${}（expression.py）
+  的数据来源是平铺池，legacy 数据行由此可达；先于套件注入，优先级最低
 
 SQL 占位语法（替代旧 ${xxx}）：{{node_id.var_path}}
 - 与旧语法刻意区分：可静态解析依赖、迁移时可精确扫描
@@ -21,6 +23,9 @@ from typing import Any
 
 # 套件伪命名空间（非画布节点，注入型变量域）
 SUITE_NS = "__suite__"
+
+# 数据集伪命名空间：legacy 平铺行键（UI 步骤自由文本 ${} 的数据来源）
+DATASET_NS = "__dataset__"
 
 # SQL / 模板占位符：{{node_id.var.path}}（node_id 为画布节点 id 或伪命名空间）
 PLACEHOLDER_RE = re.compile(r"\{\{([\w.\-]+)\}\}")

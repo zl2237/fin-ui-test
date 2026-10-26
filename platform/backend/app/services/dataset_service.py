@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models
 
 
-# ============ 行数据访问（单套语义：恒一行） ============
+# ============ 行数据访问（首行兜底；多行=多变体，执行面板可选行） ============
 
 def row_data(ds: models.DataSet) -> dict[str, Any]:
     """数据集行数据（无行时空 dict；容忍历史多行取首行）。"""
@@ -39,20 +39,52 @@ def node_configs(row: dict[str, Any]) -> dict[str, dict]:
 
 
 def _ensure_row(db: Session, ds: models.DataSet) -> models.DataSetRow:
-    """取/建唯一一行（单套语义）。"""
-    rows = db.query(models.DataSetRow).filter(
-        models.DataSetRow.dataset_id == ds.id).order_by(models.DataSetRow.row_index).all()
-    if rows:
-        for extra in rows[1:]:  # 历史多行收敛为一行
-            db.delete(extra)
-        return rows[0]
+    """取/建首行（多行为合法数据：执行面板可选行，见 plan_case_expansion；
+    这里只保证「至少一行」供节点配置读写，不再把多行收敛为一行）。"""
+    row = (db.query(models.DataSetRow)
+           .filter(models.DataSetRow.dataset_id == ds.id)
+           .order_by(models.DataSetRow.row_index).first())
+    if row:
+        return row
     row = models.DataSetRow(dataset_id=ds.id, row_index=1, data={"nodes": {}})
     db.add(row)
     db.flush()
     return row
 
 
+def replace_rows(db: Session, dataset_id: int, rows_data: list,
+                 user_id: int | None = None) -> models.DataSet:
+    """整体替换数据集行（数据集管理面板保存）：重编 row_index 1..n。
+
+    至少一行（空数据集无法执行，plan_case_expansion 会拒）；行数据必须是对象。
+    """
+    if not rows_data:
+        raise ValueError("至少保留一行数据（空数据集无法执行）")
+    if len(rows_data) > 999:
+        raise ValueError("数据行数过多（上限 999）")
+    ds = get_dataset(db, dataset_id)
+    db.query(models.DataSetRow).filter(models.DataSetRow.dataset_id == ds.id).delete()
+    for i, data in enumerate(rows_data, start=1):
+        if not isinstance(data, dict):
+            raise ValueError(f"第 {i} 行必须是对象")
+        db.add(models.DataSetRow(dataset_id=ds.id, row_index=i, data=deepcopy(data)))
+    if user_id is not None:
+        ds.updated_by = user_id
+    db.commit()
+    db.refresh(ds)
+    return ds
+
+
 # ============ 数据集 CRUD ============
+
+def list_by_project(db: Session, project_id: int) -> list[models.DataSet]:
+    """项目级数据集清单（独立数据集管理页）：按归属用例过滤，按用例+id 稳定排序。"""
+    return (db.query(models.DataSet)
+            .join(models.TestCase, models.TestCase.id == models.DataSet.case_id)
+            .filter(models.TestCase.project_id == project_id)
+            .order_by(models.DataSet.case_id, models.DataSet.id)
+            .all())
+
 
 def create_dataset(db: Session, project_id: int | None, name: str,
                    user_id: int | None, description: str | None = None,
@@ -156,13 +188,15 @@ def remove_node_config(db: Session, dataset_id: int, node_id: str,
 
 # ============ 执行展开（单套语义：每个数据集 = 一套入参配置） ============
 
-def plan_case_expansion(db: Session, case, dataset_id=None) -> list:
+def plan_case_expansion(db: Session, case, dataset_id=None, row_index=None) -> list:
     """按用例绑定生成执行展开计划。
 
     - 未绑定（且未临时指定）→ ValueError：执行强绑定（2026-09-30 定案，
       「未绑数据集执行放行」的旧语义废止）
     - 绑定数据集 → 单条：行数据（各节点入参配置）注入执行上下文
     - dataset_id 传入时临时覆盖用例绑定（执行面板换数据集，不改绑定本身）
+    - row_index 传入时选指定数据行（执行面板换行，值=DataSetRow.row_index，
+      缺省第 1 行；不影响数据集内容）
     """
     effective = dataset_id if dataset_id is not None else getattr(case, "dataset_id", None)
     if not effective:
@@ -175,13 +209,19 @@ def plan_case_expansion(db: Session, case, dataset_id=None) -> list:
     rows = crud.list_rows(db, effective)
     if not rows:
         raise ValueError("数据集无数据行，请先在数据集页完成入参配置")
-    r = rows[0]
+    if row_index is not None:
+        r = next((x for x in rows if x.row_index == row_index), None)
+        if r is None:
+            avail = "、".join(str(x.row_index) for x in rows)
+            raise ValueError(f"数据集「{ds.name}」没有第 {row_index} 行（现有行：{avail}）")
+    else:
+        r = rows[0]
     return [{
         "dataset_id": effective,
         "row": {
             "row_index": r.row_index,
             "data": dict(r.data or {}),
-            "label": ds.name,
+            "label": ds.name + (f" 第{r.row_index}行" if len(rows) > 1 else ""),
         },
     }]
 

@@ -4,7 +4,7 @@
       <el-table-column label="断言类型" width="200">
         <template #default="{ row }">
           <el-select v-model="row.type" size="small" style="width: 100%">
-            <el-option-group label="响应断言">
+            <el-option-group label="页面断言">
               <el-option v-for="o in responseTypes" :key="o.value" :label="o.label" :value="o.value" />
             </el-option-group>
             <el-option-group label="DB 断言">
@@ -19,7 +19,7 @@
             v-if="needsJsonPath(row.type)"
             v-model="row.path"
             size="small"
-            placeholder="$.data.status"
+            placeholder="$.text / $.url"
           />
           <span v-else class="muted">—</span>
         </template>
@@ -80,16 +80,17 @@ import type { RefVarGroup } from '@/components/VarRefSelect.vue'
 const props = defineProps<{ modelValue: any[]; refGroups?: RefVarGroup[] }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: any[]): void }>()
 
+// UI 平台：断言对页面事实（facts）求值，JSON Path 即 facts 路径。
+// response_status_equals（HTTP 状态码）已裁撤——UI 节点无状态码语义（恒 0）。
 const responseTypes = [
-  { label: 'JSON Path 等于', value: 'json_path_equals' },
-  { label: 'JSON Path 不等于', value: 'json_path_not_equals' },
-  { label: 'JSON Path 包含', value: 'json_path_contains' },
-  { label: 'JSON Path 存在', value: 'json_path_exists' },
-  { label: 'JSON Path 非空', value: 'json_path_not_empty' },
-  { label: 'JSON Path 匹配正则', value: 'json_path_match_regex' },
-  { label: 'JSON Path 类型校验', value: 'json_path_type_equals' },
-  { label: 'HTTP 状态码等于', value: 'response_status_equals' },
-  { label: '响应时间小于(ms)', value: 'response_time_less_than' },
+  { label: '页面值 等于', value: 'json_path_equals' },
+  { label: '页面值 不等于', value: 'json_path_not_equals' },
+  { label: '页面值 包含', value: 'json_path_contains' },
+  { label: '页面值 存在', value: 'json_path_exists' },
+  { label: '页面值 非空', value: 'json_path_not_empty' },
+  { label: '页面值 匹配正则', value: 'json_path_match_regex' },
+  { label: '页面值 类型校验', value: 'json_path_type_equals' },
+  { label: '页面耗时小于(ms)', value: 'response_time_less_than' },
 ]
 const dbTypes = [
   { label: 'DB 查询字段等于', value: 'db_query_equals' },
@@ -98,8 +99,8 @@ const dbTypes = [
   { label: 'DB 查询行数等于', value: 'db_query_count_equals' },
   { label: 'DB 查询行数大于', value: 'db_query_count_greater_than' },
   { label: 'DB 查询行数小于', value: 'db_query_count_less_than' },
-  { label: 'DB值 等于 响应字段', value: 'db_vs_jsonpath_equals' },
-  { label: 'DB值 不等于 响应字段', value: 'db_vs_jsonpath_not_equals' },
+  { label: 'DB值 等于 页面字段', value: 'db_vs_jsonpath_equals' },
+  { label: 'DB值 不等于 页面字段', value: 'db_vs_jsonpath_not_equals' },
 ]
 
 function needsJsonPath(type: string) {

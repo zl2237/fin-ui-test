@@ -5,6 +5,7 @@
         <span class="page-title">元素库</span>
         <el-button type="primary" @click="openCreate">+ 新增元素</el-button>
         <el-button type="success" @click="openBatch">批量导入</el-button>
+        <el-button @click="openScopeLabels">页面域语义</el-button>
         <el-button @click="customVisible = true">动作库管理</el-button>
       </div>
       <div class="head-right">
@@ -48,7 +49,10 @@
           >
             <template #default="{ data }">
               <span class="tree-node">
-                <span class="scope-name" :title="data.path">{{ data.label }}</span>
+                <span class="scope-name" :title="scopeLabels[data.path] ? `${scopeLabels[data.path]}（${data.path}）` : data.path">
+                  {{ scopeLabels[data.path] || data.label }}
+                </span>
+                <span v-if="scopeLabels[data.path]" class="scope-en">{{ data.label }}</span>
                 <span class="scope-count">{{ data.count }}</span>
               </span>
             </template>
@@ -193,6 +197,25 @@
         <el-button type="primary" :loading="saving" @click="onBatchSave">导入</el-button>
       </template>
     </el-dialog>
+
+    <!-- 页面域语义配置（英文域 → 中文，侧栏树展示） -->
+    <el-dialog v-model="labelDialogVisible" title="页面域语义" width="min(560px, 92vw)">
+      <el-alert type="info" :closable="false" style="margin-bottom: 10px">
+        为英文页面域配置中文语义（如 ordermanage/business_order_add → 新建委托订单），
+        保存后左侧页面域树以中文展示。清空文本即删除该域语义。
+      </el-alert>
+      <div class="label-rows">
+        <div v-for="d in labelDrafts" :key="d.page_scope" class="label-row">
+          <span class="label-scope mono" :title="d.page_scope">{{ d.page_scope }}</span>
+          <el-input v-model="d.label" size="small" placeholder="中文语义，如 新建委托订单" clearable />
+        </div>
+      </div>
+      <EmptyState v-if="!labelDrafts.length" description="暂无页面域，先新增或导入元素" :image-size="60" />
+      <template #footer>
+        <el-button @click="labelDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="labelSaving" @click="onSaveScopeLabels">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -200,7 +223,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import { elementApi, type UiElement, type UiElementScope } from '@/api'
+import { elementApi, scopeLabelApi, type UiElement, type UiElementScope } from '@/api'
 import { useAppStore } from '@/stores'
 import { debounce } from '@/utils/ui'
 import { formatTime, formatRelativeTime } from '@/utils/format'
@@ -316,6 +339,53 @@ async function loadScopes() {
     scopes.value = await elementApi.scopes(store.currentProjectId)
   } catch {
     scopes.value = []
+  }
+}
+
+// ===== 页面域字典（英文域 → 中文语义，侧栏树展示） =====
+const scopeLabels = ref<Record<string, string>>({})
+const labelDialogVisible = ref(false)
+const labelSaving = ref(false)
+const labelDrafts = ref<{ page_scope: string; label: string }[]>([])
+
+async function loadScopeLabels() {
+  if (!store.currentProjectId) return
+  try {
+    scopeLabels.value = await scopeLabelApi.getMap(store.currentProjectId)
+  } catch {
+    scopeLabels.value = {}
+  }
+}
+
+/** 打开语义配置：行 = 当前全部叶子域，预填已配置语义 */
+function openScopeLabels() {
+  labelDrafts.value = scopes.value.map(s => ({
+    page_scope: s.page_scope,
+    label: scopeLabels.value[s.page_scope] || '',
+  }))
+  labelDialogVisible.value = true
+}
+
+async function onSaveScopeLabels() {
+  if (!store.currentProjectId) return
+  // 只提交有变化的行（含清空 → 删除语义），避免无谓写库
+  const items = labelDrafts.value
+    .filter(d => (scopeLabels.value[d.page_scope] || '') !== d.label.trim())
+    .map(d => ({ page_scope: d.page_scope, label: d.label.trim() }))
+  if (!items.length) {
+    labelDialogVisible.value = false
+    return
+  }
+  labelSaving.value = true
+  try {
+    const res = await scopeLabelApi.batch(store.currentProjectId, items)
+    ElMessage.success(res.message)
+    labelDialogVisible.value = false
+    await loadScopeLabels()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    labelSaving.value = false
   }
 }
 
@@ -578,6 +648,7 @@ async function onBatchSave() {
 
 onMounted(() => {
   loadScopes()
+  loadScopeLabels()
   load()
 })
 
@@ -588,6 +659,7 @@ watch(() => store.currentProjectId, (n, old) => {
     keyword.value = ''
     currentScope.value = ''
     loadScopes()
+    loadScopeLabels()
     load()
   }
 })
@@ -664,6 +736,40 @@ watch(() => store.currentProjectId, (n, old) => {
   font-variant-numeric: tabular-nums;
   color: var(--app-text-faint);
   flex-shrink: 0;
+}
+/* 已配中文语义的叶子：中文名主显，英文尾段弱化随行 */
+.scope-en {
+  font-size: 11px;
+  color: var(--app-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+}
+/* 页面域语义配置弹窗行 */
+.label-rows {
+  max-height: 50vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.label-scope {
+  width: 250px;
+  flex-shrink: 0;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--app-text-muted);
+}
+@media (max-width: 760px) {
+  .label-scope { width: 140px; }
 }
 /* 页面域树：节点行与平铺项同视觉，宽度撑满可点击 */
 .scope-panel :deep(.el-tree) {
