@@ -13,7 +13,7 @@
 
     <div class="ca-toolbar">
       <el-button type="primary" size="small" @click="openCreate">+ 新建 JS 模板动作</el-button>
-      <span class="ca-count">共 {{ rows.length }} 个（内置封装 {{ presetActions.length }} + JS 模板 {{ list.length }}）</span>
+      <span class="ca-count">共 {{ rows.length }} 个非原生动作（内置封装 {{ presetActions.length }} + JS 模板 {{ list.length }}）；另有 {{ nativeCount }} 个原生动作与 1 个自定义动作通道由引擎内置，全量词表 {{ UI_ACTIONS.length + list.length }} 个见帮助「UI 动作解析」</span>
     </div>
 
     <el-table v-loading="loading" :data="rows" size="small" stripe max-height="430">
@@ -134,6 +134,9 @@ return 'ok:' + sum`
 /** 内置封装动作（非原生词表；custom 为步骤占位，模板清单在 JS 模板中管理） */
 const presetActions = computed<UiActionMeta[]>(() =>
   UI_ACTIONS.filter((a) => a.origin === 'wrapped' && a.action !== 'custom'))
+
+/** 原生动作数（引擎内置不可配置）——计数行与帮助中心「全量词表」对齐口径用 */
+const nativeCount = UI_ACTIONS.filter((a) => a.origin === 'native').length
 
 interface Row {
   key: string
