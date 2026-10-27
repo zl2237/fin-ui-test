@@ -66,7 +66,7 @@
                   style="width: 240px"
                   size="small"
                   :loading="!dsOptions[m.case_id]"
-                  placeholder="数据集 / sheet"
+                  :placeholder="m.dataset_id == null ? '用例默认绑定' : '数据集 / sheet'"
                   @visible-change="(v: boolean) => v && loadDsOptions(m)"
                   @change="(v: any) => onPickDataset(m, String(v))"
                 >
@@ -233,6 +233,7 @@ interface ItemRow {
   project_id: number | null
   env_id: number | null
   dataset_id: number | null
+  case_dataset_id: number | null  // 用例自身绑定（dataset_id 空时实际生效）
   dataset_row_index: number | null
   run_count: number
   case_missing: boolean
@@ -270,6 +271,7 @@ async function load() {
         case_id: it.case_id, case_name: it.case_name || '', case_type: it.case_type || 'normal',
         project_id: null, env_id: null,
         dataset_id: it.dataset_id ?? null, dataset_row_index: it.dataset_row_index ?? null,
+        case_dataset_id: it.case_dataset_id ?? null,
         run_count: it.run_count || 1,
         case_missing: !!it.case_missing, dataset_missing: !!it.dataset_missing,
       }
@@ -280,6 +282,7 @@ async function load() {
         base.case_type = c.case_type || 'normal'
         base.project_id = c.project_id
         base.env_id = c.env_id ?? null
+        base.case_dataset_id = c.dataset_id ?? null
       } catch { /* 用例详情取失败不阻塞编辑（执行预检兜底） */ }
       return base
     }))
@@ -345,7 +348,7 @@ function addItem() {
   items.value.push({
     case_id: c.id, case_name: c.name, case_type: c.case_type || 'normal',
     project_id: addProjectId.value, env_id: c.env_id ?? null,
-    dataset_id: null, dataset_row_index: null, run_count: 1,
+    dataset_id: null, dataset_row_index: null, case_dataset_id: c.dataset_id ?? null, run_count: 1,
     case_missing: false, dataset_missing: false,
   })
   dirty.value = true
@@ -371,7 +374,7 @@ async function loadDsOptions(m: ItemRow) {
       ds.rows.forEach((r, idx) => {
         opts.push({
           key: `${ds.id}:${r.row_index}`,
-          label: `${ds.name} · ${r.label || `Sheet${r.row_index}`}${idx === 0 ? '（首行）' : ''}`,
+          label: `${ds.name}${ds.id === m.case_dataset_id ? '（用例绑定）' : ''} · ${r.label || `Sheet${r.row_index}`}${idx === 0 ? '（首行）' : ''}`,
         })
       })
     }
