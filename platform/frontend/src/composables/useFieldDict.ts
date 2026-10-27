@@ -19,11 +19,12 @@ export function useFieldDict() {
 
   /**
    * 仅查项目字典（不使用 existingLabel）
-   * 支持嵌套路径与阶段前缀的智能匹配：
+   * 支持嵌套路径与前缀剥离的智能匹配：
    *   1. 完整路径精确匹配（如 'to_customer.put_amount'）
    *   2. 末段匹配（如 'put_amount'）——适配字典中只配单层 key 的常见场景
    *   3. 各中间段匹配（如 'to_customer'）——适配字典中配了父级 key 的场景
-   *   4. 阶段前缀剥离（如 's1_bl_no' → 'bl_no'）——全链用例数据集列带 sN_ 阶段前缀
+   *   4. 下划线前缀剥离（如 's1_bl_no' → 'bl_no'）——全链用例数据集行键带 sN_ 阶段前缀，
+   *      数据集行键还存在「节点_字段名」格式，依次尝试各下划线切分点（剩余段从长到短）
    */
   function dictLabel(key: string): string {
     if (!key) return ''
@@ -37,9 +38,15 @@ export function useFieldDict() {
         if (store.fieldDictMap[sub]) return store.fieldDictMap[sub]
       }
     }
-    // 3. 阶段前缀（sN_）剥离后按原始字段名匹配（展示侧 key 本身保留前缀，阶段可辨）
-    const stripped = key.replace(/^s\d+_/, '')
-    if (stripped !== key && store.fieldDictMap[stripped]) return store.fieldDictMap[stripped]
+    // 3. 下划线前缀剥离：'sN_/节点_字段名' 依次剥到每个下划线处（剩余段从长到短，最具体的字段名优先）
+    if (key.includes('_')) {
+      let pos = key.indexOf('_')
+      while (pos !== -1) {
+        const sub = key.slice(pos + 1)
+        if (sub && store.fieldDictMap[sub]) return store.fieldDictMap[sub]
+        pos = key.indexOf('_', pos + 1)
+      }
+    }
     return ''
   }
 
