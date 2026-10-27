@@ -122,12 +122,20 @@
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="220" fixed="right">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="previewFile(row)" v-if="isPreviewable(row.content_type)">预览</el-button>
-              <el-button link type="primary" size="small" @click="downloadFile(row)">下载</el-button>
-              <el-button link type="primary" size="small" @click="openRenameDialog(row)">编辑</el-button>
-              <el-button link type="danger" size="small" @click="confirmDeleteFile(row)">删除</el-button>
+              <el-tooltip v-if="isPreviewable(row.content_type)" content="预览" placement="top">
+                <el-button link type="primary" size="small" :icon="View" @click="previewFile(row)" />
+              </el-tooltip>
+              <el-tooltip content="下载" placement="top">
+                <el-button link type="primary" size="small" :icon="Download" @click="downloadFile(row)" />
+              </el-tooltip>
+              <el-tooltip content="编辑" placement="top">
+                <el-button link type="primary" size="small" :icon="EditPen" @click="openRenameDialog(row)" />
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top">
+                <el-button link type="danger" size="small" :icon="Delete" @click="confirmDeleteFile(row)" />
+              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
@@ -277,7 +285,7 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
-  Plus, Edit, Delete, Files, FolderOpened, Search, Upload,
+  Plus, Edit, Delete, EditPen, View, Download, Files, FolderOpened, Search, Upload,
   Picture, Document, VideoPlay, Files as FilesIcon, WarningFilled,
 } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'

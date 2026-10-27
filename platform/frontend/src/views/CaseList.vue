@@ -191,11 +191,13 @@
             <el-table-column label="更新人" width="100" align="center">
               <template #default="{ row }">{{ row.updated_by_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+            <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
+                <el-tooltip content="编排" placement="top">
+                  <el-button link type="primary" size="small" :icon="EditPen" @click="goDesign(row)" />
+                </el-tooltip>
                 <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
-                  <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
+                  <el-button link type="success" size="small" :icon="VideoPlay" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
                 <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
@@ -212,13 +214,13 @@
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
                 <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" @click="openBind(row)" />
                 </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                  <el-button link type="primary" size="small">
-                    更多<el-icon class="row-more-icon"><ArrowDown /></el-icon>
-                  </el-button>
+                  <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
+                    <el-button link type="primary" size="small" :icon="MoreFilled" />
+                  </el-tooltip>
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
@@ -336,11 +338,13 @@
             <el-table-column label="更新人" width="100" align="center">
               <template #default="{ row }">{{ row.updated_by_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+            <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
+                <el-tooltip content="编排" placement="top">
+                  <el-button link type="primary" size="small" :icon="EditPen" @click="goDesign(row)" />
+                </el-tooltip>
                 <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
-                  <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
+                  <el-button link type="success" size="small" :icon="VideoPlay" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
                 <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
@@ -357,13 +361,13 @@
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
                 <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" @click="openBind(row)" />
                 </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                  <el-button link type="primary" size="small">
-                    更多<el-icon class="row-more-icon"><ArrowDown /></el-icon>
-                  </el-button>
+                  <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
+                    <el-button link type="primary" size="small" :icon="MoreFilled" />
+                  </el-tooltip>
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
@@ -531,7 +535,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRef } from 'v
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import Sortable from 'sortablejs'
-import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown } from '@element-plus/icons-vue'
+import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown, EditPen, VideoPlay, Grid, MoreFilled } from '@element-plus/icons-vue'
 import { caseApi, caseGroupApi, userApi, scheduleApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule } from '@/api'
 import { useAppStore } from '@/stores'
 import { formatTime, formatRelativeTime, execStatusText, execStatusType, fileTimestamp } from '@/utils/format'
@@ -1334,11 +1338,6 @@ function onGlobalKey(e: KeyboardEvent) {
 .env-suite-tip {
   font-size: 12px;
   color: var(--app-text-muted);
-}
-/* 行内「更多」下拉触发按钮：与链接按钮同高，图标小箭头 */
-.row-more-icon {
-  font-size: 12px;
-  margin-left: 1px;
 }
 /* 「执行」旁换套数据下拉触发：仅图标，压缩占位（与链接按钮同色系） */
 .run-data-caret {
