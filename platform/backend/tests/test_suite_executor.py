@@ -54,7 +54,7 @@ class FakeDB:
 def make_record():
     return SimpleNamespace(id=999, status="running", env_id=None, summary={},
                            started_at=None, ended_at=None, created_by=5,
-                           trigger_type="manual")
+                           trigger_type="manual", plan_id=None)
 
 
 @pytest.fixture
@@ -72,10 +72,10 @@ def harness(monkeypatch):
     created = []
 
     def fake_create(db, case_id, env_id, user_id=None, trigger_type=None,
-                    dataset_id=None, dataset_row=None):
+                    dataset_id=None, dataset_row=None, plan_id=None):
         rec = SimpleNamespace(id=100 + len(created), case_id=case_id, env_id=env_id,
                               status="running", summary={}, suite_execution_id=None,
-                              started_at=None, ended_at=None,
+                              started_at=None, ended_at=None, plan_id=plan_id,
                               steps=[])  # 对齐 ExecutionRecord ORM：steps 恒存在（_row_fail_reason 依赖）
         created.append(rec)
         return rec
@@ -87,9 +87,11 @@ def harness(monkeypatch):
         instances: list = []
 
         def __init__(self, db, case, env, execution_record=None, dataset_row=None,
-                     node_config_overrides=None, suite_vars=None,
+                     dataset_sheets=None, node_config_overrides=None, suite_vars=None,
                      suppress_notify=False):
             self.case, self.env, self.record = case, env, execution_record
+            self.dataset_row = dataset_row
+            self.dataset_sheets = dataset_sheets
             self.suite_vars = suite_vars
             self.suppress_notify = suppress_notify
             self.context = SimpleNamespace(registry=VariableRegistry())
@@ -120,6 +122,16 @@ def harness(monkeypatch):
 
 def _plain_plan():
     return [{"dataset_id": 7, "row": {"row_index": 1, "data": {"nodes": {}}, "label": ""}}]
+
+
+def _sheet_plan():
+    """带 sheets 清单的展开项（sheet 化后 plan_case_expansion 的新形态）"""
+    return [{"dataset_id": 7,
+             "row": {"row_index": 2, "data": {"nodes": {}, "bl_no": "B2"}, "label": "退款单"},
+             "sheets": [
+                 {"row_index": 1, "label": "正常单", "data": {"nodes": {}, "bl_no": "B1"}},
+                 {"row_index": 2, "label": "退款单", "data": {"nodes": {}, "bl_no": "B2"}},
+             ]}]
 
 
 def _row_plan(*rows):
@@ -182,6 +194,18 @@ class TestRunSuite:
         assert s["suite"] is True and s["total"] == 2 and s["passed"] == 2
         assert s["shared_vars"] == {"bl_no": "BL002"}  # 终值=最后一个有效快照
         assert len(harness.notif) == 1  # 套件级一条汇总通知
+
+    def test_sheets_passthrough_to_executor(self, harness):
+        """sheet 化透传：展开计划的 sheets 清单交给 DagExecutor（${sheet.字段}
+        全 sheet 注入），dataset_row 仍为选中行数据"""
+        harness.plans.update({11: _sheet_plan()})
+        harness.FakeExecutor.script = [("success", {})]
+        record = make_record()
+        se.run_suite(FakeDB([make_member(0, 11, 22)]),
+                     SimpleNamespace(id=77, shared_vars=None), record)
+        ex = harness.FakeExecutor.instances[0]
+        assert ex.dataset_row == {"nodes": {}, "bl_no": "B2"}
+        assert [s["label"] for s in ex.dataset_sheets] == ["正常单", "退款单"]
 
     def test_row_pairing_and_carry_over(self, harness):
         """逐行配对：上游 2 行 → 下游 3 行（第 3 行沿用最后有效快照）"""

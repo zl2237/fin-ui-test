@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ============ 通用 ============
@@ -672,6 +672,8 @@ class ExecutionRecordOut(ORMBase):
     dataset_id: int | None = None
     dataset_row: dict[str, Any] | None = None  # 数据驱动行快照 {row_index, data, label}
     suite_execution_id: int | None = None  # 套件来源：非空=套件链成员执行，指向套件主记录
+    plan_id: int | None = None  # 执行方案来源：非空=方案触发（一键/定时，含方案内套件成员）
+    plan_name: str | None = None  # 方案已删时为 None（溯源编号仍在）
     steps: list[StepRecordOut] = []
     created_by: int | None = None
     created_by_name: str | None = None
@@ -754,6 +756,82 @@ class TestScheduleOut(ORMBase):
     created_by_name: str | None = None
     updated_by: int | None = None
     updated_by_name: str | None = None
+
+
+# ============ ExecutionPlan 执行方案 ============
+class PlanItemIn(BaseModel):
+    """方案成员提交：dataset 覆盖须属于该成员用例；套件成员禁配覆盖（服务层校验）"""
+    case_id: int
+    dataset_id: int | None = None
+    dataset_row_index: int | None = None
+    run_count: int = 1
+    sort_order: int = 0
+
+
+class PlanItemsReplaceIn(BaseModel):
+    items: list[PlanItemIn]
+
+
+class PlanItemOut(BaseModel):
+    id: int
+    case_id: int
+    dataset_id: int | None = None
+    dataset_row_index: int | None = None
+    run_count: int
+    sort_order: int
+    # 展示回填（详情接口填充）
+    case_name: str | None = None
+    case_type: str | None = None
+    dataset_name: str | None = None
+    sheet_label: str | None = None  # 选中的 sheet 名（默认第 1 行时也回填）
+    case_missing: bool = False      # 防御标记（DB 级联删除正常时不出现）
+    dataset_missing: bool = False   # 覆盖数据集已删：标红交前端，执行预检会精确报错
+
+
+class ExecutionPlanCreate(BaseModel):
+    project_id: int | None = None
+    name: str
+    description: str | None = None
+    concurrency: int = 4
+
+
+class ExecutionPlanUpdate(BaseModel):
+    """局部更新；schedule_off=True 显式清除定时（schedule_type=None 表示「未提供」无法区分清除）"""
+    name: str | None = None
+    description: str | None = None
+    concurrency: int | None = None
+    enabled: bool | None = None
+    schedule_type: Literal["interval", "daily"] | None = None
+    schedule_interval_minutes: int | None = None
+    schedule_daily_time: str | None = None
+    schedule_enabled: bool | None = None
+    schedule_off: bool = False
+
+
+class ExecutionPlanOut(ORMBase):
+    id: int
+    project_id: int | None = None
+    name: str
+    description: str | None = None
+    concurrency: int
+    enabled: bool
+    schedule_type: str | None = None
+    schedule_interval_minutes: int | None = None
+    schedule_daily_time: str | None = None
+    schedule_enabled: bool
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    item_count: int = 0  # 列表聚合填充
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: int | None = None
+    created_by_name: str | None = None
+    updated_by: int | None = None
+    updated_by_name: str | None = None
+
+
+class ExecutionPlanDetailOut(ExecutionPlanOut):
+    items: list[PlanItemOut] = []
 
 
 # ============ FieldDictionary 字段字典 ============
@@ -970,6 +1048,19 @@ class DataSetRowOut(ORMBase):
     dataset_id: int
     row_index: int
     data: dict[str, Any] = {}
+    # sheet 展示元数据（2026-10-27 sheet 化）：历史行 label 为 NULL → 出参归一为
+    # Sheet{row_index}（与运行时回退一致），读取方零改动拿到具体标签
+    label: str | None = None
+    field_desc: dict[str, str] | None = None
+    field_order: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _sheet_meta_defaults(self) -> "DataSetRowOut":
+        if not self.label:
+            self.label = f"Sheet{self.row_index}"
+        self.field_desc = self.field_desc or {}
+        self.field_order = self.field_order or []
+        return self
 
 
 # 数据集参数视图：按用例 DAG 节点组织（节点 tab 数据源）。

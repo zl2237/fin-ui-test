@@ -4,9 +4,9 @@
       <div class="head-left">
         <span class="page-title">元素库</span>
         <el-button type="primary" @click="openCreate">+ 新增元素</el-button>
-        <el-button type="success" @click="openBatch">批量导入</el-button>
+        <el-button @click="openBatch">批量导入</el-button>
         <el-button @click="openScopeLabels">页面域语义</el-button>
-        <el-button @click="customVisible = true">动作库管理</el-button>
+        <el-button @click="router.push('/actions')">动作库管理</el-button>
       </div>
       <div class="head-right">
         <el-input
@@ -42,10 +42,12 @@
             node-key="path"
             :props="{ label: 'label', children: 'children' }"
             :current-node-key="currentScope"
-            default-expand-all
+            :default-expanded-keys="expandedScopePaths"
             highlight-current
             :expand-on-click-node="false"
             @node-click="onTreeNodeClick"
+            @node-expand="onScopeNodeExpand"
+            @node-collapse="onScopeNodeCollapse"
           >
             <template #default="{ data }">
               <span class="tree-node">
@@ -102,10 +104,14 @@
                 </el-tooltip>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="130" fixed="right">
+            <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="onEdit(row)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="onRemove(row)">删除</el-button>
+                <el-tooltip content="编辑" placement="top">
+                  <el-button link type="primary" size="small" :icon="EditPen" @click="onEdit(row)" />
+                </el-tooltip>
+                <el-tooltip content="删除" placement="top">
+                  <el-button link type="danger" size="small" :icon="Delete" @click="onRemove(row)" />
+                </el-tooltip>
               </template>
             </el-table-column>
           </el-table>
@@ -164,9 +170,6 @@
       </template>
     </el-drawer>
 
-    <!-- 自定义动作（JS 模板）管理：编排「自定义动作」步骤引用 -->
-    <CustomActionDialog v-model="customVisible" />
-
     <!-- 批量导入弹窗：粘贴 locator JSON 原文，前端展开为 items -->
     <el-dialog v-model="batchVisible" title="批量导入元素" width="560px" align-center :close-on-click-modal="false">
       <el-alert type="info" :closable="false" style="margin-bottom: 12px">
@@ -221,20 +224,19 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, EditPen, Delete } from '@element-plus/icons-vue'
 import { elementApi, scopeLabelApi, type UiElement, type UiElementScope } from '@/api'
 import { useAppStore } from '@/stores'
 import { debounce } from '@/utils/ui'
 import { formatTime, formatRelativeTime } from '@/utils/format'
 import { useClientSort } from '@/composables/useClientSort'
+import { expandStorageKey } from '@/composables/useGroupTree'
 import EmptyState from '@/components/EmptyState.vue'
-import CustomActionDialog from '@/components/CustomActionDialog.vue'
 
 const store = useAppStore()
-
-// 自定义动作管理弹窗（页头「自定义动作」入口）
-const customVisible = ref(false)
+const router = useRouter()
 
 // 常用策略键（locator JSON / 后端优先级链中出现过的键；键值对编辑可自定义输入）
 const STRATEGY_KEYS = [
@@ -306,6 +308,48 @@ const scopeTree = computed<ScopeTreeNode[]>(() => {
 function onTreeNodeClick(data: ScopeTreeNode) {
   selectScope(data.path)
 }
+
+// 页面域树展开记忆：与分组树同约定（fin_group_expand_{scope}_{projectId}）；无记忆默认全收起
+const SCOPE_EXPAND_SCOPE = 'elementLibrary'
+const expandedScopePaths = ref<string[]>([])
+
+function loadScopeExpandMemory() {
+  try {
+    const saved = localStorage.getItem(expandStorageKey(SCOPE_EXPAND_SCOPE, store.currentProjectId))
+    expandedScopePaths.value = saved ? JSON.parse(saved) : []
+  } catch {
+    expandedScopePaths.value = []
+  }
+}
+
+function persistScopeExpand() {
+  if (!store.currentProjectId) return
+  try {
+    localStorage.setItem(
+      expandStorageKey(SCOPE_EXPAND_SCOPE, store.currentProjectId),
+      JSON.stringify(expandedScopePaths.value),
+    )
+  } catch {
+    // 忽略写入失败
+  }
+}
+
+function onScopeNodeExpand(data: ScopeTreeNode) {
+  if (!expandedScopePaths.value.includes(data.path)) {
+    expandedScopePaths.value.push(data.path)
+    persistScopeExpand()
+  }
+}
+
+function onScopeNodeCollapse(data: ScopeTreeNode) {
+  const i = expandedScopePaths.value.indexOf(data.path)
+  if (i >= 0) {
+    expandedScopePaths.value.splice(i, 1)
+    persistScopeExpand()
+  }
+}
+
+watch(() => store.currentProjectId, loadScopeExpandMemory, { immediate: true })
 
 // 表头排序（sortable="custom"）：先排全量再分页切片
 const { onSortChange, sorted: sortedList } = useClientSort(list, {
@@ -679,7 +723,7 @@ watch(() => store.currentProjectId, (n, old) => {
 }
 /* 左侧页面域面板 */
 .scope-panel {
-  width: 240px;
+  width: 288px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -723,13 +767,16 @@ watch(() => store.currentProjectId, (n, old) => {
   color: var(--app-primary);
   font-weight: 500;
 }
+/* 中文名允许两行截断：面板固定宽度下单行省略只露 4 个汉字，语义不完整 */
 .scope-name {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .scope-count {
   font-size: 11px;
@@ -792,7 +839,7 @@ watch(() => store.currentProjectId, (n, old) => {
 }
 .tree-node {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   flex: 1;
   min-width: 0;

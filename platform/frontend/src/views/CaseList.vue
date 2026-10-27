@@ -191,11 +191,13 @@
             <el-table-column label="更新人" width="100" align="center">
               <template #default="{ row }">{{ row.updated_by_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+            <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
-                <el-tooltip content="执行本行用例（绑定数据集第 1 行）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
-                  <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
+                <el-tooltip content="编排" placement="top">
+                  <el-button link type="primary" size="small" :icon="EditPen" @click="goDesign(row)" />
+                </el-tooltip>
+                <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                  <el-button link type="success" size="small" :icon="VideoPlay" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
                 <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
@@ -212,22 +214,22 @@
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
                 <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" @click="openBind(row)" />
                 </el-tooltip>
-                <!-- 低频操作收纳：报告/定时/复制/删除 -->
-                <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                  <el-button link type="primary" size="small">
-                    更多<el-icon class="row-more-icon"><ArrowDown /></el-icon>
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="report">查看报告</el-dropdown-item>
-                      <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
-                      <el-dropdown-item command="copy">复制用例</el-dropdown-item>
-                      <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                <!-- 低频操作收纳：报告/定时/复制/删除；tooltip 须在 dropdown 外层，嵌进默认插槽会破坏 click 触发器 -->
+                <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
+                  <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
+                    <el-button link type="primary" size="small" :icon="MoreFilled" />
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="report">查看报告</el-dropdown-item>
+                        <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
+                        <el-dropdown-item command="copy">复制用例</el-dropdown-item>
+                        <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </el-tooltip>
               </template>
             </el-table-column>
           </el-table>
@@ -336,11 +338,13 @@
             <el-table-column label="更新人" width="100" align="center">
               <template #default="{ row }">{{ row.updated_by_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+            <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" size="small" @click="goDesign(row)">编排</el-button>
-                <el-tooltip content="执行本行用例（绑定数据集第 1 行）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
-                  <el-button link type="success" size="small" @click="runCase(row)">执行</el-button>
+                <el-tooltip content="编排" placement="top">
+                  <el-button link type="primary" size="small" :icon="EditPen" @click="goDesign(row)" />
+                </el-tooltip>
+                <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                  <el-button link type="success" size="small" :icon="VideoPlay" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
                 <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
@@ -357,22 +361,22 @@
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
                 <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" @click="openBind(row)" />
                 </el-tooltip>
-                <!-- 低频操作收纳：报告/定时/复制/删除 -->
-                <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-                  <el-button link type="primary" size="small">
-                    更多<el-icon class="row-more-icon"><ArrowDown /></el-icon>
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="report">查看报告</el-dropdown-item>
-                      <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
-                      <el-dropdown-item command="copy">复制用例</el-dropdown-item>
-                      <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                <!-- 低频操作收纳：报告/定时/复制/删除；tooltip 须在 dropdown 外层，嵌进默认插槽会破坏 click 触发器 -->
+                <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
+                  <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
+                    <el-button link type="primary" size="small" :icon="MoreFilled" />
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="report">查看报告</el-dropdown-item>
+                        <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
+                        <el-dropdown-item command="copy">复制用例</el-dropdown-item>
+                        <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </el-tooltip>
               </template>
             </el-table-column>
           </el-table>
@@ -511,7 +515,7 @@
         数据集按用例隔离，仅可选本用例名下的数据集；多场景去数据集页复制
       </div>
       <el-select v-model="bindDatasetId" placeholder="选择数据集（空=不绑定）" clearable :loading="bindLoading" style="width: 100%">
-        <el-option v-for="d in bindDatasets" :key="d.id" :label="`${d.name}（${d.rows.length} 行）`" :value="d.id" />
+        <el-option v-for="d in bindDatasets" :key="d.id" :label="`${d.name}（${d.rows.length} 个 sheet）`" :value="d.id" />
       </el-select>
       <div v-if="!bindLoading && !bindDatasets.length" class="bind-empty">
         该用例暂无数据集（数据集为用例私有），
@@ -531,7 +535,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRef } from 'v
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import Sortable from 'sortablejs'
-import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown } from '@element-plus/icons-vue'
+import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown, EditPen, VideoPlay, Grid, MoreFilled } from '@element-plus/icons-vue'
 import { caseApi, caseGroupApi, userApi, scheduleApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule } from '@/api'
 import { useAppStore } from '@/stores'
 import { formatTime, formatRelativeTime, execStatusText, execStatusType, fileTimestamp } from '@/utils/format'
@@ -940,14 +944,14 @@ async function loadDataOptions(row: TestCase) {
     const opts: RunDataOpt[] = []
     for (const ds of list) {
       if (!ds.rows.length) {
-        opts.push({ key: `ds-${ds.id}`, label: `${ds.name}（无数据行）`, datasetId: ds.id, disabled: true })
+        opts.push({ key: `ds-${ds.id}`, label: `${ds.name}（无 sheet）`, datasetId: ds.id, disabled: true })
         continue
       }
       for (const r of ds.rows) {
         const isDefault = ds.id === row.dataset_id && r.row_index === ds.rows[0].row_index
         opts.push({
           key: `ds-${ds.id}-r-${r.row_index}`,
-          label: `${ds.name} · 第${r.row_index}行${isDefault ? '（默认）' : ''}`,
+          label: `${ds.name} · ${r.label || `Sheet${r.row_index}`}${isDefault ? '（默认）' : ''}`,
           datasetId: ds.id,
           rowIndex: r.row_index,
         })
@@ -1102,7 +1106,7 @@ function openSchedule(row: TestCase) {
 }
 
 // ===== 数据集绑定（只切换绑定关系；编辑集中在数据集管理页，口径对齐 API 平台用例列表）=====
-type BindDs = { id: number; name: string; rows: { row_index: number; data: Record<string, any> }[] }
+type BindDs = { id: number; name: string; rows: { row_index: number; label: string; data: Record<string, any> }[] }
 const bindVisible = ref(false)
 const bindSaving = ref(false)
 const bindLoading = ref(false)
@@ -1130,7 +1134,7 @@ async function saveBind() {
   try {
     await caseApi.update(bindCase.value.id, { dataset_id: bindDatasetId.value ?? null })
     bindCase.value.dataset_id = bindDatasetId.value ?? null
-    ElMessage.success(bindDatasetId.value ? '已绑定数据集（执行缺省取第 1 行）' : '已解绑')
+    ElMessage.success(bindDatasetId.value ? '已绑定数据集（执行缺省取第 1 个 sheet）' : '已解绑')
     delete dataOptionsMap.value[bindCase.value.id]  // 执行下拉的「（默认）」标注随绑定关系失效
     bindVisible.value = false
   } catch (e: any) {
@@ -1334,11 +1338,6 @@ function onGlobalKey(e: KeyboardEvent) {
 .env-suite-tip {
   font-size: 12px;
   color: var(--app-text-muted);
-}
-/* 行内「更多」下拉触发按钮：与链接按钮同高，图标小箭头 */
-.row-more-icon {
-  font-size: 12px;
-  margin-left: 1px;
 }
 /* 「执行」旁换套数据下拉触发：仅图标，压缩占位（与链接按钮同色系） */
 .run-data-caret {

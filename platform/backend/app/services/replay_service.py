@@ -139,17 +139,36 @@ def replay_step_once(db: Session, user: models.User, step_id: int,
             pass
 
 
-def _current_dataset_row(db: Session, execution: models.ExecutionRecord) -> dict | None:
-    """执行记录绑定数据集的当前行数据（首行，per-node 入参配置）：续跑共用
-    「数据集取当前」口径。数据集被用户修改后此处取到新配置（与 dataset_row
-    快照解耦）；无绑定/无行返回 None（执行强绑定下续跑被拒）。"""
+def _current_sheet_rows(db: Session, execution: models.ExecutionRecord) -> list:
+    """执行记录绑定数据集的当前全部行（sheet，按行序）：续跑共用「数据集取
+    当前」口径。无绑定返回空。"""
     if not execution.dataset_id:
+        return []
+    return (db.query(models.DataSetRow)
+            .filter(models.DataSetRow.dataset_id == execution.dataset_id)
+            .order_by(models.DataSetRow.row_index)
+            .all())
+
+
+def _current_dataset_row(db: Session, execution: models.ExecutionRecord) -> dict | None:
+    """选中 sheet 的当前行数据（per-node 入参配置）：按快照 row_index 匹配
+    当前行，匹配不上（历史快照无行号/行已被删）回退首行。数据集被用户修改
+    后此处取到新配置（与 dataset_row 快照解耦）；无绑定/无行返回 None
+    （执行强绑定下续跑被拒）。"""
+    rows = _current_sheet_rows(db, execution)
+    if not rows:
         return None
-    row = (db.query(models.DataSetRow)
-           .filter(models.DataSetRow.dataset_id == execution.dataset_id)
-           .order_by(models.DataSetRow.row_index)
-           .first())
-    return dict(row.data) if row and isinstance(row.data, dict) else None
+    snap = execution.dataset_row if isinstance(execution.dataset_row, dict) else {}
+    snap_idx = snap.get("row_index")
+    row = next((r for r in rows if r.row_index == snap_idx), rows[0])
+    return dict(row.data) if isinstance(row.data, dict) else None
+
+
+def _current_sheets(db: Session, execution: models.ExecutionRecord) -> list[dict] | None:
+    """全部 sheet 的当前值 [{label, data}]：续跑时 ${sheet.字段} 引用与正常
+    执行同口径（label 回退 Sheet{row_index}，与运行时注入一致）。"""
+    return [{"label": r.label or f"Sheet{r.row_index}", "data": dict(r.data or {})}
+            for r in _current_sheet_rows(db, execution)] or None
 
 
 def resume_execution_async(db: Session, user: models.User, exec_id: int) -> models.ExecutionRecord:
@@ -204,6 +223,7 @@ def resume_execution_async(db: Session, user: models.User, exec_id: int) -> mode
     dataset_row = _current_dataset_row(db, record)
     if dataset_row is None:
         raise HTTPException(400, "原执行未绑定数据集（或数据集已无数据行），续跑需绑定数据集，请重新执行")
+    dataset_sheets = _current_sheets(db, record)
     context_seed = build_report_context(steps)
 
     # 置 running（前端轮询立即感知），后台线程续跑（独立会话，请求会话随响应关闭）
@@ -223,7 +243,8 @@ def resume_execution_async(db: Session, user: models.User, exec_id: int) -> mode
             if not (rcase and renv and rrecord):
                 return
             DagExecutor(rdb, rcase, renv, execution_record=rrecord,
-                        dataset_row=dataset_row, context_seed=context_seed,
+                        dataset_row=dataset_row, dataset_sheets=dataset_sheets,
+                        context_seed=context_seed,
                         start_node=start_node, suppress_notify=True).execute()
         except Exception as e:
             try:

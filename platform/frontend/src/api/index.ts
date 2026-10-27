@@ -336,6 +336,8 @@ export interface ExecutionRecord {
   steps: StepRecord[]
   created_by?: number | null; created_by_name?: string | null
   trigger_type?: string
+  plan_id?: number | null       // 非空=执行方案触发（一键/定时，含方案内套件成员行）
+  plan_name?: string | null     // 方案名（尽力回查；方案已删时 null，显示「方案 #id」）
 }
 
 export interface TestSchedule {
@@ -479,9 +481,9 @@ export const caseApi = {
   execute: (caseId: number, datasetId?: number, rowIndex?: number) =>
     http.post<ExecutionRecord>(`/testcases/${caseId}/execute`,
       { case_id: caseId, dataset_id: datasetId ?? null, dataset_row_index: rowIndex ?? null }).then((r) => r.data),
-  // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源）
+  // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源；行=具名 sheet）
   datasets: (caseId: number) =>
-    http.get<{ id: number; name: string; rows: { row_index: number; data: Record<string, any> }[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
+    http.get<{ id: number; name: string; rows: DataSetSheetOut[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
   batchExecute: (caseIds: number[], counts?: number[], concurrency: number = 4) =>
     http.post<ExecutionRecord[]>('/testcases/batch-execute',
       { case_ids: caseIds, counts, concurrency }).then((r) => r.data),
@@ -511,13 +513,31 @@ export interface SplitVar {
 }
 
 // ============ DataSet 数据集维护（多套数据 = 多场景；按用例 1:N 隔离） ============
+/** 数据集行 = 具名 sheet（2026-10-27 sheet 化）：label 为 ${label.字段} 引用命名空间，
+ *  field_desc 仅编辑器备注，field_order 显式字段顺序（MySQL JSON 列不保 key 序） */
+export interface DataSetSheetOut {
+  row_index: number
+  data: Record<string, any>
+  label: string
+  field_desc?: Record<string, string> | null
+  field_order?: string[] | null
+}
+
+/** 保存载荷：label/data 必带，field_desc/field_order 可选（空则不落） */
+export interface DataSetSheetIn {
+  label: string
+  data: Record<string, any>
+  field_desc?: Record<string, string> | null
+  field_order?: string[] | null
+}
+
 export interface DataSetManage {
   id: number
   project_id: number
   case_id: number
   name: string
   description?: string | null
-  rows: { row_index: number; data: Record<string, any> }[]
+  rows: DataSetSheetOut[]
   case_bound_count?: number
 }
 
@@ -533,8 +553,8 @@ export const datasetApi = {
   // 复制数据集（默认名「原名-副本」，多场景标准起步）
   copy: (id: number) => http.post<DataSetManage>(`/datasets/${id}/copy`).then((r) => r.data),
   remove: (id: number) => http.delete(`/datasets/${id}`),
-  // 行整体替换（编辑完一次保存，行号后端重编 1..n；至少一行）
-  replaceRows: (id: number, rows: Record<string, any>[]) =>
+  // 行整体替换（编辑完一次保存，行号后端重编 1..n；至少一行；新 sheet 形态载荷）
+  replaceRows: (id: number, rows: DataSetSheetIn[]) =>
     http.put<DataSetManage>(`/datasets/${id}/rows`, { rows }).then((r) => r.data),
 }
 
@@ -558,6 +578,72 @@ export const scheduleApi = {
   run: (id: number) => http.post<{ message: string }>(`/schedules/${id}/run`).then((r) => r.data),
 }
 
+// ============ ExecutionPlan 执行方案 ============
+/** 方案成员（普通用例或套件均可；dataset 覆盖须属于该成员用例，套件成员禁配） */
+export interface PlanItem {
+  id?: number
+  case_id: number
+  dataset_id?: number | null      // NULL=沿用用例自身绑定
+  dataset_row_index?: number | null  // 值=DataSetRow.row_index；NULL=第 1 行
+  run_count?: number              // 1~9999
+  sort_order?: number
+  // 展示回填（详情接口）
+  case_name?: string | null
+  case_type?: string | null
+  dataset_name?: string | null
+  sheet_label?: string | null
+  case_missing?: boolean
+  dataset_missing?: boolean
+}
+
+export interface ExecutionPlan {
+  id: number; project_id?: number | null
+  name: string; description?: string | null
+  concurrency: number             // 1~16（提交线程池 max_workers）
+  enabled: boolean                // 方案总开关：禁用时定时跳过本轮（手动一键不受限）
+  schedule_type?: 'interval' | 'daily' | null  // NULL=未配置定时
+  schedule_interval_minutes?: number | null
+  schedule_daily_time?: string | null
+  schedule_enabled: boolean
+  last_run_at?: string | null; next_run_at?: string | null
+  item_count?: number             // 列表聚合
+  created_at?: string | null; updated_at?: string | null
+  created_by?: number | null; created_by_name?: string | null
+  updated_by?: number | null; updated_by_name?: string | null
+}
+
+export interface ExecutionPlanDetail extends ExecutionPlan {
+  items: PlanItem[]
+}
+
+/** 方案基础字段 + 内嵌定时局部更新（schedule_off=true 显式清除定时） */
+export interface PlanUpdatePayload {
+  name?: string
+  description?: string | null
+  concurrency?: number
+  enabled?: boolean
+  schedule_type?: 'interval' | 'daily' | null
+  schedule_interval_minutes?: number | null
+  schedule_daily_time?: string | null
+  schedule_enabled?: boolean
+  schedule_off?: boolean
+}
+
+export const planApi = {
+  list: (params?: { project_id?: number }) =>
+    http.get<ExecutionPlan[]>('/plans', { params }).then((r) => r.data),
+  create: (data: { project_id?: number | null; name: string; description?: string; concurrency?: number }) =>
+    http.post<ExecutionPlanDetail>('/plans', data).then((r) => r.data),
+  get: (id: number) => http.get<ExecutionPlanDetail>(`/plans/${id}`).then((r) => r.data),
+  update: (id: number, data: PlanUpdatePayload) =>
+    http.put<ExecutionPlanDetail>(`/plans/${id}`, data).then((r) => r.data),
+  updateItems: (id: number, items: PlanItem[]) =>
+    http.put<ExecutionPlanDetail>(`/plans/${id}/items`, { items }).then((r) => r.data),
+  remove: (id: number) => http.delete(`/plans/${id}`),
+  // 一键执行：预检失败 400 零记录；返回本次全部记录（成员独立并行，轮询到终态）
+  execute: (id: number) => http.post<ExecutionRecord[]>(`/plans/${id}/execute`).then((r) => r.data),
+}
+
 // ============ ProjectVersion 项目版本 ============
 export const projectVersionApi = {
   list: (projectId: number) =>
@@ -575,7 +661,7 @@ export const projectVersionApi = {
 
 // ============ Execution / Report ============
 export const execApi = {
-  list: (params?: { case_id?: number; project_id?: number; created_by?: number; limit?: number; offset?: number; case_name?: string; status?: string; start_time?: string; end_time?: string; sort_by?: string; order?: string }) =>
+  list: (params?: { case_id?: number; project_id?: number; created_by?: number; limit?: number; offset?: number; case_name?: string; status?: string; start_time?: string; end_time?: string; sort_by?: string; order?: string; plan_id?: number }) =>
     http.get<{ items: ExecutionRecord[]; total: number }>('/executions', { params }).then((r) => r.data),
   // 近 N 天执行统计（工作台）：全量聚合口径，不受列表翻页截断影响
   stats: (params?: { days?: number; project_id?: number }) =>
