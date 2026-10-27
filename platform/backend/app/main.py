@@ -40,6 +40,7 @@ from .routers import (
     home,
     operation_logs,
     page_scope_labels,
+    plans,
     projects,
     reports,
     schedules,
@@ -182,6 +183,7 @@ app.include_router(testcases.router)
 app.include_router(testcases.group_router)
 app.include_router(datasets.router)
 app.include_router(schedules.router)
+app.include_router(plans.router)
 app.include_router(versions.router)
 app.include_router(executions.router)
 app.include_router(home.router)
