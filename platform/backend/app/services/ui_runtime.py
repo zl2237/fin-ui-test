@@ -233,20 +233,24 @@ class UiRuntime:
         return True, prev
 
     def ensure_browser(self):
-        """惰性启动浏览器（首个 UI 节点触发）；playwright 缺失时业务级报错。"""
+        """惰性启动浏览器（首个 UI 节点触发）；playwright 缺失时业务级报错。
+
+        import 与启动同在 UI_SEMAPHORE 闸门内串行：方案并发多成员同时首次
+        触发时，惰性 import 在闸门外并发存在瞬时 ImportError 竞态（881 实录）。
+        """
         if self._page is not None:
             return self._page
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as e:
-            raise UiActionError(
-                "playwright 未安装：pip install playwright && playwright install --with-deps chromium"
-            ) from e
 
         UI_SEMAPHORE.acquire()
         self._semaphore_held = True
         restore, prev_policy = self._proactor_policy_guard()
         try:
+            try:
+                from playwright.sync_api import sync_playwright
+            except ImportError as e:
+                raise UiActionError(
+                    "playwright 未安装：pip install playwright && playwright install --with-deps chromium"
+                ) from e
             self._playwright = sync_playwright().start()
             viewport = self.config.get("viewport") or {"width": 1920, "height": 1080}
             launch_args = list(self.config.get("launch_args") or ["--disable-dev-shm-usage"])
