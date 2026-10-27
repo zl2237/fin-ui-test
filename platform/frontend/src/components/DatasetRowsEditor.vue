@@ -2,11 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete, DocumentCopy, Plus } from '@element-plus/icons-vue'
-import { datasetApi, dictApi } from '@/api'
+import { datasetApi } from '@/api'
 import { useAppStore } from '@/stores'
+import { useFieldDict } from '@/composables/useFieldDict'
 
 /**
- * 数据集行编辑器（DatasetDialog 与数据集管理页共用）：
+ * 数据集行编辑器（数据集管理页使用；用例列表只做绑定切换不再内嵌编辑）：
  * 每行一张键值卡（增删键/改名/改值，对象值折叠 JSON 编辑），
  * 复制行/删行/加行（复制上行），保存 = 整体替换后端重编行号。
  * rows 外部变更（切换数据集/重载）自动重建草稿；成功 emit('saved')。
@@ -50,16 +51,10 @@ function rowPreview(row: RowDraft): string {
   }).join('  ')
 }
 
-// 字段字典中文名（key → label），键名旁展示帮助理解业务含义
-const dictMap = ref<Record<string, string>>({})
-const hasDict = computed(() => Object.keys(dictMap.value).length > 0)
-
-async function loadDict() {
-  if (!store.currentProjectId) return
-  try { dictMap.value = await dictApi.getMap(store.currentProjectId) } catch { dictMap.value = {} }
-}
-
-watch(() => store.currentProjectId, loadDict, { immediate: true })
+// 字段字典中文名：直接用全局字典（MainLayout 启动/切项目时加载，字典页维护后刷新），
+// 解析走 useFieldDict.dictLabel（含「节点_/sN_ 字段名」前缀剥离兼容），不再单独请求
+const { dictLabel } = useFieldDict()
+const hasDict = computed(() => Object.keys(store.fieldDictMap).length > 0)
 
 // immediate：组件常在数据已就位后才挂载（v-if 切换），挂载即需建草稿
 watch(() => [props.datasetId, props.rows], syncDrafts, { immediate: true, deep: false })
@@ -164,7 +159,7 @@ defineExpose({ syncDrafts })
             <div class="ds-kv-keywrap">
               <el-input size="small" :model-value="key"
                         @change="(v: string) => renameKey(row, key, v.trim())" />
-              <div v-if="hasDict" class="ds-kv-label" :title="dictMap[key] || ''">{{ dictMap[key] || '' }}</div>
+              <div v-if="hasDict" class="ds-kv-label" :title="dictLabel(key) || ''">{{ dictLabel(key) || '' }}</div>
             </div>
             <el-input size="small" type="textarea" autosize class="ds-kv-val"
                       :model-value="valText(row.data[key])"
