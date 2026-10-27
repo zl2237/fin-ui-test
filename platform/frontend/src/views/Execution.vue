@@ -201,7 +201,7 @@
               />
             </el-tooltip>
             <el-tooltip v-else content="查看报告" placement="top">
-              <el-button link type="primary" size="small" :icon="DataAnalysis" @click="router.push(`/reports/${row.id}`)" />
+              <el-button link type="primary" size="small" :icon="DataAnalysis" aria-label="查看报告" @click="router.push(`/reports/${row.id}`)" />
             </el-tooltip>
           </template>
         </el-table-column>
