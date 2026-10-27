@@ -18,6 +18,7 @@ const routes = [
       { path: 'cases/suite-designer/:id', name: 'SuiteDesigner', component: () => import('@/views/SuiteDesigner.vue'), meta: { title: '套件编排' } },
       { path: 'datasets', name: 'DatasetManage', component: () => import('@/views/DatasetManage.vue'), meta: { title: '数据集' } },
       { path: 'plans', name: 'PlanList', component: () => import('@/views/PlanList.vue'), meta: { title: '执行方案' } },
+      { path: 'plans/edit/:id', name: 'PlanEdit', component: () => import('@/views/PlanEdit.vue'), meta: { title: '方案编辑' } },
       { path: 'envs', name: 'EnvManage', component: () => import('@/views/EnvManage.vue'), meta: { title: '环境配置' } },
       { path: 'envs/edit/:id?', name: 'EnvEdit', component: () => import('@/views/EnvEdit.vue'), meta: { title: '环境编辑' } },
       { path: 'executions', name: 'Execution', component: () => import('@/views/Execution.vue'), meta: { title: '执行记录' } },
