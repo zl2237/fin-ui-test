@@ -189,6 +189,7 @@ def run_suite(db: Session, suite_case: models.TestCase, record: models.Execution
                 executor = DagExecutor(
                     db, member_case, member_env, execution_record=row_record,
                     dataset_row=dataset_row,
+                    dataset_sheets=item.get("sheets"),
                     suite_vars=inject or None, suppress_notify=True)
                 executor.execute()
                 # 重新attach：DagExecutor.execute 内部 commit 后 record 对象仍可用

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ============ 通用 ============
@@ -970,6 +970,19 @@ class DataSetRowOut(ORMBase):
     dataset_id: int
     row_index: int
     data: dict[str, Any] = {}
+    # sheet 展示元数据（2026-10-27 sheet 化）：历史行 label 为 NULL → 出参归一为
+    # Sheet{row_index}（与运行时回退一致），读取方零改动拿到具体标签
+    label: str | None = None
+    field_desc: dict[str, str] | None = None
+    field_order: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _sheet_meta_defaults(self) -> "DataSetRowOut":
+        if not self.label:
+            self.label = f"Sheet{self.row_index}"
+        self.field_desc = self.field_desc or {}
+        self.field_order = self.field_order or []
+        return self
 
 
 # 数据集参数视图：按用例 DAG 节点组织（节点 tab 数据源）。
