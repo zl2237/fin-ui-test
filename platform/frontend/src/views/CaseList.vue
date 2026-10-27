@@ -210,6 +210,10 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
+                <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
+                <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                   <el-button link type="primary" size="small">
@@ -219,7 +223,6 @@
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
                       <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
-                      <el-dropdown-item command="dataset">数据集</el-dropdown-item>
                       <el-dropdown-item command="copy">复制用例</el-dropdown-item>
                       <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
                     </el-dropdown-menu>
@@ -352,6 +355,10 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
+                <!-- 数据：只切换绑定数据集（编辑去数据集管理页）；套件成员各自绑定，不提供入口 -->
+                <el-tooltip v-if="row.case_type !== 'suite'" :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
+                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" @click="openBind(row)">数据</el-button>
+                </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除 -->
                 <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
                   <el-button link type="primary" size="small">
@@ -361,7 +368,6 @@
                     <el-dropdown-menu>
                       <el-dropdown-item command="report">查看报告</el-dropdown-item>
                       <el-dropdown-item command="schedule">定时任务</el-dropdown-item>
-                      <el-dropdown-item command="dataset">数据集</el-dropdown-item>
                       <el-dropdown-item command="copy">复制用例</el-dropdown-item>
                       <el-dropdown-item command="remove" divided>删除用例</el-dropdown-item>
                     </el-dropdown-menu>
@@ -498,13 +504,24 @@
       @changed="loadSchedules"
     />
 
-    <!-- 数据集管理弹窗（自治子系统：数据集增删改/复制/绑定切换 + 行键值编辑收敛在组件内） -->
-    <DatasetDialog
-      v-model="datasetVisible"
-      :case-item="datasetCase"
-      :bound-dataset-id="datasetCase?.dataset_id ?? null"
-      @changed="onDatasetsChanged"
-    />
+    <!-- 绑定数据集（只切绑定关系；数据集编辑集中在数据集管理页，口径对齐 API 平台用例列表） -->
+    <el-dialog v-model="bindVisible" title="绑定数据集" width="480px">
+      <div class="bind-tip">
+        绑定后执行时缺省取该数据集第 1 行（执行按钮旁 ▾ 可临时换套数据/换行）。
+        数据集按用例隔离，仅可选本用例名下的数据集；多场景去数据集页复制
+      </div>
+      <el-select v-model="bindDatasetId" placeholder="选择数据集（空=不绑定）" clearable :loading="bindLoading" style="width: 100%">
+        <el-option v-for="d in bindDatasets" :key="d.id" :label="`${d.name}（${d.rows.length} 行）`" :value="d.id" />
+      </el-select>
+      <div v-if="!bindLoading && !bindDatasets.length" class="bind-empty">
+        该用例暂无数据集（数据集为用例私有），
+        <el-button link type="primary" @click="router.push('/datasets')">去创建</el-button>
+      </div>
+      <template #footer>
+        <el-button @click="bindVisible = false">取消</el-button>
+        <el-button type="primary" :loading="bindSaving" @click="saveBind">保存</el-button>
+      </template>
+    </el-dialog>
 
   </div>
 </template>
@@ -523,7 +540,6 @@ import { useGroupMasterDetail } from '@/composables/useGroupMasterDetail'
 import GroupManageDialog from '@/components/GroupManageDialog.vue'
 import BatchMoveDialog from '@/components/BatchMoveDialog.vue'
 import ScheduleDialog from '@/components/ScheduleDialog.vue'
-import DatasetDialog from '@/components/DatasetDialog.vue'
 import BatchRunDialog from '@/components/BatchRunDialog.vue'
 import { useFaviconStatus } from '@/composables/useFaviconStatus'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
@@ -1022,7 +1038,6 @@ function goReport(row: TestCase) {
 function onRowCommand(cmd: string, row: TestCase) {
   if (cmd === 'report') goReport(row)
   else if (cmd === 'schedule') openSchedule(row)
-  else if (cmd === 'dataset') openDatasets(row)
   else if (cmd === 'copy') onCopy(row)
   else if (cmd === 'remove') onRemove(row)
 }
@@ -1086,19 +1101,43 @@ function openSchedule(row: TestCase) {
   scheduleVisible.value = true  // 有无配置决定列表/表单首屏，由弹窗组件打开时自判
 }
 
-// ===== 数据集维护（新建/复制/改名/删数据集 + 行编辑 + 绑定切换；弹窗自治见 DatasetDialog）=====
-const datasetVisible = ref(false)
-const datasetCase = ref<TestCase | null>(null)
+// ===== 数据集绑定（只切换绑定关系；编辑集中在数据集管理页，口径对齐 API 平台用例列表）=====
+type BindDs = { id: number; name: string; rows: { row_index: number; data: Record<string, any> }[] }
+const bindVisible = ref(false)
+const bindSaving = ref(false)
+const bindLoading = ref(false)
+const bindCase = ref<TestCase | null>(null)
+const bindDatasetId = ref<number | null>(null)
+const bindDatasets = ref<BindDs[]>([])
 
-function openDatasets(row: TestCase) {
-  datasetCase.value = row
-  datasetVisible.value = true
+async function openBind(row: TestCase) {
+  bindCase.value = row
+  bindDatasetId.value = row.dataset_id ?? null
+  bindVisible.value = true
+  bindLoading.value = true
+  try {
+    bindDatasets.value = await caseApi.datasets(row.id)
+  } catch {
+    bindDatasets.value = []  // 加载失败不阻塞弹窗（可走「去创建」）
+  } finally {
+    bindLoading.value = false
+  }
 }
 
-/** DatasetDialog 变更回调：数据集集合/行内容/绑定关系都可能变——失效该行数据集缓存并重载列表（绑定列展示） */
-async function onDatasetsChanged() {
-  if (datasetCase.value) delete dataOptionsMap.value[datasetCase.value.id]
-  await load()
+async function saveBind() {
+  if (!bindCase.value) return
+  bindSaving.value = true
+  try {
+    await caseApi.update(bindCase.value.id, { dataset_id: bindDatasetId.value ?? null })
+    bindCase.value.dataset_id = bindDatasetId.value ?? null
+    ElMessage.success(bindDatasetId.value ? '已绑定数据集（执行缺省取第 1 行）' : '已解绑')
+    delete dataOptionsMap.value[bindCase.value.id]  // 执行下拉的「（默认）」标注随绑定关系失效
+    bindVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    bindSaving.value = false
+  }
 }
 
 /** GroupManageDialog 变更回调：重载分组；删除时同步重载用例（其余变更不影响条目） */
@@ -1162,19 +1201,19 @@ function onGlobalKey(e: KeyboardEvent) {
   font-weight: 600;
   color: var(--app-text);
 }
-.expand-icon {
-  font-size: 14px;
-  color: var(--app-text-muted);
-  cursor: pointer; /* caret 单击展开/折叠（与整行选中分离） */
-  transition: transform 0.18s ease;
+/* 绑定数据集弹窗提示/空态（与 API 平台用例列表同款） */
+.bind-tip {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  margin-bottom: 12px;
+  line-height: 1.6;
 }
-.expand-icon.expanded {
-  transform: rotate(90deg);
+.bind-empty {
+  margin-top: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
-.expand-spacer {
-  display: inline-block;
-  width: 14px;
-}
+/* 折叠箭头 .expand-icon/.expanded/.expand-spacer 已收敛至全局 style.css */
 .group-icon {
   font-size: 16px;
   color: var(--app-primary);
