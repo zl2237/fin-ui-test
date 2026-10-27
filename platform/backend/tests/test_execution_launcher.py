@@ -28,9 +28,10 @@ def patched(monkeypatch):
     created, submitted = [], []
 
     def fake_create(db, case_id, env_id, user_id, trigger_type="manual",
-                    dataset_id=None, dataset_row=None):
+                    dataset_id=None, dataset_row=None, plan_id=None):
         rec = SimpleNamespace(id=100 + len(created), case_id=case_id, env_id=env_id,
-                              dataset_id=dataset_id, dataset_row=dataset_row)
+                              dataset_id=dataset_id, dataset_row=dataset_row,
+                              plan_id=plan_id)
         created.append({"record": rec, "trigger_type": trigger_type})
         return rec
 
@@ -90,6 +91,30 @@ class TestBuildLaunchPlan:
 
         assert plan.records[0].dataset_id == 7
         assert plan.specs[0].dataset_row == {"bl_no": "BL001"}
+
+    def test_sheets_passthrough_to_spec(self, patched, monkeypatch):
+        """sheet 化：展开计划 sheets 清单（{label, data}）进 spec.dataset_sheets，
+        供后台线程注入 ${sheet.字段} 命名空间；无 sheets（套件/旧展开）为 None"""
+        _set_plan(monkeypatch, [{
+            "dataset_id": 7, "row": _row(2, "BL002"), "overrides": None,
+            "sheets": [
+                {"row_index": 1, "label": "正常单", "data": {"bl_no": "BL001"}},
+                {"row_index": 2, "label": "退款单", "data": {"bl_no": "BL002"}},
+            ]}])
+
+        plan = build_launch_plan(object(), CASE, 22)
+
+        assert plan.specs[0].dataset_row == {"bl_no": "BL002"}
+        assert plan.specs[0].dataset_sheets == [
+            {"label": "正常单", "data": {"bl_no": "BL001"}},
+            {"label": "退款单", "data": {"bl_no": "BL002"}},
+        ]  # row_index 不进 spec（注入只要 label+data）
+
+    def test_no_sheets_key_means_no_injection(self, patched, monkeypatch):
+        """展开项无 sheets 键（历史替身/套件路径）：spec.dataset_sheets 为空（注入为 no-op）"""
+        _set_plan(monkeypatch, [{"dataset_id": None, "row": None, "overrides": None}])
+        plan = build_launch_plan(object(), CASE, 22)
+        assert not plan.specs[0].dataset_sheets
 
     def test_run_count_multiplies_records(self, patched, monkeypatch):
         """执行次数 ×N：记录与 spec 数量翻倍"""

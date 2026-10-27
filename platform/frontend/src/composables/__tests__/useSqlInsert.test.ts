@@ -53,4 +53,22 @@ describe('useSqlInsert', () => {
     expect(sql).toBe('SELECT a FROM t')
     ta.remove()
   })
+
+  it('单行 input（el-input 渲染形态，UI 动作值插入）同样支持光标处插入', async () => {
+    const input = document.createElement('input')
+    input.value = 'prefix- suffix'
+    input.setSelectionRange(7, 7) // 「prefix-| suffix」处
+    document.body.appendChild(input)
+    let val = input.value
+    const { onSqlFocus, onSqlInsert } = useSqlInsert(
+      (next) => { val = next; input.value = next },
+      () => val,
+    )
+    onSqlFocus({ target: input } as unknown as FocusEvent)
+    onSqlInsert('${Sheet1.bl_no}')
+    expect(val).toBe('prefix-${Sheet1.bl_no} suffix')
+    await nextTick()
+    expect(input.selectionStart).toBe(7 + '${Sheet1.bl_no}'.length)
+    input.remove()
+  })
 })

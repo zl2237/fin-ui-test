@@ -27,7 +27,10 @@
     </el-form-item>
     <template v-if="st.action === 'goto'">
       <el-form-item label="页面 URL" required>
-        <el-input v-model="st.url" placeholder="https://… 或 /相对路径（自动拼环境 base_url），支持 ${变量}" />
+        <div class="ds-menu-row">
+          <el-input v-model="st.url" placeholder="https://… 或 /相对路径（自动拼环境 base_url），支持 ${变量}" @focus="urlIns.onSqlFocus" />
+          <DatasetVarMenu :sheets="dsSheets" @insert="urlIns.onSqlInsert" />
+        </div>
       </el-form-item>
       <el-form-item label="加载条件">
         <el-select v-model="st.wait_for" style="width: 100%">
@@ -72,21 +75,34 @@
         </el-form-item>
       </template>
     </template>
-    <!-- value/values：随动作类型切换形态 -->
+    <!-- value/values：随动作类型切换形态（${} 取值控件旁带数据集引用插入器） -->
     <el-form-item v-if="st.action === 'fill'" label="输入内容" required>
-      <el-input v-model="st.value" placeholder="填入文本，支持 ${变量}" />
+      <div class="ds-menu-row">
+        <el-input v-model="st.value" placeholder="填入文本，支持 ${变量}" @focus="valIns.onSqlFocus" />
+        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+      </div>
     </el-form-item>
     <el-form-item v-else-if="TEXT_VALUE_ACTIONS.has(st.action)" label="文本值" required>
-      <el-input v-model="st.value" :placeholder="textValuePlaceholder" />
+      <div class="ds-menu-row">
+        <el-input v-model="st.value" :placeholder="textValuePlaceholder" @focus="valIns.onSqlFocus" />
+        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+      </div>
       <p class="tip action-tip">{{ textValueTip }}</p>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'save'" label="期望提示">
-      <el-input v-model="st.value" placeholder="默认「保存成功」；也可填其他成功提示文本，支持 ${变量}" />
+      <div class="ds-menu-row">
+        <el-input v-model="st.value" placeholder="默认「保存成功」；也可填其他成功提示文本，支持 ${变量}" @focus="valIns.onSqlFocus" />
+        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+      </div>
       <p class="tip action-tip">留空时按文本「保 存」定位保存按钮，成功以该提示出现为准</p>
     </el-form-item>
     <el-form-item v-else-if="['pick', 'type', 'date'].includes(st.action)" label="值" required>
-      <el-input v-model="st.value"
-                :placeholder="st.action === 'pick' ? '选项文本，如 海运费，支持 ${变量}' : (st.action === 'date' ? '如 2026-09-11 10:00:00' : '逐字输入的内容，支持 ${变量}')" />
+      <div class="ds-menu-row">
+        <el-input v-model="st.value"
+                  :placeholder="st.action === 'pick' ? '选项文本，如 海运费，支持 ${变量}' : (st.action === 'date' ? '如 2026-09-11 10:00:00' : '逐字输入的内容，支持 ${变量}')"
+                  @focus="valIns.onSqlFocus" />
+        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+      </div>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'press'" label="按键" required>
       <el-input v-model="st.value" placeholder="如 Enter / Control+A（默认 Enter）" />
@@ -97,7 +113,10 @@
       <span v-if="needsElement" class="tip inline-tip">定位了元素时改为「等元素可见」，时长仅作记录</span>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'evaluate'" label="JS 表达式" required>
-      <el-input v-model="st.value" type="textarea" :rows="3" placeholder="如 document.title；支持 ${变量} 注入" />
+      <div class="ds-menu-row">
+        <el-input v-model="st.value" type="textarea" :rows="3" placeholder="如 document.title；支持 ${变量} 注入" @focus="valIns.onSqlFocus" />
+        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+      </div>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'select_option'" label="选项值" required>
       <el-select v-model="optionValues" multiple filterable allow-create default-first-option placeholder="输入选项值后回车，可多个" style="width: 100%" />
@@ -106,14 +125,17 @@
     <!-- custom：自定义动作模板引用 + 传参 -->
     <template v-else-if="st.action === 'custom'">
       <el-form-item label="动作模板" required>
-        <el-select v-model="st.custom_id" filterable clearable placeholder="选择自定义动作（元素库页维护）" style="width: 100%">
+        <el-select v-model="st.custom_id" filterable clearable placeholder="选择自定义动作（动作库页维护）" style="width: 100%">
           <el-option v-for="ca in customActions" :key="ca.id" :value="ca.id"
                      :label="ca.description ? `${ca.name}（${ca.description}）` : ca.name" />
         </el-select>
         <p class="tip action-tip">{{ selectedCustom?.description || '项目级 JS 模板：脚本入参 args，return 值进 facts.result' }}</p>
       </el-form-item>
       <el-form-item label="传参 args">
-        <el-input v-model="st.value" placeholder="传给脚本的参数（脚本内以 args 访问），支持 ${变量}" />
+        <div class="ds-menu-row">
+          <el-input v-model="st.value" placeholder="传给脚本的参数（脚本内以 args 访问），支持 ${变量}" @focus="valIns.onSqlFocus" />
+          <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        </div>
       </el-form-item>
     </template>
     <!-- 合并参数：click_text 匹配方式 / click 模式 / confirm 形态 -->
@@ -181,6 +203,8 @@
 import { ref, computed, watch } from 'vue'
 import type { UiElement, UiStep, CustomAction, UiActionDoc } from '@/api'
 import { UI_ACTIONS, UI_ACTION_ORIGINS, STRATEGY_OPTIONS, ELEMENT_ACTIONS, ELEMENT_REQUIRED_ACTIONS, TEXT_VALUE_ACTIONS, TEXT_VALUE_META } from '@/utils/ui'
+import DatasetVarMenu, { type DsVarSheet } from './DatasetVarMenu.vue'
+import { useSqlInsert } from '@/composables/useSqlInsert'
 
 const props = defineProps<{
   step: UiStep
@@ -188,7 +212,20 @@ const props = defineProps<{
   customActions: CustomAction[]
   /** 动作描述覆盖（动作库管理 → 编辑描述）；wrapped 动作优先显示项目覆盖文本 */
   actionDocs?: UiActionDoc[]
+  /** 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；空=不渲染插入按钮） */
+  dsSheets?: DsVarSheet[]
 }>()
+
+// 光标处插入 ${sheet.字段}：value 与 url 各一条通道（复用 SQL 引用插入器，
+// 记录最后聚焦控件，插入后回焦定位到插入串之后）
+const valIns = useSqlInsert(
+  (v) => { st.value.value = v },
+  () => st.value.value ?? '',
+)
+const urlIns = useSqlInsert(
+  (v) => { st.value.url = v },
+  () => st.value.url ?? '',
+)
 
 const st = computed(() => props.step)
 const selectedCustom = computed(() => props.customActions.find((c) => c.id === st.value.custom_id))
@@ -361,6 +398,22 @@ defineExpose({ collect })
 <style scoped>
 .ui-step-form :deep(.el-form-item) {
   margin-bottom: 14px;
+}
+/* ${} 取值控件 + 数据集插入按钮同行：输入框撑满，按钮贴右侧不换行 */
+.ds-menu-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+.ds-menu-row .el-input {
+  flex: 1;
+  min-width: 0;
+}
+.ds-menu-row > :deep(.dvm-link) {
+  flex-shrink: 0;
+  line-height: 22px;
+  padding-top: 4px;
 }
 /* 动作下拉项：名称 + 标识 + 来源标签 */
 .action-opt {

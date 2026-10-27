@@ -259,13 +259,13 @@ class TestReplaceRows:
     def test_replace_rejects_empty(self):
         """清空所有行 → 拒（空数据集无法执行）"""
         with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
-            with pytest.raises(ValueError, match="至少保留一行"):
+            with pytest.raises(ValueError, match="至少保留一个 sheet"):
                 svc.replace_rows(self._db({"added": []}), 1, [])
 
     def test_replace_rejects_non_dict_row(self):
         """行数据必须是对象"""
         with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
-            with pytest.raises(ValueError, match="第 2 行必须是对象"):
+            with pytest.raises(ValueError, match="第 2 个 sheet 的数据必须是对象"):
                 svc.replace_rows(self._db({"added": []}), 1, [{"a": 1}, "x"])
 
     def test_ensure_row_keeps_multiple_rows(self):
@@ -288,6 +288,117 @@ class TestReplaceRows:
 
         db = SimpleNamespace(query=lambda *a, **k: _RowQ(), add=lambda o: None, flush=lambda: None)
         assert svc._ensure_row(db, SimpleNamespace(id=1)) is r1  # 第二行保留在场
+
+
+# ============ sheet 归一与校验（2026-10-27 sheet 化：label/field_desc/field_order） ============
+
+class TestSheetLabels:
+    """新形态 [{label, data, field_desc?, field_order?}] 持久化；旧形态 [dict]
+    兼容（label 自动 Sheet{i}）；label 合法性/查重/上限。"""
+
+    def _db(self, state):
+        class _RowQ:
+            def filter(self, *a, **k):
+                return self
+
+            def delete(self, synchronize_session=False):
+                state["cleared"] = True
+
+        return SimpleNamespace(
+            query=lambda *a, **k: _RowQ(),
+            add=state["added"].append, commit=lambda: None, refresh=lambda o: None)
+
+    def test_new_shape_persisted_with_meta(self):
+        """新形态：label/field_desc/field_order 随行落库，重编 1..n"""
+        state = {"added": [], "cleared": False}
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            svc.replace_rows(self._db(state), 1, [
+                {"label": " 正常单 ", "data": {"bl_no": "B1"},
+                 "field_desc": {"bl_no": "运单号"}, "field_order": ["bl_no"]},
+                {"label": "退款单", "data": {"refund_no": "R1"}},
+            ])
+        r1, r2 = state["added"]
+        assert (r1.label, r1.data, r1.field_desc, r1.field_order) == (
+            "正常单", {"bl_no": "B1"}, {"bl_no": "运单号"}, ["bl_no"])
+        assert (r2.label, r2.data, r2.field_desc, r2.field_order) == (
+            "退款单", {"refund_no": "R1"}, None, None)
+        assert (r1.row_index, r2.row_index) == (1, 2)
+
+    def test_legacy_shape_gets_default_labels(self):
+        """旧形态 [dict]：label 自动 Sheet{i}（与迁移回填/运行时回退一致）"""
+        state = {"added": [], "cleared": False}
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            svc.replace_rows(self._db(state), 1, [{"a": 1}, {"a": 2}])
+        assert [r.label for r in state["added"]] == ["Sheet1", "Sheet2"]
+
+    def test_new_shape_detection_edge(self):
+        """新形态判定：dict 且含 label 且 data 是 dict——旧行数据恰好有 label 键
+        但 data 非 dict 时仍按旧形态处理"""
+        assert svc._normalize_rows_input([{"label": "x", "data": {"a": 1}}])[0]["label"] == "x"
+        assert svc._normalize_rows_input([{"label": "旧数据的普通字段"}])[0]["label"] == "Sheet1"
+
+    @pytest.mark.parametrize("rows,match", [
+        ([{"label": "A", "data": {}}, {"label": "A", "data": {}}], "名称重复"),
+        ([{"label": "x" * 101, "data": {}}], "100 字符"),
+        ([{"label": "a.b", "data": {}}], "非法字符"),
+        ([{"label": "${x}", "data": {}}], "非法字符"),
+        ([{"label": "__dataset__", "data": {}}], "__ 前缀"),
+        ([{"label": "context", "data": {}}], "保留字"),
+        ([{"label": "db", "data": {}}], "保留字"),
+        ([{"label": "nodes", "data": {}}], "保留字"),
+    ])
+    def test_invalid_labels_rejected(self, rows, match):
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            with pytest.raises(ValueError, match=match):
+                svc.replace_rows(self._db({"added": []}), 1, rows)
+
+    def test_blank_label_gets_default_name(self):
+        """空/纯空格 label：先兜底 Sheet{i} 再校验（前端「未命名」保存不报错）"""
+        state = {"added": [], "cleared": False}
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            svc.replace_rows(self._db(state), 1, [{"label": "  ", "data": {"x": 1}}])
+        assert state["added"][0].label == "Sheet1"
+
+    def test_cjk_label_accepted(self):
+        """中文 sheet 名可作 ${中文.字段} 命名空间"""
+        state = {"added": [], "cleared": False}
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            svc.replace_rows(self._db(state), 1, [{"label": "退款单", "data": {}}])
+        assert state["added"][0].label == "退款单"
+
+    def test_sheet_count_upper_bound(self):
+        """>999 个 sheet → 拒"""
+        with patch.object(svc.crud, "get_dataset", return_value=SimpleNamespace(id=1)):
+            with pytest.raises(ValueError, match="上限 999"):
+                svc.replace_rows(self._db({"added": []}), 1,
+                                 [{"label": f"S{i}", "data": {}} for i in range(1000)])
+
+    def test_create_dataset_normalizes_sheets(self):
+        """create_dataset 走同一 normalizer：label/描述/顺序原子写入"""
+        added = []
+        db = SimpleNamespace(add=added.append, flush=lambda: None,
+                             commit=lambda: None, refresh=lambda o: None)
+        svc.create_dataset(db, project_id=1, case_id=9, name="多sheet", user_id=1, rows_data=[
+            {"label": "A", "data": {"x": 1}, "field_desc": {"x": "注"}, "field_order": ["x"]},
+            {"y": 2},  # 旧形态混排
+        ])
+        r1, r2 = added[1], added[2]
+        assert (r1.label, r1.field_desc, r1.field_order) == ("A", {"x": "注"}, ["x"])
+        assert (r2.label, r2.data) == ("Sheet2", {"y": 2})
+
+    def test_sheet_payload_of_carries_meta(self):
+        """sheet_payload_of：复制/克隆路径透传完整 sheet 形态"""
+        row = SimpleNamespace(row_index=3, label="旧场景", data={"a": {"n": 1}},
+                              field_desc={"a": "x"}, field_order=["a"])
+        p = svc.sheet_payload_of(row)
+        assert p == {"label": "旧场景", "data": {"a": {"n": 1}},
+                     "field_desc": {"a": "x"}, "field_order": ["a"]}
+        # data 深拷贝（改源不串改）；label NULL 回退 Sheet{n}
+        p["data"]["a"]["n"] = 9
+        assert row.data["a"]["n"] == 1
+        assert svc.sheet_payload_of(
+            SimpleNamespace(row_index=5, label=None, data={}, field_desc=None, field_order=None)
+        )["label"] == "Sheet5"
 
 
 # ============ 用例绑定校验（用例级隔离：只能绑自己名下的数据集） ============

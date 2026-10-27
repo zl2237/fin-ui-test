@@ -5,7 +5,7 @@
         <span class="page-title">数据集</span>
       </div>
       <div class="head-right">
-        <span class="head-tip">每个数据集是一套完整变体行；执行面板可选行，缺省取第 1 行。多场景 = 复制后改值</span>
+        <span class="head-tip">每个数据集是一个工作簿，行=具名 sheet；执行面板可选 sheet，缺省取第 1 个。多场景 = 复制后改值</span>
       </div>
     </div>
 
@@ -77,20 +77,20 @@
             >
               <span class="ds-name">{{ d.name }}</span>
               <span v-if="currentCase.dataset_id === d.id" class="ds-bound">使用中</span>
-              <span class="ds-cnt">{{ d.rows.length }} 行</span>
+              <span class="ds-cnt">{{ d.rows.length }} sheet</span>
             </div>
             <el-button size="small" class="ds-add" :icon="Plus" @click="createDataset()">新建数据集</el-button>
           </div>
 
           <EmptyState
             v-if="!caseDatasets.length"
-            description="该用例暂无数据集。点「新建数据集」建立一套变体行"
+            description="该用例暂无数据集。点「新建数据集」建立一套 sheet 数据"
           />
 
           <template v-else-if="current">
             <div class="main-head">
               <span class="main-title">{{ current.name }}</span>
-              <span class="row-count">{{ current.rows.length }} 行 · 绑定用例 {{ current.case_bound_count || 0 }}</span>
+              <span class="row-count">{{ current.rows.length }} 个 sheet · 绑定用例 {{ current.case_bound_count || 0 }}</span>
               <div class="main-actions">
                 <el-button v-if="current.id !== currentCase.dataset_id" size="small" type="success" plain
                            @click="bindDataset(current)">设为绑定</el-button>
@@ -101,7 +101,7 @@
               </div>
             </div>
 
-            <DatasetRowsEditor
+            <DatasetSheetsEditor
               :dataset-id="current.id"
               :rows="current.rows"
               class="ds-editor"
@@ -122,11 +122,11 @@ import { caseApi, caseGroupApi, datasetApi, type CaseGroup, type DataSetManage, 
 import { useGroupTree, type GroupTreeNode } from '@/composables/useGroupTree'
 import { useAppStore } from '@/stores'
 import EmptyState from '@/components/EmptyState.vue'
-import DatasetRowsEditor from '@/components/DatasetRowsEditor.vue'
+import DatasetSheetsEditor from '@/components/DatasetSheetsEditor.vue'
 
 /**
  * 数据集管理页（数据集编辑的唯一入口，参考 API 测试平台同名页）：左用例分组树（带数据集计数）
- * → 右该用例数据集切换条（使用中标记）→ 行编辑（DatasetRowsEditor）。
+ * → 右该用例数据集切换条（使用中标记）→ sheet 编辑（DatasetSheetsEditor）。
  * 用例列表只做绑定切换，编辑都在本页；上次访问记忆（按项目）。
  */
 const store = useAppStore()
@@ -391,7 +391,7 @@ async function removeDataset() {
   if (!current.value) return
   try {
     await ElMessageBox.confirm(
-      `确认删除数据集「${current.value.name}」（${current.value.rows.length} 行数据一并删除）？`, '删除数据集',
+      `确认删除数据集「${current.value.name}」（${current.value.rows.length} 个 sheet 一并删除）？`, '删除数据集',
       { type: 'warning' })
   } catch { return }
   try {
@@ -408,7 +408,7 @@ async function bindDataset(ds: DataSetManage | null) {
   if (!currentCase.value) return
   try {
     await caseApi.update(currentCase.value.id, { dataset_id: ds?.id ?? null })
-    ElMessage.success(ds ? `已绑定「${ds.name}」（执行缺省取第 1 行）` : '已解绑')
+    ElMessage.success(ds ? `已绑定「${ds.name}」（执行缺省取第 1 个 sheet）` : '已解绑')
     await load()
   } catch (e: any) {
     ElMessage.error(e.message || '绑定失败')
@@ -531,7 +531,7 @@ watch(() => store.currentProjectId, () => {
   gap: 4px;
 }
 /* 高度链闭环：.page 定高（全站列表页同款）→ group-layout/group-main 限高，
-   行编辑区在自身内部滚动（DatasetRowsEditor 自带 flex:1 + overflow），
+   行编辑区在自身内部滚动（DatasetSheetsEditor 自带 flex:1 + overflow），
    顶部数据集切换条与 main-head 常驻不随行滚动滚走 */
 .page {
   display: flex;

@@ -182,13 +182,15 @@ def run_suite(db: Session, suite_case: models.TestCase, record: models.Execution
             row_record = exec_domain.create_execution(
                 db, case_id=member_case.id, env_id=member_env.id,
                 user_id=record.created_by, trigger_type=record.trigger_type,
-                dataset_id=item["dataset_id"], dataset_row=item["row"])
+                dataset_id=item["dataset_id"], dataset_row=item["row"],
+                plan_id=record.plan_id)  # 方案触发时透传，按方案过滤成员行不丢
             row_record.suite_execution_id = record.id
             db.commit()
             try:
                 executor = DagExecutor(
                     db, member_case, member_env, execution_record=row_record,
                     dataset_row=dataset_row,
+                    dataset_sheets=item.get("sheets"),
                     suite_vars=inject or None, suppress_notify=True)
                 executor.execute()
                 # 重新attach：DagExecutor.execute 内部 commit 后 record 对象仍可用

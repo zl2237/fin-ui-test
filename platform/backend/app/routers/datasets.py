@@ -62,7 +62,7 @@ def create_dataset(data: DataSetCreateIn, db: Session = Depends(get_db),
         src = _owned_dataset(db, data.copy_from_dataset_id)
         if src.case_id != data.case_id:
             raise HTTPException(400, "只能复制本用例的数据集（数据集按用例隔离）")
-        rows_data = [dict(r.data or {}) for r in (src.rows or [])]
+        rows_data = [svc.sheet_payload_of(r) for r in (src.rows or [])]
     try:
         ds = svc.create_dataset(db, project_id=case.project_id, name=data.name,
                                 user_id=user.id, description=data.description,

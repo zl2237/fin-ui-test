@@ -104,11 +104,13 @@
       </div>
     </div>
 
-    <!-- 节点配置抽屉 -->
+    <!-- 节点配置抽屉（case-id/bound-dataset-id 供 UI 动作值的 ${sheet.字段} 插入器取绑定数据集） -->
     <NodeConfigDrawer
       v-model:visible="drawerVisible"
       :config="currentConfig"
       :ref-groups="refGroups"
+      :case-id="caseData.id || undefined"
+      :bound-dataset-id="caseData.dataset_id ?? null"
       @save="onConfigSave"
     />
 
