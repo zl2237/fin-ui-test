@@ -479,9 +479,9 @@ export const caseApi = {
   execute: (caseId: number, datasetId?: number, rowIndex?: number) =>
     http.post<ExecutionRecord>(`/testcases/${caseId}/execute`,
       { case_id: caseId, dataset_id: datasetId ?? null, dataset_row_index: rowIndex ?? null }).then((r) => r.data),
-  // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源）
+  // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源；行=具名 sheet）
   datasets: (caseId: number) =>
-    http.get<{ id: number; name: string; rows: { row_index: number; data: Record<string, any> }[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
+    http.get<{ id: number; name: string; rows: DataSetSheetOut[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
   batchExecute: (caseIds: number[], counts?: number[], concurrency: number = 4) =>
     http.post<ExecutionRecord[]>('/testcases/batch-execute',
       { case_ids: caseIds, counts, concurrency }).then((r) => r.data),
@@ -511,13 +511,31 @@ export interface SplitVar {
 }
 
 // ============ DataSet 数据集维护（多套数据 = 多场景；按用例 1:N 隔离） ============
+/** 数据集行 = 具名 sheet（2026-10-27 sheet 化）：label 为 ${label.字段} 引用命名空间，
+ *  field_desc 仅编辑器备注，field_order 显式字段顺序（MySQL JSON 列不保 key 序） */
+export interface DataSetSheetOut {
+  row_index: number
+  data: Record<string, any>
+  label: string
+  field_desc?: Record<string, string> | null
+  field_order?: string[] | null
+}
+
+/** 保存载荷：label/data 必带，field_desc/field_order 可选（空则不落） */
+export interface DataSetSheetIn {
+  label: string
+  data: Record<string, any>
+  field_desc?: Record<string, string> | null
+  field_order?: string[] | null
+}
+
 export interface DataSetManage {
   id: number
   project_id: number
   case_id: number
   name: string
   description?: string | null
-  rows: { row_index: number; data: Record<string, any> }[]
+  rows: DataSetSheetOut[]
   case_bound_count?: number
 }
 
@@ -533,8 +551,8 @@ export const datasetApi = {
   // 复制数据集（默认名「原名-副本」，多场景标准起步）
   copy: (id: number) => http.post<DataSetManage>(`/datasets/${id}/copy`).then((r) => r.data),
   remove: (id: number) => http.delete(`/datasets/${id}`),
-  // 行整体替换（编辑完一次保存，行号后端重编 1..n；至少一行）
-  replaceRows: (id: number, rows: Record<string, any>[]) =>
+  // 行整体替换（编辑完一次保存，行号后端重编 1..n；至少一行；新 sheet 形态载荷）
+  replaceRows: (id: number, rows: DataSetSheetIn[]) =>
     http.put<DataSetManage>(`/datasets/${id}/rows`, { rows }).then((r) => r.data),
 }
 
