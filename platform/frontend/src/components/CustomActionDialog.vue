@@ -41,14 +41,20 @@
       <el-table-column label="维护人" width="86" align="center">
         <template #default="{ row }">{{ row.updater || '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
           <template v-if="row.kind === 'builtin'">
-            <el-button link type="primary" size="small" @click="openDescEdit(row)">编辑描述</el-button>
+            <el-tooltip content="编辑描述" placement="top">
+              <el-button link type="primary" size="small" :icon="EditPen" @click="openDescEdit(row)" />
+            </el-tooltip>
           </template>
           <template v-else>
-            <el-button link type="primary" size="small" @click="openEdit(row.meta!)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="onRemove(row.meta!)">删除</el-button>
+            <el-tooltip content="编辑" placement="top">
+              <el-button link type="primary" size="small" :icon="EditPen" @click="openEdit(row.meta!)" />
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top">
+              <el-button link type="danger" size="small" :icon="Delete" @click="onRemove(row.meta!)" />
+            </el-tooltip>
           </template>
         </template>
       </el-table-column>
@@ -109,6 +115,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { EditPen, Delete } from '@element-plus/icons-vue'
 import { customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
 import { UI_ACTIONS, type UiActionMeta } from '@/utils/ui'
 import { useAppStore } from '@/stores'

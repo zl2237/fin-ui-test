@@ -58,6 +58,10 @@
             <el-icon><HomeFilled /></el-icon>
             <span>测试工作台</span>
           </template>
+          <el-menu-item index="/elements">
+            <el-icon><Aim /></el-icon>
+            <template #title><span>元素库</span></template>
+          </el-menu-item>
           <el-menu-item index="/cases">
             <el-icon><Share /></el-icon>
             <template #title><span>用例管理</span></template>
@@ -65,10 +69,6 @@
           <el-menu-item index="/datasets">
             <el-icon><Grid /></el-icon>
             <template #title><span>数据集</span></template>
-          </el-menu-item>
-          <el-menu-item index="/elements">
-            <el-icon><Aim /></el-icon>
-            <template #title><span>元素库</span></template>
           </el-menu-item>
           <el-menu-item index="/executions">
             <el-icon><Histogram /></el-icon>
