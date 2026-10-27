@@ -62,6 +62,10 @@
             <el-icon><Aim /></el-icon>
             <template #title><span>元素库</span></template>
           </el-menu-item>
+          <el-menu-item index="/actions">
+            <el-icon><Lightning /></el-icon>
+            <template #title><span>动作库</span></template>
+          </el-menu-item>
           <el-menu-item index="/cases">
             <el-icon><Share /></el-icon>
             <template #title><span>用例管理</span></template>
@@ -508,7 +512,7 @@
         <div class="corecap-intro">
           UI 节点的动作词表（全量 {{ UI_ACTIONS.length + customActions.length }} 个 = 原生 {{ UI_ACTIONS.filter(x => x.origin === 'native').length }} 引擎内置 + 预设封装 {{ UI_ACTIONS.filter(x => x.origin === 'wrapped').length }}（含 1 个自定义动作通道）+ JS 模板 {{ customActions.length }}，按来源分组），与编排面板「动作类型」一致；
           参数均为可选高级项，编排面板按动作自动展示对应表单项。
-          非原生动作统一归入 动作库 → 自定义动作 管理：内置封装可修改描述（此处与编排下拉即时生效），JS 模板可新建/修改/删除。
+          非原生动作统一归入侧边栏「动作库」管理：内置封装可修改描述（此处与编排下拉即时生效），JS 模板可新建/修改/删除。
         </div>
         <div v-for="og in ORIGIN_KEYS" :key="og" class="corecap-group">
           <div class="corecap-group-title">
@@ -547,7 +551,7 @@
                 <pre v-if="ca.description" class="corecap-usage-text">{{ ca.description }}</pre>
               </div>
               <div v-if="!customActions.length" class="corecap-example">
-                项目暂无 JS 模板动作——到 元素库 → 动作库管理 新建（编排时像预设动作一样选用）
+                项目暂无 JS 模板动作——到 动作库（侧边栏）新建（编排时像预设动作一样选用）
               </div>
             </template>
           </div>
@@ -571,7 +575,7 @@
 import { onMounted, onBeforeUnmount, ref, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, QuestionFilled, Aim, Grid } from '@element-plus/icons-vue'
+import { Share, Setting, Histogram, UserFilled, SwitchButton, List, Folder, Files, Expand, Fold, Sunny, Moon, Monitor, Search, HomeFilled, ArrowRight, Lock, DataLine, Close, ArrowDown, Avatar, FullScreen, Check, Collection, QuestionFilled, Aim, Grid, Lightning } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'
 import { useTabStore, type TabItem } from '@/stores/tabs'
 import { authApi, customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
@@ -583,7 +587,7 @@ import { resolveMenuActive, UI_ACTIONS, UI_ACTION_ORIGINS, type UiActionOrigin, 
 // 动作解析 tab 的来源分组顺序（原生 / 非原生）
 const ORIGIN_KEYS: UiActionOrigin[] = ['native', 'wrapped']
 
-// ===== 动作库项目级数据（帮助中心「UI 动作解析」合并展示；元素库页「动作库管理」维护） =====
+// ===== 动作库项目级数据（帮助中心「UI 动作解析」合并展示；动作库页维护） =====
 /** 预设封装动作（非原生词表；custom 为步骤占位，单独渲染项目清单） */
 const wrappedPresets = computed<UiActionMeta[]>(() =>
   UI_ACTIONS.filter((x) => x.origin === 'wrapped' && x.action !== 'custom'))
@@ -621,7 +625,7 @@ async function loadActionLibrary() {
   }
 }
 
-// 打开帮助中心且切到动作解析 tab 时刷新（动作库可能在元素库页被其他人更新过）
+// 打开帮助中心且切到动作解析 tab 时刷新（动作库页可能被其他人更新过）
 watch(() => [store.coreCapVisible, store.coreCapTab] as const, ([vis, tab]) => {
   if (vis && tab === 'actions') loadActionLibrary()
 })

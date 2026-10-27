@@ -91,7 +91,7 @@ export const UI_ACTIONS: UiActionMeta[] = [
     params: [
       { name: 'value', desc: 'JS 表达式（返回值进 facts 供提取/断言），支持 ${变量} 注入', required: true },
     ] },
-  { action: 'custom', name: '自定义动作', desc: '执行自定义动作库的 JS 模板（元素库页维护），入参 args，返回值进 facts.result', origin: 'wrapped',
+  { action: 'custom', name: '自定义动作', desc: '执行自定义动作库的 JS 模板（动作库页维护），入参 args，返回值进 facts.result', origin: 'wrapped',
     params: [
       { name: 'custom_id', desc: '自定义动作库条目（下拉选择）', required: true },
       { name: 'value', desc: '传给脚本的 args（支持 ${变量}），脚本内以 args 访问' },
