@@ -336,6 +336,8 @@ export interface ExecutionRecord {
   steps: StepRecord[]
   created_by?: number | null; created_by_name?: string | null
   trigger_type?: string
+  plan_id?: number | null       // 非空=执行方案触发（一键/定时，含方案内套件成员行）
+  plan_name?: string | null     // 方案名（尽力回查；方案已删时 null，显示「方案 #id」）
 }
 
 export interface TestSchedule {
@@ -576,6 +578,72 @@ export const scheduleApi = {
   run: (id: number) => http.post<{ message: string }>(`/schedules/${id}/run`).then((r) => r.data),
 }
 
+// ============ ExecutionPlan 执行方案 ============
+/** 方案成员（普通用例或套件均可；dataset 覆盖须属于该成员用例，套件成员禁配） */
+export interface PlanItem {
+  id?: number
+  case_id: number
+  dataset_id?: number | null      // NULL=沿用用例自身绑定
+  dataset_row_index?: number | null  // 值=DataSetRow.row_index；NULL=第 1 行
+  run_count?: number              // 1~9999
+  sort_order?: number
+  // 展示回填（详情接口）
+  case_name?: string | null
+  case_type?: string | null
+  dataset_name?: string | null
+  sheet_label?: string | null
+  case_missing?: boolean
+  dataset_missing?: boolean
+}
+
+export interface ExecutionPlan {
+  id: number; project_id?: number | null
+  name: string; description?: string | null
+  concurrency: number             // 1~16（提交线程池 max_workers）
+  enabled: boolean                // 方案总开关：禁用时定时跳过本轮（手动一键不受限）
+  schedule_type?: 'interval' | 'daily' | null  // NULL=未配置定时
+  schedule_interval_minutes?: number | null
+  schedule_daily_time?: string | null
+  schedule_enabled: boolean
+  last_run_at?: string | null; next_run_at?: string | null
+  item_count?: number             // 列表聚合
+  created_at?: string | null; updated_at?: string | null
+  created_by?: number | null; created_by_name?: string | null
+  updated_by?: number | null; updated_by_name?: string | null
+}
+
+export interface ExecutionPlanDetail extends ExecutionPlan {
+  items: PlanItem[]
+}
+
+/** 方案基础字段 + 内嵌定时局部更新（schedule_off=true 显式清除定时） */
+export interface PlanUpdatePayload {
+  name?: string
+  description?: string | null
+  concurrency?: number
+  enabled?: boolean
+  schedule_type?: 'interval' | 'daily' | null
+  schedule_interval_minutes?: number | null
+  schedule_daily_time?: string | null
+  schedule_enabled?: boolean
+  schedule_off?: boolean
+}
+
+export const planApi = {
+  list: (params?: { project_id?: number }) =>
+    http.get<ExecutionPlan[]>('/plans', { params }).then((r) => r.data),
+  create: (data: { project_id?: number | null; name: string; description?: string; concurrency?: number }) =>
+    http.post<ExecutionPlanDetail>('/plans', data).then((r) => r.data),
+  get: (id: number) => http.get<ExecutionPlanDetail>(`/plans/${id}`).then((r) => r.data),
+  update: (id: number, data: PlanUpdatePayload) =>
+    http.put<ExecutionPlanDetail>(`/plans/${id}`, data).then((r) => r.data),
+  updateItems: (id: number, items: PlanItem[]) =>
+    http.put<ExecutionPlanDetail>(`/plans/${id}/items`, { items }).then((r) => r.data),
+  remove: (id: number) => http.delete(`/plans/${id}`),
+  // 一键执行：预检失败 400 零记录；返回本次全部记录（成员独立并行，轮询到终态）
+  execute: (id: number) => http.post<ExecutionRecord[]>(`/plans/${id}/execute`).then((r) => r.data),
+}
+
 // ============ ProjectVersion 项目版本 ============
 export const projectVersionApi = {
   list: (projectId: number) =>
@@ -593,7 +661,7 @@ export const projectVersionApi = {
 
 // ============ Execution / Report ============
 export const execApi = {
-  list: (params?: { case_id?: number; project_id?: number; created_by?: number; limit?: number; offset?: number; case_name?: string; status?: string; start_time?: string; end_time?: string; sort_by?: string; order?: string }) =>
+  list: (params?: { case_id?: number; project_id?: number; created_by?: number; limit?: number; offset?: number; case_name?: string; status?: string; start_time?: string; end_time?: string; sort_by?: string; order?: string; plan_id?: number }) =>
     http.get<{ items: ExecutionRecord[]; total: number }>('/executions', { params }).then((r) => r.data),
   // 近 N 天执行统计（工作台）：全量聚合口径，不受列表翻页截断影响
   stats: (params?: { days?: number; project_id?: number }) =>
