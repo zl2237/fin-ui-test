@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, DocumentCopy, EditPen, Plus } from '@element-plus/icons-vue'
 import { datasetApi, type DataSetSheetIn, type DataSetSheetOut } from '@/api'
@@ -105,6 +105,23 @@ function removeField(i: number) {
 
 // ----- sheet 签操作（切换/新增/改名/复制/删除/拖拽换序） -----
 function selectSheet(i: number) { activeIdx.value = i }
+
+// sheet 签键盘导航：焦点在任一 sheet 签上时 ←/→ 切换相邻 sheet（ARIA tabs 模式）
+const tabEls: (HTMLElement | null)[] = []
+function setTabRef(i: number, el: unknown) {
+  tabEls[i] = (el as HTMLElement | null) ?? null
+}
+
+function onTabsKeydown(e: KeyboardEvent, dir: 1 | -1) {
+  if (!(e.target as HTMLElement).closest('.ds-tab')) return // 只响应 sheet 签上的按键，避免误伤其它区域
+  e.preventDefault()
+  const n = sheetDrafts.value.length
+  const next = Math.min(n - 1, Math.max(0, activeIdx.value + dir))
+  if (next !== activeIdx.value) {
+    selectSheet(next)
+    nextTick(() => tabEls[next]?.focus())
+  }
+}
 
 function addSheet() {
   const label = nextSheetLabel(sheetDrafts.value.map((s) => s.label))
@@ -312,12 +329,16 @@ defineExpose({ syncDrafts })
       </span>
     </div>
 
-    <!-- 底部：sheet 签栏（切换/新增/改名/复制/删除/拖拽换序） -->
-    <div class="ds-tabs">
+    <!-- 底部：sheet 签栏（切换/新增/改名/复制/删除/拖拽换序；聚焦后 ←/→ 键盘切换） -->
+    <div class="ds-tabs" role="tablist" @keydown.left="onTabsKeydown($event, -1)" @keydown.right="onTabsKeydown($event, 1)">
       <div
         v-for="(s, i) in sheetDrafts"
         :key="i"
+        :ref="(el) => setTabRef(i, el)"
         class="ds-tab"
+        role="tab"
+        :aria-selected="i === activeIdx"
+        :tabindex="i === activeIdx ? 0 : -1"
         :class="{
           on: i === activeIdx,
           dragging: dragIdx === i,
