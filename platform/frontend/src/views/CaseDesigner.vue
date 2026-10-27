@@ -641,19 +641,7 @@ function onKeydown(e: KeyboardEvent) {
   outline: 2px solid var(--app-primary);
   outline-offset: -2px;
 }
-.expand-icon {
-  font-size: 14px;
-  color: var(--app-text-muted);
-  flex-shrink: 0;
-  transition: transform 0.18s ease;
-}
-.expand-icon.expanded {
-  transform: rotate(90deg);
-}
-.expand-spacer {
-  width: 14px;
-  flex-shrink: 0;
-}
+/* 折叠箭头 .expand-icon/.expanded/.expand-spacer 已收敛至全局 style.css */
 .group-name {
   font-size: 13px;
   color: var(--app-text);

@@ -497,6 +497,23 @@ html.dark .el-table__header-wrapper th.el-table__cell {
   padding: 10px 6px 2px;
   border-top: 1px solid var(--app-border);
 }
+/* 分组树折叠箭头：展开态 90° 旋转，无内容节点用等宽占位对齐
+   （CaseList/CaseDesigner/DatasetManage 三份 scoped 副本收敛为单一事实来源） */
+.expand-icon {
+  font-size: 14px;
+  color: var(--app-text-muted);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.18s ease;
+}
+.expand-icon.expanded {
+  transform: rotate(90deg);
+}
+.expand-spacer {
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
+}
 .group-main {
   flex: 1;
   min-width: 0;
