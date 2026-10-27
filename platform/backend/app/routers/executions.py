@@ -88,19 +88,22 @@ def batch_execute(data: schemas.BatchExecutionCreate, db: Session = Depends(get_
 def list_executions(case_id: int | None = None, project_id: int | None = None, created_by: int | None = None,
                     limit: int = 50, offset: int = 0, case_name: str | None = None, status: str | None = None,
                     start_time: datetime | None = None, end_time: datetime | None = None,
-                    sort_by: str = "id", order: str = "desc",
+                    sort_by: str = "id", order: str = "desc", plan_id: int | None = None,
                     db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """筛选（状态/时间范围）与排序全部服务端处理，返回 {items, total} 信封：
-    分页组件翻页/整页排序口径才正确；total 与列表同口径过滤"""
+    分页组件翻页/整页排序口径才正确；total 与列表同口径过滤。
+    plan_id：执行方案来源过滤（方案列表「查看执行」入口）"""
     if sort_by not in crud.EXECUTION_SORT_FIELDS:
         raise HTTPException(400, f"不支持的排序字段: {sort_by}")
     if order not in ("asc", "desc"):
         raise HTTPException(400, "order 仅支持 asc / desc")
     objs = crud.list_executions(db, case_id=case_id, project_id=project_id, created_by=created_by,
                                 limit=limit, offset=offset, case_name=case_name, status=status,
-                                start_time=start_time, end_time=end_time, sort_by=sort_by, order=order)
+                                start_time=start_time, end_time=end_time, sort_by=sort_by, order=order,
+                                plan_id=plan_id)
     total = crud.count_executions(db, case_id=case_id, project_id=project_id, created_by=created_by,
-                                  case_name=case_name, status=status, start_time=start_time, end_time=end_time)
+                                  case_name=case_name, status=status, start_time=start_time, end_time=end_time,
+                                  plan_id=plan_id)
     crud.fill_audit_names_batch(db, objs)
     crud.fill_exec_names(db, objs)
     return {"items": objs, "total": total}
