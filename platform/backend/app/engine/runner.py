@@ -20,13 +20,17 @@ class ExecutionSpec:
     env_id: int | None = None
     # 数据集行数据 {"nodes": {...}}——各节点入参配置源（四来源参数模型）
     dataset_row: dict | None = None
+    # 全 sheet 清单 [{label, data}]——各 label 注入为 ${label.字段} 命名空间
+    dataset_sheets: list[dict] | None = None
 
 
 def run_execution_background(execution_id: int, case_id: int, env_id: int | None,
-                             dataset_row: dict | None = None) -> None:
+                             dataset_row: dict | None = None,
+                             dataset_sheets: list[dict] | None = None) -> None:
     """在后台线程中执行用例，使用独立的数据库会话。
     execution_id 对应的 ExecutionRecord 已由调用方创建（status=running）。
-    dataset_row：数据集行数据（{"nodes": {...}}，节点入参配置源）。"""
+    dataset_row：数据集行数据（{"nodes": {...}}，节点入参配置源）。
+    dataset_sheets：全部 sheet [{label, data}]，注入注册表供 ${sheet.字段} 引用。"""
     db = SessionLocal()
     try:
         case = crud.get_testcase(db, case_id)
@@ -62,7 +66,8 @@ def run_execution_background(execution_id: int, case_id: int, env_id: int | None
                 from ..crud.executions import touch_case_last_exec
                 touch_case_last_exec(db, rec)
             return
-        DagExecutor(db, case, env, execution_record=record, dataset_row=dataset_row).execute()
+        DagExecutor(db, case, env, execution_record=record, dataset_row=dataset_row,
+                    dataset_sheets=dataset_sheets).execute()
     except Exception as e:
         # 兜底：任何异常都标记执行失败，避免 record 永远停在 running
         try:
@@ -94,5 +99,5 @@ def submit_batch_execution(specs: list[ExecutionSpec],
     pool = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix=f"case-c{concurrency}")
     for spec in specs:
         pool.submit(run_execution_background, spec.execution_id, spec.case_id, spec.env_id,
-                    spec.dataset_row)
+                    spec.dataset_row, spec.dataset_sheets)
     pool.shutdown(wait=False)  # 提交完即关闭，已提交任务继续执行完

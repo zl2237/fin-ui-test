@@ -70,6 +70,8 @@ def build_launch_plan(db: Session, case, user_id: int, *,
                 case_id=case.id,
                 env_id=launch_env_id,
                 dataset_row=(item["row"] or {}).get("data"),
+                dataset_sheets=[{"label": s["label"], "data": s["data"]}
+                                for s in (item.get("sheets") or [])],
             ))
 
     for record in launch.records:

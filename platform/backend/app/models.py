@@ -274,14 +274,22 @@ class DataSet(Base):
 
 
 class DataSetRow(Base):
-    """数据集行（单套语义，恒一行）：各节点的入参配置集"""
+    """数据集行（Excel sheet 模式）：一行 = 一个具名 sheet（场景变体）。
+
+    data 为纯平铺运行时源（字段名→取值，即 ${sheet.字段} 的取值列）；
+    label/field_desc/field_order 为展示元数据，运行时不参与任何解析。"""
     __tablename__ = "data_set_rows"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, comment="主键ID")
     dataset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("data_sets.id"), comment="所属数据集ID")
-    row_index: Mapped[int] = mapped_column(Integer, nullable=False, comment="行序（1 起，单套语义恒为 1）")
-    data: Mapped[Any] = mapped_column(JSON, default=dict, comment="行数据（节点入参配置集）："
-                      '{"nodes": {节点ID: {"params": {body/headers 四来源spec}}}}')
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False, comment="sheet 序（1 起，整体替换时重编）")
+    data: Mapped[Any] = mapped_column(JSON, default=dict, comment="sheet 数据（字段名→取值平铺，${} 运行时源）；"
+                      '节点入参配置置于 "nodes" 键（编辑器隐藏、原样保留）')
+    label: Mapped[str | None] = mapped_column(String(100), comment="sheet 名称（数据集内唯一，服务层校验；"
+                     "NULL=历史行，读取回退 Sheet{row_index}；用作 ${label.字段} 引用命名空间，"
+                     "禁 . $ { } 字符及 nodes/context/db 保留字）")
+    field_desc: Mapped[dict | None] = mapped_column(JSON, comment="{字段名: 描述}——编辑器备注列，运行时不参与解析")
+    field_order: Mapped[list | None] = mapped_column(JSON, comment="[字段名] 显式字段顺序（MySQL JSON 列不保 key 序，网格行序以此为准）")
 
     dataset: Mapped["DataSet"] = relationship("DataSet", back_populates="rows")
 

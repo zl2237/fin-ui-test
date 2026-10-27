@@ -244,3 +244,56 @@ class TestResumeExecutor:
         assert env._stub_client.last_json_body is not None
         assert record.status == "success"
         assert sink.steps[0].extracted_vars == {"order_id": 1}
+
+
+class TestCurrentSheets:
+    """replay_service._current_dataset_row / _current_sheets：续跑「数据集取
+    当前」口径——选中行按快照 row_index 匹配当前行，全 sheet 清单随行返回。"""
+
+    def _db(self, rows):
+        class _Q:
+            def filter(self, *a, **k):
+                return self
+
+            def order_by(self, *a, **k):
+                return self
+
+            def all(self):
+                return rows
+
+        return SimpleNamespace(query=lambda m: _Q())
+
+    def _rows(self):
+        return [
+            SimpleNamespace(row_index=1, label="正常单", data={"bl_no": "B1"}),
+            SimpleNamespace(row_index=2, label=None, data={"bl_no": "B2"}),
+        ]
+
+    def test_row_picked_by_snapshot_index(self):
+        """快照 row_index=2 → 取当前第 2 行（sheet 被选中过即保持选中）"""
+        from app.services import replay_service as rs
+        rec = SimpleNamespace(dataset_id=7, dataset_row={"row_index": 2, "data": {}, "label": "x"})
+        assert rs._current_dataset_row(self._db(self._rows()), rec) == {"bl_no": "B2"}
+
+    def test_row_falls_back_to_first(self):
+        """快照行号在当前数据集中不存在（被删）/无快照 → 回退首行"""
+        from app.services import replay_service as rs
+        for snapshot in ({"row_index": 9, "data": {}}, None):
+            rec = SimpleNamespace(dataset_id=7, dataset_row=snapshot)
+            assert rs._current_dataset_row(self._db(self._rows()), rec) == {"bl_no": "B1"}
+
+    def test_no_dataset_returns_none(self):
+        """无绑定数据集：row=None / sheets=None（调用方拒绝续跑）"""
+        from app.services import replay_service as rs
+        rec = SimpleNamespace(dataset_id=None, dataset_row=None)
+        assert rs._current_dataset_row(self._db([]), rec) is None
+        assert rs._current_sheets(self._db([]), rec) is None
+
+    def test_sheets_all_rows_with_label_fallback(self):
+        """全 sheet 清单：label NULL 回退 Sheet{row_index}（与运行时注入一致）"""
+        from app.services import replay_service as rs
+        rec = SimpleNamespace(dataset_id=7, dataset_row=None)
+        assert rs._current_sheets(self._db(self._rows()), rec) == [
+            {"label": "正常单", "data": {"bl_no": "B1"}},
+            {"label": "Sheet2", "data": {"bl_no": "B2"}},
+        ]

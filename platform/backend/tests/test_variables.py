@@ -160,3 +160,73 @@ class TestDatasetFlatInjection:
         ctx = ExecutionContext(dataset_vars={"bl_no": "FROM-DATASET"})
         ctx.registry.write("n1", "bl_no", "EXTRACTED")
         assert ExpressionEngine(ctx).evaluate("${bl_no}") == "EXTRACTED"
+
+
+class TestAllSheetsInjection:
+    """全 sheet 注入（2026-10-27 sheet 化）：dataset_sheets 各 sheet 以 label
+    为命名空间注入 → ${sheet.字段} 精确引用；注入顺序契约见 context.py。"""
+
+    def _ctx(self, **kw):
+        from app.engine.context import ExecutionContext
+        return ExecutionContext(**kw)
+
+    def _eval(self, ctx, text):
+        from app.engine.expression import ExpressionEngine
+        return ExpressionEngine(ctx).evaluate(text)
+
+    def test_named_sheet_ref_hits(self):
+        """${sheet.字段} 非选中 sheet 也能取到（首点切 ns 查法）"""
+        ctx = self._ctx(
+            dataset_vars={"nodes": {}, "bl_no": "B2"},
+            dataset_sheets=[
+                {"label": "正常单", "data": {"nodes": {}, "bl_no": "B1", "seq": "S1"}},
+                {"label": "退款单", "data": {"nodes": {}, "bl_no": "B2"}},
+            ])
+        assert self._eval(ctx, "${正常单.bl_no}") == "B1"
+        assert self._eval(ctx, "${正常单.seq}") == "S1"
+        assert self._eval(ctx, "${退款单.bl_no}") == "B2"
+
+    def test_bare_ref_prefers_chosen_sheet(self):
+        """裸 ${字段} 同名冲突：选中 sheet（__dataset__ 数据集类注入最后）胜"""
+        ctx = self._ctx(
+            dataset_vars={"bl_no": "CHOSEN"},
+            dataset_sheets=[
+                {"label": "s1", "data": {"bl_no": "OTHER"}},
+                {"label": "s2", "data": {"bl_no": "OTHER2"}},
+            ])
+        assert self._eval(ctx, "${bl_no}") == "CHOSEN"
+
+    def test_suite_still_overrides_sheets(self):
+        """套件注入仍在数据集类注入之后：suite > sheet 具名注入"""
+        ctx = self._ctx(
+            dataset_vars={"bl_no": "CHOSEN"},
+            suite_vars={"bl_no": "SUITE"},
+            dataset_sheets=[{"label": "s1", "data": {"bl_no": "OTHER"}}])
+        assert self._eval(ctx, "${bl_no}") == "SUITE"
+
+    def test_label_collides_node_id_runtime_wins(self):
+        """label 与 node_id 撞名：ns 合并后写胜——运行时节点产出（注入后写）胜"""
+        ctx = self._ctx(
+            dataset_vars={"x": "DS"},
+            dataset_sheets=[{"label": "n1", "data": {"x": "SHEET"}}])
+        assert self._eval(ctx, "${n1.x}") == "SHEET"  # 注入期 sheet 可读
+        ctx.registry.write("n1", "x", "RUNTIME")
+        assert self._eval(ctx, "${n1.x}") == "RUNTIME"  # 运行时写入后覆盖
+
+    def test_nodes_key_not_injected_into_sheet_ns(self):
+        """sheet 内 "nodes" 键是节点入参配置：不注入 label 命名空间"""
+        ctx = self._ctx(
+            dataset_sheets=[{"label": "s1", "data": {"nodes": {"n1": {"params": {}}}, "x": 1}}])
+        assert self._eval(ctx, "${s1.x}") == 1
+        assert self._eval(ctx, "${s1.nodes}") == "${s1.nodes}"  # 未定义保留占位符
+
+    def test_empty_label_sheet_skipped(self):
+        """防御：无标签 sheet 跳过注入（正常路径 plan_case_expansion 恒有 label）"""
+        ctx = self._ctx(dataset_sheets=[{"label": "", "data": {"x": 1}}])
+        assert self._eval(ctx, "${x}") == "${x}"
+
+    def test_unknown_sheet_ref_keeps_placeholder(self):
+        """引用不存在的 sheet：宽松求值保留占位符（与现有一致）"""
+        ctx = self._ctx(dataset_vars={"a": 1},
+                        dataset_sheets=[{"label": "s1", "data": {"a": 1}}])
+        assert self._eval(ctx, "${nope.a}") == "${nope.a}"

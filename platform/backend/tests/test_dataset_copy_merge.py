@@ -27,13 +27,16 @@ class TestCopyDataset:
     def _ds(self):
         return SimpleNamespace(
             id=5, project_id=1, case_id=9, name="场景A", description="描述",
-            rows=[SimpleNamespace(id=51, row_index=1,
+            rows=[SimpleNamespace(id=51, row_index=1, label="正常单",
+                                  field_desc={"bl_no": "运单号"}, field_order=["bl_no"],
                                   data={"nodes": {"n1": {"params": {"body": {"bl_no": {"source": "constant", "value": "B1"}}}}}}),
-                  SimpleNamespace(id=52, row_index=2, data={"nodes": {}})],
+                  SimpleNamespace(id=52, row_index=2, label=None,
+                                  field_desc=None, field_order=None, data={"nodes": {}})],
         )
 
     def test_copy_deep_clones_all(self):
-        """复制：行内节点入参配置全量深拷贝（改副本不动源），命名「原名-副本」，归属同用例"""
+        """复制：行内节点入参配置全量深拷贝（改副本不动源），sheet 元数据
+        （label/field_desc/field_order）随行透传，命名「原名-副本」，归属同用例"""
         src = self._ds()
         db = _fake_db()
         with patch.object(svc.crud, "get_dataset", return_value=src), \
@@ -43,9 +46,14 @@ class TestCopyDataset:
         kw = fake_create.call_args.kwargs
         assert kw["name"] == "场景A-副本"
         assert kw["case_id"] == 9 and kw["project_id"] == 1
-        assert kw["rows_data"][0] == src.rows[0].data  # 值等价
-        assert kw["rows_data"][0] is not src.rows[0].data  # 深拷贝：非同引用
-        kw["rows_data"][0]["nodes"]["n1"]["params"]["body"]["bl_no"]["value"] = "MUT"
+        # 第 1 行：真 label + 元数据透传；第 2 行：历史行 label 回退 Sheet{row_index}
+        assert kw["rows_data"][0]["label"] == "正常单"
+        assert kw["rows_data"][0]["field_desc"] == {"bl_no": "运单号"}
+        assert kw["rows_data"][0]["field_order"] == ["bl_no"]
+        assert kw["rows_data"][1]["label"] == "Sheet2"
+        assert kw["rows_data"][0]["data"] == src.rows[0].data  # 值等价
+        assert kw["rows_data"][0]["data"] is not src.rows[0].data  # 深拷贝：非同引用
+        kw["rows_data"][0]["data"]["nodes"]["n1"]["params"]["body"]["bl_no"]["value"] = "MUT"
         assert src.rows[0].data["nodes"]["n1"]["params"]["body"]["bl_no"]["value"] == "B1"
         assert cp.id == 21
 

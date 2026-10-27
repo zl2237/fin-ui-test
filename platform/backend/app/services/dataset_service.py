@@ -6,9 +6,10 @@
 - 执行强绑定：未绑定数据集的用例拒绝执行（2026-09-30 用户定案）
 
 职责：
-- 数据集 CRUD（归属用例隔离，复用靠复制）
+- 数据集 CRUD（归属用例隔离，复制复用；行 = Excel sheet：label/field_desc/field_order
+  展示元数据 + data 平铺运行时源，2026-10-27 sheet 化定案）
 - 单节点入参配置保存 / 悬空节点配置清理（行内 nodes 读写）
-- 执行展开计划（行数据 → 节点入参配置注入）
+- 执行展开计划（选中行 → 节点入参配置注入 + 全 sheet 清单供 ${sheet.字段} 引用）
 - 跨用例克隆与组合用例合并（行数据纯值操作）
 
 已拆除（历史概念，勿再引入）：
@@ -46,28 +47,100 @@ def _ensure_row(db: Session, ds: models.DataSet) -> models.DataSetRow:
            .order_by(models.DataSetRow.row_index).first())
     if row:
         return row
-    row = models.DataSetRow(dataset_id=ds.id, row_index=1, data={"nodes": {}})
+    row = models.DataSetRow(dataset_id=ds.id, row_index=1, data={"nodes": {}}, label="Sheet1")
     db.add(row)
     db.flush()
     return row
+
+
+# ============ sheet 归一与校验（新形态 [{label, data, field_desc?, field_order?}]，兼容旧 [dict]） ============
+
+# ${} 求值硬拦截的前缀（expression.py：context. / db.）+ 数据集保留键：
+# sheet 取这些名字会通过不了首点切 ns 的查法或与保留语义冲突，保存即拒
+_RESERVED_LABELS = {"nodes", "context", "db"}
+
+
+def _validate_sheet_label(i: int, label: str) -> None:
+    """sheet 名称合法性：非空、≤100、可作 ${label.字段} 命名空间（禁 . $ { }、
+    禁 __ 前缀与保留字；中文允许）。i 为 1 起序号，用于定位报错。"""
+    if not label or not label.strip():
+        raise ValueError(f"第 {i} 个 sheet 名称不能为空")
+    label = label.strip()
+    if len(label) > 100:
+        raise ValueError(f"第 {i} 个 sheet 名称最多 100 字符")
+    if any(ch in label for ch in ".${}"):
+        raise ValueError(f"第 {i} 个 sheet 名称「{label}」含非法字符（不可用 . $ {{ }}）")
+    if label.startswith("__"):
+        raise ValueError(f"第 {i} 个 sheet 名称「{label}」不可用 __ 前缀（伪命名空间保留）")
+    if label in _RESERVED_LABELS:
+        raise ValueError(f"第 {i} 个 sheet 名称「{label}」为保留字（{ '/'.join(sorted(_RESERVED_LABELS)) }），请换一个")
+
+
+def sheet_payload_of(r: models.DataSetRow) -> dict:
+    """DataSetRow 模型 → 新 sheet 形态载荷（复制/克隆路径透传 label/desc/order）。"""
+    return {
+        "label": r.label or f"Sheet{r.row_index}",
+        "data": deepcopy(r.data or {}),
+        "field_desc": deepcopy(r.field_desc) if r.field_desc else None,
+        "field_order": deepcopy(r.field_order) if r.field_order else None,
+    }
+
+
+def _normalize_rows_input(rows_data: list) -> list[dict]:
+    """行输入归一为 sheet 形态 [{label, data, field_desc, field_order}]。
+
+    新形态判定：dict 且含 "label" 键且 "data" 是 dict（历史行数据的键形如
+    s1_atd / nodes，不会恰好同时满足）；旧形态 [data_dict] → label 缺省 None
+    （调用方按 Sheet{i} 兜底）。返回前完成 label 校验、查重与缺省命名。"""
+    normalized: list[dict] = []
+    seen: set[str] = set()
+    for i, el in enumerate(rows_data, start=1):
+        if isinstance(el, dict) and "label" in el and isinstance(el.get("data"), dict):
+            data = el["data"]
+            label = el.get("label")
+            label = label.strip() if isinstance(label, str) else None
+            if label is None or label == "":
+                label = f"Sheet{i}"
+            _validate_sheet_label(i, label)
+            field_desc = el.get("field_desc")
+            field_order = el.get("field_order")
+        elif isinstance(el, dict):
+            # 旧形态：纯数据 dict（replace_rows 历史载荷 / 复制路径历史调用）
+            data = el
+            label = f"Sheet{i}"
+            field_desc = None
+            field_order = None
+        else:
+            raise ValueError(f"第 {i} 个 sheet 的数据必须是对象")
+        if label in seen:
+            raise ValueError(f"第 {i} 个 sheet 名称重复：{label}")
+        seen.add(label)
+        normalized.append({
+            "label": label,
+            "data": data,
+            "field_desc": dict(field_desc) if isinstance(field_desc, dict) and field_desc else None,
+            "field_order": [k for k in field_order if isinstance(k, str)] if isinstance(field_order, list) and field_order else None,
+        })
+    return normalized
 
 
 def replace_rows(db: Session, dataset_id: int, rows_data: list,
                  user_id: int | None = None) -> models.DataSet:
     """整体替换数据集行（数据集管理面板保存）：重编 row_index 1..n。
 
-    至少一行（空数据集无法执行，plan_case_expansion 会拒）；行数据必须是对象。
+    至少一行（空数据集无法执行，plan_case_expansion 会拒）；载荷为新 sheet 形态
+    [{label, data, field_desc?, field_order?}]，兼容旧 [dict]（label 自动 Sheet{i}）。
     """
     if not rows_data:
-        raise ValueError("至少保留一行数据（空数据集无法执行）")
+        raise ValueError("至少保留一个 sheet（空数据集无法执行）")
     if len(rows_data) > 999:
-        raise ValueError("数据行数过多（上限 999）")
+        raise ValueError("sheet 数量过多（上限 999）")
+    sheets = _normalize_rows_input(rows_data)
     ds = get_dataset(db, dataset_id)
     db.query(models.DataSetRow).filter(models.DataSetRow.dataset_id == ds.id).delete()
-    for i, data in enumerate(rows_data, start=1):
-        if not isinstance(data, dict):
-            raise ValueError(f"第 {i} 行必须是对象")
-        db.add(models.DataSetRow(dataset_id=ds.id, row_index=i, data=deepcopy(data)))
+    for i, s in enumerate(sheets, start=1):
+        db.add(models.DataSetRow(dataset_id=ds.id, row_index=i, data=deepcopy(s["data"]),
+                                 label=s["label"], field_desc=s["field_desc"], field_order=s["field_order"]))
     if user_id is not None:
         ds.updated_by = user_id
     db.commit()
@@ -100,10 +173,10 @@ def create_dataset(db: Session, project_id: int | None, name: str,
     db.add(obj)
     if rows_data:
         db.flush()  # 先拿 id，行数据外键依赖
-        for i, data in enumerate(rows_data, start=1):
-            if not isinstance(data, dict):
-                raise ValueError(f"第 {i} 套数据必须是对象")
-            db.add(models.DataSetRow(dataset_id=obj.id, row_index=i, data=dict(data)))
+        for i, s in enumerate(_normalize_rows_input(rows_data), start=1):
+            db.add(models.DataSetRow(dataset_id=obj.id, row_index=i,
+                                     data=dict(s["data"]), label=s["label"],
+                                     field_desc=s["field_desc"], field_order=s["field_order"]))
     db.commit()
     db.refresh(obj)
     return obj
@@ -212,17 +285,23 @@ def plan_case_expansion(db: Session, case, dataset_id=None, row_index=None) -> l
     if row_index is not None:
         r = next((x for x in rows if x.row_index == row_index), None)
         if r is None:
-            avail = "、".join(str(x.row_index) for x in rows)
-            raise ValueError(f"数据集「{ds.name}」没有第 {row_index} 行（现有行：{avail}）")
+            avail = "、".join(f"{x.row_index}({x.label or f'Sheet{x.row_index}'})" for x in rows)
+            raise ValueError(f"数据集「{ds.name}」没有第 {row_index} 个 sheet（现有：{avail}）")
     else:
         r = rows[0]
+    # row.label 优先真 sheet 名（历史行无 label 回退旧合成形式）；
+    # sheets 携带全部 sheet 供引擎以 ${sheet.字段} 命名空间注入（context.py）
     return [{
         "dataset_id": effective,
         "row": {
             "row_index": r.row_index,
             "data": dict(r.data or {}),
-            "label": ds.name + (f" 第{r.row_index}行" if len(rows) > 1 else ""),
+            "label": r.label or (ds.name + (f" 第{r.row_index}行" if len(rows) > 1 else "")),
         },
+        "sheets": [
+            {"row_index": x.row_index, "label": x.label or f"Sheet{x.row_index}", "data": dict(x.data or {})}
+            for x in rows
+        ],
     }]
 
 
@@ -345,7 +424,7 @@ def copy_dataset(db: Session, dataset_id: int, name: str | None = None, user_id:
     return create_dataset(
         db, project_id=src.project_id, case_id=src.case_id,
         name=base, user_id=user_id, description=src.description,
-        rows_data=[deepcopy(r.data or {}) for r in (src.rows or [])],
+        rows_data=[sheet_payload_of(r) for r in (src.rows or [])],
     )
 
 
@@ -355,5 +434,5 @@ def clone_dataset_to_case(db: Session, src: models.DataSet, target_case_id: int,
     return create_dataset(
         db, project_id=src.project_id, case_id=target_case_id,
         name=src.name, user_id=user_id, description=src.description,
-        rows_data=[deepcopy(r.data or {}) for r in (src.rows or [])],
+        rows_data=[sheet_payload_of(r) for r in (src.rows or [])],
     )

@@ -19,9 +19,14 @@ def _ds(rows, columns=None, case_id=11, name="运单数据"):
                            rows=rows)
 
 
-def _rows(n):
-    return [SimpleNamespace(id=i, dataset_id=7, row_index=i, data={"bl_no": f"BL{i:03d}"})
-            for i in range(1, n + 1)]
+def _rows(n, labels=None):
+    """labels=None → 全部历史行（label=None，走回退）；否则按行序给真名"""
+    out = []
+    for i in range(1, n + 1):
+        lab = None if labels is None else labels[i - 1]
+        out.append(SimpleNamespace(id=i, dataset_id=7, row_index=i, label=lab,
+                                   data={"bl_no": f"BL{i:03d}"}))
+    return out
 
 
 class TestPlanCaseExpansion:
@@ -64,12 +69,35 @@ class TestPlanCaseExpansion:
         assert plan[0]["row"] == {"row_index": 2, "data": {"bl_no": "BL002"},
                                   "label": "运单数据 第2行"}
 
+    def test_real_label_wins_over_legacy_suffix(self):
+        """有真 sheet 名：row.label 用真名（${label.字段} 引用的稳定锚点）"""
+        case = SimpleNamespace(id=11, dataset_id=7)
+        rows = _rows(2, labels=["正常单", "退款单"])
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_index=2)
+        assert plan[0]["row"]["label"] == "退款单"
+
+    def test_sheets_carries_all_rows_with_fallback_labels(self):
+        """sheets 携带全部行（${sheet.字段} 全 sheet 注入源）；历史行 label
+        回退 Sheet{row_index}（与迁移回填一致）"""
+        case = SimpleNamespace(id=11, dataset_id=7)
+        rows = _rows(3, labels=["正常单", None, "退款单"])
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case)
+        assert plan[0]["sheets"] == [
+            {"row_index": 1, "label": "正常单", "data": {"bl_no": "BL001"}},
+            {"row_index": 2, "label": "Sheet2", "data": {"bl_no": "BL002"}},
+            {"row_index": 3, "label": "退款单", "data": {"bl_no": "BL003"}},
+        ]
+
     def test_row_index_out_of_range_rejected(self):
-        """row_index 不存在 → 拒绝并列出现有行号（手填/数据已删时的明确报错）"""
+        """row_index 不存在 → 拒绝并列出现有 sheet（手填/数据已删时的明确报错）"""
         case = SimpleNamespace(id=11, dataset_id=7)
         with patch.object(svc.crud, "get_dataset", return_value=_ds(_rows(2))), \
              patch.object(svc.crud, "list_rows", return_value=_rows(2)):
-            with pytest.raises(ValueError, match="没有第 9 行（现有行：1、2）"):
+            with pytest.raises(ValueError, match=r"没有第 9 个 sheet（现有：1\(Sheet1\)、2\(Sheet2\)）"):
                 svc.plan_case_expansion(SimpleNamespace(), case, row_index=9)
 
     def test_zero_rows_rejected(self):
