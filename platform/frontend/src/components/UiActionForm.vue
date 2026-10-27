@@ -125,7 +125,7 @@
     <!-- custom：自定义动作模板引用 + 传参 -->
     <template v-else-if="st.action === 'custom'">
       <el-form-item label="动作模板" required>
-        <el-select v-model="st.custom_id" filterable clearable placeholder="选择自定义动作（元素库页维护）" style="width: 100%">
+        <el-select v-model="st.custom_id" filterable clearable placeholder="选择自定义动作（动作库页维护）" style="width: 100%">
           <el-option v-for="ca in customActions" :key="ca.id" :value="ca.id"
                      :label="ca.description ? `${ca.name}（${ca.description}）` : ca.name" />
         </el-select>

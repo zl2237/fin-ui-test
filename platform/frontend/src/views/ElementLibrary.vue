@@ -6,7 +6,7 @@
         <el-button type="primary" @click="openCreate">+ 新增元素</el-button>
         <el-button @click="openBatch">批量导入</el-button>
         <el-button @click="openScopeLabels">页面域语义</el-button>
-        <el-button @click="customVisible = true">动作库管理</el-button>
+        <el-button @click="router.push('/actions')">动作库管理</el-button>
       </div>
       <div class="head-right">
         <el-input
@@ -170,9 +170,6 @@
       </template>
     </el-drawer>
 
-    <!-- 自定义动作（JS 模板）管理：编排「自定义动作」步骤引用 -->
-    <CustomActionDialog v-model="customVisible" />
-
     <!-- 批量导入弹窗：粘贴 locator JSON 原文，前端展开为 items -->
     <el-dialog v-model="batchVisible" title="批量导入元素" width="560px" align-center :close-on-click-modal="false">
       <el-alert type="info" :closable="false" style="margin-bottom: 12px">
@@ -227,6 +224,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, EditPen, Delete } from '@element-plus/icons-vue'
 import { elementApi, scopeLabelApi, type UiElement, type UiElementScope } from '@/api'
@@ -236,12 +234,9 @@ import { formatTime, formatRelativeTime } from '@/utils/format'
 import { useClientSort } from '@/composables/useClientSort'
 import { expandStorageKey } from '@/composables/useGroupTree'
 import EmptyState from '@/components/EmptyState.vue'
-import CustomActionDialog from '@/components/CustomActionDialog.vue'
 
 const store = useAppStore()
-
-// 自定义动作管理弹窗（页头「自定义动作」入口）
-const customVisible = ref(false)
+const router = useRouter()
 
 // 常用策略键（locator JSON / 后端优先级链中出现过的键；键值对编辑可自定义输入）
 const STRATEGY_KEYS = [
