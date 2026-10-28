@@ -362,7 +362,9 @@ class UiRuntime:
     # ---------- 元素定位 ----------
     def _locator(self, params: dict):
         """element 配置 → locator。优先元素库引用（element_id），其次内联配置。
-        定位值支持 ${变量} 求值（如行内按钮按 ${bl_no} 锁定所在行）。"""
+        定位值支持 ${变量} 求值（如行内按钮按 ${bl_no} 锁定所在行）。
+        元素库引用与节点页面域（self._node_scope，编排改造 2026-10-28）不符即
+        报错——保存期强校验的运行期防御，防绕过保存口写库。"""
         element = params.get("element")
         element_id = element.get("element_id") if isinstance(element, dict) else None
         if element_id:
@@ -370,6 +372,10 @@ class UiRuntime:
             obj = self.db.query(models.UiElement).filter(models.UiElement.id == int(element_id)).first()
             if not obj:
                 raise UiActionError(f"元素库中不存在 element_id={element_id}")
+            node_scope = getattr(self, "_node_scope", None)
+            if node_scope and obj.page_scope != node_scope:
+                raise UiActionError(
+                    f"跨页面域绑定：元素 {obj.page_scope}.{obj.element_key} 不属于节点页面域 {node_scope}")
             strategies = obj.strategies or {}
             desc = f"{obj.page_scope}.{obj.element_key}"
         else:
@@ -399,6 +405,8 @@ class UiRuntime:
         """
         if not isinstance(params, dict):
             raise UiActionError("ui_params 需为对象")
+        # 节点页面域（编排改造：节点=页面域）：执行期归属校验依据（_locator 读）
+        self._node_scope = str(params.get("scope") or "").strip() or None
         if isinstance(params.get("steps"), list):
             return self._run_steps(params["steps"])
         if not params.get("action"):
