@@ -10,11 +10,15 @@ UI 步骤的 url/填充值/定位值等仍是自由文本，保留 ${} 语法（
 未定义变量保留原占位符不替换，便于排查与下游注入。
 
 函数集不自持：复用 functions.call_function（与来源2同一注册表，单一事实源）。
+
+数据收口（2026-10-28 定案）：UI 动作取值的数据唯一来源 = 数据集单元格；
+生成规则（${generate_bl_no(...)} 等）写进单元格，注入注册表前由
+evaluate_dataset_cell 求值（见 context.py），编排层只保留 ${sheet.字段} 引用。
 """
 import re
 from typing import Any
 
-from .functions import call_function
+from .functions import FUNCTIONS, call_function
 from .variables import VariableRegistry
 
 
@@ -48,6 +52,29 @@ def _strip_quotes(s: str) -> str:
     if len(s) >= 2 and ((s[0] == "'" and s[-1] == "'") or (s[0] == '"' and s[-1] == '"')):
         return s[1:-1]
     return s
+
+
+# 数据集单元格生成规则：整串 ${函数(...)}（函数在注册表白名单内才求值）
+_CELL_FN_RE = re.compile(r"^\$\{([a-zA-Z_]\w*)\((.*)\)\}$", re.S)
+
+
+def evaluate_dataset_cell(value: Any) -> Any:
+    """数据集单元格的生成规则求值（数据收口 2026-10-28）。
+
+    单元格整串就是一个 ${函数(...)} 且函数在注册表内 → 求值为生成结果；
+    其余内容（常量 / ${引用} / 部分内嵌表达式的文本 / 非字符串）原样返回。
+    求值失败（参数解析错/函数抛错）保留原串：执行时步骤引用该字段会填出
+    规则原文，肉眼可辨、回到数据集修值即可，不静默吞错。
+    """
+    if not isinstance(value, str):
+        return value
+    m = _CELL_FN_RE.match(value.strip())
+    if not m or m.group(1) not in FUNCTIONS:
+        return value
+    try:
+        return call_function(m.group(1), _parse_kwargs(m.group(2)))
+    except Exception:  # noqa: BLE001 坏规则不阻断执行（填出原文即暴露问题）
+        return value
 
 
 def _safe_int(val: Any, default: int = 0) -> int:

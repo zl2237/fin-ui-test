@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """保存校验器单测：四来源参数模型静态完整性。"""
-from app.engine.validation import validate_case_configs
+import pytest
+
+from app.engine.validation import validate_case_configs, validate_ui_step_data_sources
 
 DAG = {"nodes": [{"id": "n1"}, {"id": "n2"}], "edges": [{"source": "n1", "target": "n2"}]}
 
@@ -146,6 +148,86 @@ class TestReject:
             n1_config(params={"body": {"x": {"source": "sql", "sql": "SELECT {{n1.ghost}}"}}}),
         ])
         assert any("ghost" in e for e in errs)
+
+
+class TestUiStepDataSources:
+    """UI 动作取值收口（2026-10-28）：生成/取数规则只允许写在数据集单元格。"""
+
+    NAMED_DAG = {"nodes": [{"id": "n1", "data": {"label": "填提单号"}}], "edges": []}
+
+    def ui_node(self, steps):
+        return {"node_id": "n1", "step_type": "ui", "ui_params": {"steps": steps},
+                "post_extract": [], "assertions": []}
+
+    def test_whole_fn_call_rejected(self):
+        with pytest.raises(ValueError, match="非数据集数据源"):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "fill", "value": "${generate_bl_no(prefix='UIBL')}"}])],
+                self.NAMED_DAG)
+
+    def test_embedded_fn_call_rejected(self):
+        with pytest.raises(ValueError, match="内嵌了数据生成"):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "fill", "value": "BL-${uuid()}"}])], self.NAMED_DAG)
+
+    def test_db_query_rejected(self):
+        with pytest.raises(ValueError, match="非数据集数据源"):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "fill",
+                                "value": "${db.query_value(sql='SELECT 1')}"}])], self.NAMED_DAG)
+
+    def test_dataset_ref_allowed(self):
+        validate_ui_step_data_sources(
+            [self.ui_node([{"action": "fill", "value": "${bl_no}"},
+                           {"action": "fill", "value": "${编辑自营项目.bl_no1}"}])],
+            self.NAMED_DAG)
+
+    def test_literal_and_element_locator_allowed(self):
+        """字面量与 element 定位值（${变量} 求值属定位参数）不受收口约束"""
+        validate_ui_step_data_sources(
+            [self.ui_node([{"action": "fill", "value": "海运费"},
+                           {"action": "click", "element": {"strategy": "text",
+                                                           "value": "${bl_no}行内详情"}},
+                           {"action": "goto", "url": "/order/detail?bl=${bl_no}"}])],
+            self.NAMED_DAG)
+
+    def test_evaluate_js_embedded_allowed(self):
+        """evaluate 的 value 是 JS 脚本：内嵌 ${fn(...)} 属页面逻辑，不拦截"""
+        validate_ui_step_data_sources(
+            [self.ui_node([{"action": "evaluate",
+                            "value": "const s=`${generate_bl_no(prefix='X')}`;return s"}])],
+            self.NAMED_DAG)
+
+    def test_evaluate_whole_fn_rejected(self):
+        """整串函数调用作为 evaluate 值 = 编排层数据源声明，仍拦截"""
+        with pytest.raises(ValueError):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "evaluate", "value": "${now()}"}])], self.NAMED_DAG)
+
+    def test_row_and_field_fields_scanned(self):
+        with pytest.raises(ValueError):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "row_button", "value": "详情",
+                                "row": "${uuid()}"}])], self.NAMED_DAG)
+
+    def test_api_node_ignored(self):
+        validate_ui_step_data_sources(
+            [{"node_id": "n2", "post_extract": [], "assertions": [],
+              "params": {"body": {"x": {"source": "func", "func": "generate_bl_no", "args": []}}}}],
+            self.NAMED_DAG)
+
+    def test_single_step_form_scanned(self):
+        """无 steps 包装的单动作形态（历史节点）同样校验"""
+        with pytest.raises(ValueError):
+            validate_ui_step_data_sources(
+                [{"node_id": "n1", "step_type": "ui",
+                  "ui_params": {"action": "fill", "value": "${uuid()}"},
+                  "post_extract": [], "assertions": []}], self.NAMED_DAG)
+
+    def test_message_shows_node_label(self):
+        with pytest.raises(ValueError, match="「填提单号」"):
+            validate_ui_step_data_sources(
+                [self.ui_node([{"action": "fill", "value": "${uuid()}"}])], self.NAMED_DAG)
 
 
 class TestChineseNodeNames:
