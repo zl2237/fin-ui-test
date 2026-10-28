@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..auth import get_current_user
 from ..database import get_db
-from ..engine.validation import validate_post_extract_sql
+from ..engine.validation import validate_post_extract_sql, validate_ui_step_data_sources
 
 router = APIRouter(prefix="/api/testcases", tags=["用例"])
 
@@ -63,6 +63,8 @@ def create(data: schemas.TestCaseCreate, db: Session = Depends(get_db), user: mo
     try:
         validate_post_extract_sql(getattr(data, "node_configs", None),
                                   getattr(data, "dag_config", None))
+        validate_ui_step_data_sources(getattr(data, "node_configs", None),
+                                      getattr(data, "dag_config", None))
     except ValueError as e:
         raise HTTPException(400, str(e))
     _validate_case_env(db, data)
@@ -186,9 +188,12 @@ def update(case_id: int, data: schemas.TestCaseUpdate, db: Session = Depends(get
     except ValueError as e:
         raise HTTPException(409, str(e))
     # 后置提取 SQL 基本校验（关键字粘连/缺失——静默坏 SQL 运行时只会在报告里表现为提取为空）
+    # + UI 动作取值收口校验（生成/取数规则只允许写在数据集单元格）
     try:
         validate_post_extract_sql(getattr(data, "node_configs", None),
                                   getattr(data, "dag_config", None))
+        validate_ui_step_data_sources(getattr(data, "node_configs", None),
+                                      getattr(data, "dag_config", None))
     except ValueError as e:
         raise HTTPException(400, str(e))
     # 环境严格绑定：显式改绑时校验存在（普通用例须绑定环境才能执行，编辑入口必填）

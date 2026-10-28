@@ -293,7 +293,7 @@ defineExpose({ syncDrafts })
           <el-table-column label="取值" min-width="260">
             <template #default="{ row }">
               <el-input v-model="row.valueText" size="small" type="textarea"
-                        :autosize="{ minRows: 1, maxRows: 8 }" placeholder="常量或 ${引用}；对象可贴 JSON"
+                        :autosize="{ minRows: 1, maxRows: 8 }" placeholder="常量、${引用} 或整串生成规则 ${函数(...)}；对象可贴 JSON"
                         @input="markDirty" />
             </template>
           </el-table-column>
@@ -320,7 +320,7 @@ defineExpose({ syncDrafts })
     <!-- 保存条 -->
     <div class="ds-foot">
       <span class="ds-foot-left">
-        <span class="ds-foot-tip">字段可写常量或 ${引用}；执行时 ${sheet名.字段} 精确取值</span>
+        <span class="ds-foot-tip">字段可写常量或 ${引用}；生成/取数规则写整串 ${函数(...)}（如 ${generate_bl_no(prefix='UIBL')}），执行时在此求值；动作编排里只引用 ${sheet名.字段}</span>
       </span>
       <span class="ds-save-wrap">
         <span v-if="dirty" class="ds-dirty">有未保存修改</span>
