@@ -11,7 +11,7 @@
         <el-tag v-if="suite" type="warning" effect="plain">套件 #{{ suiteId }}</el-tag>
       </div>
       <div class="head-right">
-        <el-button :disabled="!dirty" :loading="saving" @click="onSave">保存 (Ctrl+S)</el-button>
+        <el-button :disabled="!dirty" :loading="saving" @click="onSave()">保存 (Ctrl+S)</el-button>
         <el-button type="success" :loading="running" @click="onExecute">执行套件</el-button>
       </div>
     </div>
@@ -20,7 +20,7 @@
       <div v-if="loadError" class="app-load-error">
         <el-icon><WarningFilled /></el-icon>
         <span>{{ loadError }}</span>
-        <el-button size="small" @click="load">重试</el-button>
+        <el-button size="small" @click="load()">重试</el-button>
       </div>
 
       <template v-else-if="suite">

@@ -50,7 +50,7 @@
         <div v-if="loadError" class="app-load-error">
           <el-icon><WarningFilled /></el-icon>
           <span>{{ loadError }}</span>
-          <el-button size="small" @click="load">重试</el-button>
+          <el-button size="small" @click="load()">重试</el-button>
         </div>
 
         <EmptyState v-else-if="!loading && !currentCase" description="选择左侧用例查看其数据集" />

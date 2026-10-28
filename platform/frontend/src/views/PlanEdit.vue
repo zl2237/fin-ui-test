@@ -11,7 +11,7 @@
         <el-tag v-if="plan" type="primary" effect="plain">方案 #{{ planId }}</el-tag>
       </div>
       <div class="head-right">
-        <el-button :disabled="!dirty" :loading="saving" @click="onSave">保存 (Ctrl+S)</el-button>
+        <el-button :disabled="!dirty" :loading="saving" @click="onSave()">保存 (Ctrl+S)</el-button>
         <el-button type="success" :loading="running" @click="onExecute">一键执行</el-button>
       </div>
     </div>
