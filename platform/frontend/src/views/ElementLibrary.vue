@@ -133,7 +133,7 @@
     <el-drawer v-model="drawerVisible" :title="editing ? '编辑元素' : '新增元素'" size="min(560px, 92vw)" direction="rtl">
       <el-form :model="form" label-width="90px">
         <el-form-item label="页面域" required>
-          <el-input v-model="form.page_scope" placeholder="如 ordermanage/business_order_add" />
+          <el-input v-model="form.page_scope" placeholder="业务系统真实路由，如 orderManage/businessOrder" />
         </el-form-item>
         <el-form-item label="元素 Key" required>
           <el-input v-model="form.element_key" placeholder="如 bl_no_input（同域唯一）" />
@@ -172,7 +172,7 @@
     <!-- 页面域语义配置（英文域 → 中文，侧栏树展示） -->
     <el-dialog v-model="labelDialogVisible" title="页面域语义" width="min(560px, 92vw)">
       <el-alert type="info" :closable="false" style="margin-bottom: 10px">
-        为英文页面域配置中文语义（如 ordermanage/business_order_add → 新建委托订单），
+        为英文页面域配置中文语义（如 orderManage/entrustedOrder → 委托订单），
         保存后左侧页面域树以中文展示。清空文本即删除该域语义。
       </el-alert>
       <div class="label-rows">

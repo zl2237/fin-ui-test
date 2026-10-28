@@ -15,9 +15,15 @@
 - 全 sheet 注入（2026-10-27 sheet 化）：dataset_sheets 各 sheet 以 label 为
   命名空间注入 → ${sheet.字段} 精确引用非选中 sheet 的值（首点切 ns 查法，
   expression.py 零改动）；注入顺序见 __init__ docstring
+- 单元格生成规则求值（2026-10-28 数据收口）：注入前对平铺单元格过
+  evaluate_dataset_cell——整串 ${函数(...)} 在此求值（生成规则写在数据集，
+  编排层只引用 ${sheet.字段}）。选中 sheet 经 sheets 与 dataset_vars 双通道
+  注入，同一单元格只求值一次（按原始数据相等复用），保证 ${label.字段} 与
+  裸 ${字段} 取到同一个生成值（generate_bl_no 含随机段，两次求值必不同）
 """
 from typing import Any
 
+from .expression import evaluate_dataset_cell
 from .variables import DATASET_NS, SUITE_NS, VariableRegistry
 
 
@@ -30,8 +36,9 @@ class ExecutionContext:
         （由 DagExecutor 消费，不注入注册表）；其余平铺键为 legacy 数据驱动
         行（如 {"bl_no": ...}），注入 __dataset__ 供 UI 步骤 ${} 引用。
 
-        dataset_sheets：全部 sheet [{label, data}]（执行展开计划携带）。注入
-        顺序契约（_flat_pool 按 ns 插入序合并，顺序即裸 ${字段} 优先级）：
+        dataset_sheets：全部 sheet [{label, data}]（执行展开计划携带）。平铺
+        单元格注入前求值生成规则（evaluate_dataset_cell，仅整串 ${函数(...)}）。
+        注入顺序契约（_flat_pool 按 ns 插入序合并，顺序即裸 ${字段} 优先级）：
         1. 各 sheet（行序）以 label 为 ns 注入平铺键（除 "nodes"）；
         2. 选中 sheet 平铺注入 __dataset__（数据集类注入的最后）→ 裸 ${字段}
            同名冲突时选中 sheet 胜；
@@ -46,13 +53,23 @@ class ExecutionContext:
         引用链保持完整。"""
         self.dataset_vars: dict[str, Any] = dataset_vars or {}
         self.registry = VariableRegistry()
+        evaluated: list[tuple[dict, dict]] = []  # (原始 data, 求值后平铺) —— 选中 sheet 复用
         for s in dataset_sheets or []:
             label = (s.get("label") or "").strip()
             if not label:
                 continue  # 防御：无标签 sheet 无命名空间，跳过（正常不会出现）
-            flat_sheet = {k: v for k, v in (s.get("data") or {}).items() if k != "nodes"}
+            raw = s.get("data") or {}
+            flat_sheet = {k: evaluate_dataset_cell(v) for k, v in raw.items() if k != "nodes"}
+            evaluated.append((raw, flat_sheet))
             self.registry.inject(label, flat_sheet)
-        flat = {k: v for k, v in self.dataset_vars.items() if k != "nodes"}
+        flat: dict[str, Any] | None = None
+        for raw, ev in evaluated:
+            # 选中 sheet 双通道注入：与某 sheet 原始数据相等 → 复用其求值结果
+            if raw == self.dataset_vars:
+                flat = dict(ev)
+                break
+        if flat is None:
+            flat = {k: evaluate_dataset_cell(v) for k, v in self.dataset_vars.items() if k != "nodes"}
         if flat:
             self.registry.inject(DATASET_NS, flat)
         self.registry.inject(SUITE_NS, suite_vars)

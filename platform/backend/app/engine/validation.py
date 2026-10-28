@@ -237,6 +237,67 @@ def validate_case_configs(dag: dict | None, node_configs: Any) -> list[str]:
     return errs
 
 
+# ============ UI 动作取值收口校验（2026-10-28 定案） ============
+# 数据唯一来源 = 数据集单元格：生成/取数规则（${函数(...)}、${db.query_*}）写在
+# 数据集单元格（执行时求值，见 expression.evaluate_dataset_cell），编排动作取值
+# 只允许 ${sheet.字段} 引用或字面量。保存时整串函数调用/SQL 取数即拒，杜绝
+# 「提单号生成规则散落在编排里」的回潮。
+# 扫描的步骤字段：value / url / field / row（取值语义字段；element 定位值走
+# ${变量} 求值属定位参数，维持自由文本）。evaluate 动作的 value 是 JS 脚本，
+# 仅拦整串（脚本内嵌 ${} 属页面逻辑，不视为数据源声明）。
+_UI_VALUE_FIELDS = ("value", "url", "field", "row")
+# 整串 ${...}（函数调用或 db.*）；内嵌（拼接文本）形态另用函数名正则扫描
+_UI_WHOLE_EXPR_RE = re.compile(r"^\$\{(.+)\}$", re.S)
+_UI_FN_CALL_RE = re.compile(r"\$\{([a-zA-Z_]\w*|db\.[a-z_]+)\(")
+
+
+def validate_ui_step_data_sources(node_configs: list | None, dag: dict | None = None) -> None:
+    """编排保存入口：UI 动作步骤取值不得自带数据生成/取数规则（收口校验）。
+
+    命中即抛 ValueError（路由转 400，消息引导改法）；API 节点不在此列——
+    其参数走四来源结构化配置（函数为来源2，合法）。
+    """
+    if not node_configs:
+        return
+    names = _node_names(dag)
+    for nc in node_configs:
+        if nc is None:
+            continue
+        if not isinstance(nc, dict):
+            nc = nc.model_dump() if hasattr(nc, "model_dump") else vars(nc)
+        if nc.get("step_type") != "ui":
+            continue
+        params = nc.get("ui_params") or {}
+        if not isinstance(params, dict):
+            continue
+        disp = _disp(names, nc.get("node_id") or "?")
+        steps = params.get("steps") if isinstance(params.get("steps"), list) else [params]
+        for i, st in enumerate(steps, 1):
+            if not isinstance(st, dict):
+                continue
+            action = st.get("action") or "?"
+            is_js = action == "evaluate"  # JS 脚本只拦整串，内嵌不扫（防误伤页面逻辑）
+            for field in _UI_VALUE_FIELDS:
+                v = st.get(field)
+                if not isinstance(v, str) or not v.strip():
+                    continue
+                where = f"节点 {disp} 步骤{i}（{action}）的{field}"
+                whole = _UI_WHOLE_EXPR_RE.match(v.strip())
+                inner = whole.group(1) if whole else ""
+                head = inner.split("(", 1)[0].strip() if "(" in inner else ""
+                if whole and (head.startswith("db.") or head in FUNCTIONS):
+                    raise ValueError(
+                        f"{where}使用了非数据集数据源：{v[:60]}——生成/取数规则请写在"
+                        f"绑定数据集的单元格中，动作里改为引用 ${{sheet.字段}}")
+                if not is_js:
+                    for m in _UI_FN_CALL_RE.finditer(v):
+                        h = m.group(1)
+                        if h.startswith("db.") or h in FUNCTIONS:
+                            raise ValueError(
+                                f"{where}内嵌了数据生成/取数表达式 ${{{h}(...)}}——请把规则"
+                                f"整体放进绑定数据集的单元格，动作里引用 ${{sheet.字段}}")
+
+
 # ============ 后置提取 SQL 基本校验 ============
 # 目标是拦截"肉眼难察、运行时静默失败"的低级笔误（提取结果为空、报告里查不到原因）：
 # - 列名与关键字粘连（pay_invoice_apply_idfrom —— FROM 非独立词，TiDB 直接语法错误）
