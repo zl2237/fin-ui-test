@@ -6,7 +6,6 @@
         <el-button type="primary" @click="openCreate">+ 新增元素</el-button>
         <el-button @click="openBatch">批量导入</el-button>
         <el-button @click="openScopeLabels">页面域语义</el-button>
-        <el-button @click="router.push('/actions')">动作库管理</el-button>
       </div>
       <div class="head-right">
         <el-input
@@ -170,37 +169,6 @@
       </template>
     </el-drawer>
 
-    <!-- 批量导入弹窗：粘贴 locator JSON 原文，前端展开为 items -->
-    <el-dialog v-model="batchVisible" title="批量导入元素" width="560px" align-center :close-on-click-modal="false">
-      <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-        <div class="batch-guide">
-          <div class="guide-title">导入格式说明</div>
-          <div class="guide-line">粘贴 autotest-playwright 的 locator JSON 原文：<code>{ "key": { "full_xpath": "…", "label": "…", "description": "…" } }</code></div>
-          <div class="guide-line">每个顶层 key 作为一个元素，<code>description</code> 字段提为元素描述，其余字段原样作为定位策略</div>
-          <div class="guide-line">覆盖式导入：同页面域同 key 更新策略，新 key 插入</div>
-        </div>
-      </el-alert>
-      <el-form label-width="80px">
-        <el-form-item label="页面域" required>
-          <el-input v-model="batchScope" placeholder="本次导入的元素归属页面域，如 ordermanage/business_order_add" />
-        </el-form-item>
-      </el-form>
-      <el-input
-        v-model="batchText"
-        type="textarea"
-        :rows="10"
-        :placeholder="BATCH_PLACEHOLDER"
-      />
-      <div v-if="batchPreview" style="margin-top: 8px; font-size: 12px; color: var(--app-text-muted)">
-        已解析 {{ batchPreview.count }} 个元素<template v-if="batchPreview.noStrategy">，{{ batchPreview.noStrategy }} 个无定位策略字段（将跳过）</template>
-      </div>
-      <div v-else-if="batchError" style="margin-top: 8px; font-size: 12px; color: var(--el-color-danger)">{{ batchError }}</div>
-      <template #footer>
-        <el-button @click="batchVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="onBatchSave">导入</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 页面域语义配置（英文域 → 中文，侧栏树展示） -->
     <el-dialog v-model="labelDialogVisible" title="页面域语义" width="min(560px, 92vw)">
       <el-alert type="info" :closable="false" style="margin-bottom: 10px">
@@ -219,12 +187,14 @@
         <el-button type="primary" :loading="labelSaving" @click="onSaveScopeLabels">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- HTML 解析导入：粘贴 outerHTML → 预览勾选/改名/补含义 → 覆盖式入库 -->
+    <ImportHtmlDialog v-model:visible="htmlImportVisible" :default-scope="htmlImportScope" @imported="onHtmlImported" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, EditPen, Delete } from '@element-plus/icons-vue'
 import { elementApi, scopeLabelApi, type UiElement, type UiElementScope } from '@/api'
@@ -234,9 +204,9 @@ import { formatTime, formatRelativeTime } from '@/utils/format'
 import { useClientSort } from '@/composables/useClientSort'
 import { expandStorageKey } from '@/composables/useGroupTree'
 import EmptyState from '@/components/EmptyState.vue'
+import ImportHtmlDialog from '@/components/ImportHtmlDialog.vue'
 
 const store = useAppStore()
-const router = useRouter()
 
 // 常用策略键（locator JSON / 后端优先级链中出现过的键；键值对编辑可自定义输入）
 const STRATEGY_KEYS = [
@@ -245,10 +215,6 @@ const STRATEGY_KEYS = [
 
 // 占位示例（内嵌单引号，模板属性内无法直排，走 script 绑定）
 const STRAT_PLACEHOLDER = `{"full_xpath": "//input[@id='bl_no']", "label": "提单号"}`
-const BATCH_PLACEHOLDER = `{
-  "bl_no_input": {"full_xpath": "//input[@id='bl_no']", "label": "提单号", "description": "提单号输入框"},
-  "submit_btn": {"text": "提交"}
-}`
 
 const scopes = ref<UiElementScope[]>([])
 const list = ref<UiElement[]>([])
@@ -613,81 +579,17 @@ async function onRemove(row: UiElement) {
   }
 }
 
-// ===== 批量导入（locator JSON 覆盖式导入） =====
-const batchVisible = ref(false)
-const batchText = ref('')
-const batchScope = ref('')
-const batchError = ref('')
-
-/** 解析 locator JSON：{key:{...,description}} → items（含无策略字段计数） */
-function parseLocatorJson() {
-  try {
-    const obj = JSON.parse(batchText.value || '{}')
-    if (typeof obj !== 'object' || Array.isArray(obj) || obj === null) {
-      return { error: 'JSON 需为对象：{ "key": { 策略字段, description } }', items: [], noStrategy: 0 }
-    }
-    const items: { element_key: string; strategies: Record<string, any>; description?: string }[] = []
-    let noStrategy = 0
-    for (const [key, val] of Object.entries(obj)) {
-      if (!key || typeof val !== 'object' || val === null) continue
-      const { description, ...strategies } = val as Record<string, any>
-      if (!Object.keys(strategies).length) {
-        noStrategy++
-        continue
-      }
-      items.push({ element_key: key, strategies, description: description || undefined })
-    }
-    return { error: '', items, noStrategy }
-  } catch {
-    return { error: 'JSON 格式错误，请粘贴合法 JSON 原文', items: [], noStrategy: 0 }
-  }
-}
-
-const batchPreview = computed(() => {
-  if (!batchText.value.trim()) return null
-  const { items, noStrategy } = parseLocatorJson()
-  if (!items.length && noStrategy === 0) return null
-  return { count: items.length, noStrategy }
-})
+// ===== 批量导入（HTML / locator JSON 自动识别，统一预览勾选入库） =====
+const htmlImportVisible = ref(false)
+const htmlImportScope = ref('')
 
 function openBatch() {
-  batchText.value = ''
-  batchScope.value = currentScope.value
-  batchError.value = ''
-  batchVisible.value = true
+  htmlImportScope.value = currentScope.value
+  htmlImportVisible.value = true
 }
 
-async function onBatchSave() {
-  if (!batchScope.value.trim()) {
-    ElMessage.warning('请填写本次导入的页面域')
-    return
-  }
-  const { error, items } = parseLocatorJson()
-  if (error) {
-    batchError.value = error
-    ElMessage.warning(error)
-    return
-  }
-  if (!items.length) {
-    ElMessage.warning('未解析到有效元素（key 下至少需要一个策略字段）')
-    return
-  }
-  if (!store.currentProjectId) return
-  saving.value = true
-  try {
-    const res = await elementApi.batch({
-      project_id: store.currentProjectId,
-      page_scope: batchScope.value.trim(),
-      items,
-    })
-    ElMessage.success(res.message)
-    batchVisible.value = false
-    await Promise.all([load(), loadScopes()])
-  } catch (e: any) {
-    ElMessage.error(e.message || '导入失败')
-  } finally {
-    saving.value = false
-  }
+async function onHtmlImported() {
+  await Promise.all([load(), loadScopes()])
 }
 
 onMounted(() => {
@@ -895,20 +797,5 @@ watch(() => store.currentProjectId, (n, old) => {
 }
 .json-error {
   color: var(--el-color-danger);
-}
-.batch-guide .guide-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.batch-guide .guide-line {
-  line-height: 1.8;
-  font-size: 13px;
-}
-.batch-guide code {
-  font-family: var(--app-font-mono);
-  font-size: 11px;
-  background: var(--app-hover);
-  padding: 1px 4px;
-  border-radius: 3px;
 }
 </style>
