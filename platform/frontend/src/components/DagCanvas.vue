@@ -35,10 +35,10 @@
           <!-- 目标连接点（左侧） -->
           <Handle id="target" type="target" :position="Position.Left" class="dag-handle target-handle" />
           <!-- 接线卡头：method 色签（复用全站四色映射）+ 节点名；
-               UI 节点色签显示动作名（ui_action），动作组节点显示 组N动作 -->
+               UI 节点=页面域节点：标题为域中文名，色签为域标记 + 动作数 -->
           <div class="dag-node-head">
-            <span v-if="props.data.step_type === 'ui'" class="dag-node-method">
-              {{ props.data.ui_action === 'steps' ? `UI·组${props.data.ui_steps_len ?? '?'}动作` : `UI·${uiActionName(props.data.ui_action) || '操作'}` }}
+            <span v-if="props.data.step_type === 'ui'" class="dag-node-method" :class="{ 'scope-missing': !props.data.scope }">
+              {{ props.data.ui_action === 'steps' ? `域·${props.data.ui_steps_len ?? '?'}动作` : `UI·${uiActionName(props.data.ui_action) || '操作'}` }}
             </span>
             <span v-else class="dag-node-method">{{ (props.data.api_method || '?').toUpperCase() }}</span>
             <span class="dag-node-title" :title="props.data.label || props.id">{{ props.data.label || props.id }}</span>
@@ -56,8 +56,8 @@
     <!-- 空画布引导：首个节点添加后消失 -->
     <div v-if="!nodes.length" class="canvas-empty">
       <div class="canvas-empty-title">从空白画布开始编排</div>
-      <div class="canvas-empty-line">在左侧接口列表中点击接口，即可添加为 DAG 节点</div>
-      <div class="canvas-empty-line">拖拽节点右侧端点到目标左侧端点建立依赖，双击节点配置断言与提取</div>
+      <div class="canvas-empty-line">在左侧页面域树点 ＋，即可将该页面域添加为画布节点</div>
+      <div class="canvas-empty-line">双击节点在其页面域内编排动作（可绑定数据集字段）；拖拽端点连线建立先后</div>
     </div>
     <!-- 连线模式状态栏 -->
     <div v-if="linkMode" class="link-status-bar">
@@ -673,6 +673,11 @@ html.dark .dag-node.is-ui { --node-accent: #9d86ff; --node-accent-text: #b3a4ff;
   background: color-mix(in srgb, var(--node-accent, var(--app-text-muted)) 12%, transparent);
   padding: 1px 5px;
   border-radius: var(--app-radius-xs);
+}
+/* 存量 UI 节点未定域：琥珀警示底（抽屉里补设页面域后消失） */
+.dag-node-method.scope-missing {
+  color: color-mix(in srgb, var(--app-warn-text) 85%, black);
+  background: color-mix(in srgb, var(--app-warn-accent) 22%, transparent);
 }
 .dag-node-title {
   font-weight: 600;

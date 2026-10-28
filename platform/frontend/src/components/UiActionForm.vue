@@ -49,7 +49,8 @@
         </el-radio-group>
       </el-form-item>
       <template v-if="elementMode === 'library'">
-        <el-form-item label="页面域" :required="elementRequired">
+        <!-- 节点页面域：新编排模型下由节点固定（nodeScope），仅存量无域节点可改 -->
+        <el-form-item v-if="!props.nodeScope" label="页面域" :required="elementRequired">
           <el-select v-model="elementScope" filterable clearable placeholder="选择页面域" style="width: 100%" @change="onScopeChange">
             <el-option v-for="s in scopeList" :key="s" :label="scopeDisplay(s)" :value="s">
               <div class="scope-opt">
@@ -60,13 +61,16 @@
           </el-select>
         </el-form-item>
         <el-form-item label="选择元素" :required="elementRequired">
-          <el-select v-model="st.element!.element_id" filterable clearable placeholder="先选页面域，再选元素" style="width: 100%" :disabled="!elementScope">
+          <el-select v-model="st.element!.element_id" filterable clearable :placeholder="props.nodeScope ? `仅限本节点页面域「${scopeDisplay(props.nodeScope)}」下的元素` : '先选页面域，再选元素'" style="width: 100%" :disabled="!elementScope">
             <el-option v-for="el in scopeElements" :key="el.id" :label="elementLabel(el)" :value="el.id" />
           </el-select>
-          <p v-if="danglingElement" class="tip action-tip dangling-tip">
+          <p v-if="crossScopeElement" class="tip action-tip dangling-tip">
+            当前引用的元素「{{ crossScopeElement }}」不属于节点页面域 {{ scopeDisplay(props.nodeScope!) }}，请重选本域元素
+          </p>
+          <p v-else-if="danglingElement" class="tip action-tip dangling-tip">
             当前引用的元素 #{{ st.element!.element_id }} 不在元素库中（元素库变更后遗留的悬空引用），请重选页面域与元素
           </p>
-          <p v-else class="tip action-tip">元素库在「元素库」页面维护（支持 locator JSON 批量导入）</p>
+          <p v-else class="tip action-tip">{{ props.nodeScope ? `只能选择本页面域（${scopeDisplay(props.nodeScope)}）下的元素；跨域元素请另建节点` : '元素库在「元素库」页面维护（支持 locator JSON 批量导入）' }}</p>
         </el-form-item>
       </template>
       <template v-else>
@@ -224,6 +228,8 @@ const props = defineProps<{
   dsSheets?: DsVarSheet[]
   /** 页面域 scope → 中文名（元素库页维护）：下拉/回显显示中文而非裸编码 */
   scopeLabels?: Record<string, string>
+  /** 节点页面域（编排改造：节点=页面域）：固定元素可选范围，不传则步骤内自选域 */
+  nodeScope?: string
 }>()
 
 // 光标处插入 ${sheet.字段}：value 与 url 各一条通道（复用 SQL 引用插入器，
@@ -260,7 +266,18 @@ const textValueTip = computed(() => TEXT_VALUE_META[st.value.action]?.tip || '')
 const elementMode = ref<'library' | 'custom'>('library')
 const elementScope = ref<string>('')
 const scopeList = computed(() => [...new Set(props.uiElements.map((e) => e.page_scope))].sort())
-const scopeElements = computed(() => props.uiElements.filter((e) => e.page_scope === elementScope.value))
+// 节点页面域固定时元素仅限本域（编排改造：动作不得跨域）
+const effectiveScope = computed(() => props.nodeScope || elementScope.value)
+const scopeElements = computed(() => props.uiElements.filter((e) => e.page_scope === effectiveScope.value))
+/** 库元素跨域引用（nodeScope 固定后遗留）：显式提示重选 */
+const crossScopeElement = computed(() => {
+  if (!props.nodeScope) return ''
+  const id = st.value.element?.element_id
+  if (id == null) return ''
+  const found = props.uiElements.find((x) => x.id === id)
+  if (!found || found.page_scope === props.nodeScope) return ''
+  return found.description || found.element_key
+})
 
 /** select_option 的多值输入 / wait 的时长 / click_text 序号与匹配 / click 模式 / confirm 形态（与 step 字段互转） */
 const optionValues = ref<string[]>([])
@@ -331,8 +348,10 @@ watch(
     clickMode.value = s.mode === 'js' ? 'js' : 'default'
     confirmWait.value = !!s.wait
     confirmOptional.value = !!s.optional
-    // 元素库引用回显：定位到所属页面域
-    if (s.element.element_id) {
+    // 元素库引用回显：定位到所属页面域（节点域固定时锚定节点域）
+    if (props.nodeScope) {
+      elementScope.value = props.nodeScope
+    } else if (s.element.element_id) {
       const found = props.uiElements.find((x) => x.id === s.element!.element_id)
       if (found) elementScope.value = found.page_scope
     } else {
@@ -359,6 +378,13 @@ function collect(): string | null {
   } else if (elementMode.value === 'library') {
     if (elementRequired.value && !p.element?.element_id) {
       return '请从元素库选择元素（或切到「自定义」手动定位）'
+    }
+    // 跨域拦截（与后端 validate_ui_scope_bindings 同语义）：固定域节点不得引用他域元素
+    if (props.nodeScope && p.element?.element_id) {
+      const found = props.uiElements.find((x) => x.id === p.element!.element_id)
+      if (found && found.page_scope !== props.nodeScope) {
+        return `元素「${found.description || found.element_key}」不属于本节点页面域，请重选本域元素`
+      }
     }
     p.element = p.element?.element_id ? { element_id: p.element.element_id } : undefined
   } else {
