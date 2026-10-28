@@ -626,7 +626,7 @@ def delete_testcase(db: Session, case: models.TestCase):
 
 
 def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
-    """复制用例，name 加 _copy 后缀（冲突时加数字），同时复制节点配置；套件连带复制成员与白名单"""
+    """复制用例，name 加 _copy 后缀（冲突时加数字），同时复制节点配置"""
     base_name = case.name + "_copy"
     new_name = base_name
     n = 1
@@ -644,7 +644,6 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
         case_type=getattr(case, "case_type", "normal"),
         env_id=getattr(case, "env_id", None),
         dag_config=case.dag_config or {"nodes": [], "edges": []},
-        shared_vars=case.shared_vars,
     )
     db.add(obj)
     db.commit()
@@ -663,12 +662,6 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
             wait_after_ms=nc.wait_after_ms or 0,
         )
         db.add(nnc)
-    # 套件：成员引用整表复制（成员用例与环境的引用关系保持）
-    if getattr(case, "case_type", "normal") == "suite":
-        for m in (case.members or []):
-            db.add(models.SuiteMember(
-                suite_case_id=obj.id, member_case_id=m.member_case_id,
-                env_id=m.env_id, sort_order=m.sort_order))
     db.commit()
     db.refresh(obj)
     # 数据集资产随迁：名下全部池深拷贝（保持原名），绑定关系照搬
@@ -751,7 +744,7 @@ def list_executions(db: Session, case_id: int | None = None, project_id: int | N
                     plan_id: int | None = None) -> list[models.ExecutionRecord]:
     """执行记录列表：支持按用例、项目（联表 case.project_id）、执行人、用例名（模糊）、状态、
     开始时间范围过滤（ExecutionRecord 无 created_at，时间口径用 started_at）；
-    plan_id 过滤执行方案来源（一键/定时触发，含方案内套件成员行）；
+    plan_id 过滤执行方案来源（一键/定时触发）；
     offset/limit 服务端翻页 + sort_by/order 服务端排序（分页组件的整页排序口径）"""
     q = _execution_filter_query(db, case_id, project_id, created_by, case_name, status, start_time, end_time, plan_id)
     col = EXECUTION_SORT_FIELDS.get(sort_by, models.ExecutionRecord.id)

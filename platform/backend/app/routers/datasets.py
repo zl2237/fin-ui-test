@@ -55,8 +55,6 @@ def create_dataset(data: DataSetCreateIn, db: Session = Depends(get_db),
     case = crud.get_testcase(db, data.case_id)
     if not case:
         raise HTTPException(404, f"用例不存在: {data.case_id}")
-    if getattr(case, "case_type", "normal") == "suite":
-        raise HTTPException(400, "套件用例不持有数据集（成员用例各自管理）")
     rows_data = None
     if data.copy_from_dataset_id is not None:
         src = _owned_dataset(db, data.copy_from_dataset_id)

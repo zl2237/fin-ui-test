@@ -476,23 +476,19 @@ class TestCaseCreate(BaseModel):
     group_id: int | None = None
     name: str
     description: str | None = None
-    case_type: str = "normal"  # normal 普通用例 / suite 套件
-    env_id: int | None = None  # 绑定的执行环境（严格绑定；普通用例必填由路由校验）
+    env_id: int | None = None  # 绑定的执行环境（严格绑定；必填由路由校验）
     dag_config: dict[str, Any]
     node_configs: list[NodeConfigIn] = []
-    shared_vars: list[str] | None = None  # 套件专用：共享变量白名单
 
 
 class TestCaseUpdate(BaseModel):
     group_id: int | None = None
     name: str | None = None
     description: str | None = None
-    case_type: str | None = None
     env_id: int | None = None  # 绑定的执行环境；显式传 null 解绑
     dag_config: dict[str, Any] | None = None
     node_configs: list[NodeConfigIn] | None = None
     dataset_id: int | None = None  # 绑定数据集（数据驱动）；显式传 null 解绑
-    shared_vars: list[str] | None = None  # 套件专用；显式传 null 清空
 
 
 class TestCaseOut(ORMBase):
@@ -501,14 +497,12 @@ class TestCaseOut(ORMBase):
     group_id: int | None = None
     name: str
     description: str | None = None
-    case_type: str = "normal"
     env_id: int | None = None  # 绑定的执行环境（严格绑定）
     env_name: str | None = None  # 绑定环境名（冗余展示）
     sort_order: int = 0  # 组内排序（拖拽手序）
     dag_config: dict[str, Any]
     node_configs: list[NodeConfigOut] = []
     dataset_id: int | None = None  # 绑定的数据集（数据驱动），NULL=普通用例
-    shared_vars: list[str] | None = None
     last_exec_at: datetime | None = None  # 最近一次执行开始时间（终结回写；NULL=从未执行）
     last_exec_status: str | None = None   # 最近一次执行终态：success/failed/terminated
     created_at: datetime | None = None
@@ -519,28 +513,7 @@ class TestCaseOut(ORMBase):
     updated_by_name: str | None = None
 
 
-class SuiteMemberIn(BaseModel):
-    """套件成员写入项：成员用例（可跨项目）+ 顺序（环境跟随成员用例绑定）"""
-    member_case_id: int
-    env_id: int | None = None  # 已废止：成员执行环境=成员用例绑定环境，兼容旧客户端忽略
-    sort_order: int = 0
 
-
-class SuiteMembersUpdate(BaseModel):
-    """整体替换套件成员列表（编排保存语义）"""
-    members: list[SuiteMemberIn]
-
-
-class SuiteMemberOut(BaseModel):
-    id: int
-    member_case_id: int
-    env_id: int | None = None  # 成员用例绑定环境（实时值）
-    sort_order: int
-    case_name: str | None = None      # 成员用例名（冗余展示）
-    project_id: int | None = None     # 成员用例所属项目（跨项目标记）
-    project_name: str | None = None
-    env_name: str | None = None       # 绑定环境名（冗余展示）
-    member_case_type: str = "normal"  # 成员类型快照（异常引用提示）
 
 
 class CaseBatchMove(BaseModel):
@@ -659,7 +632,7 @@ class StepRecordOut(ORMBase):
 class ExecutionRecordOut(ORMBase):
     id: int
     case_id: int
-    env_id: int | None = None  # 套件主执行记录无环境（成员各自绑定）
+    env_id: int | None = None
     case_name: str | None = None
     env_name: str | None = None
     project_id: int | None = None
@@ -671,8 +644,7 @@ class ExecutionRecordOut(ORMBase):
     summary: dict[str, Any] = {}
     dataset_id: int | None = None
     dataset_row: dict[str, Any] | None = None  # 数据驱动行快照 {row_index, data, label}
-    suite_execution_id: int | None = None  # 套件来源：非空=套件链成员执行，指向套件主记录
-    plan_id: int | None = None  # 执行方案来源：非空=方案触发（一键/定时，含方案内套件成员）
+    plan_id: int | None = None  # 执行方案来源：非空=方案触发（一键/定时）
     plan_name: str | None = None  # 方案已删时为 None（溯源编号仍在）
     steps: list[StepRecordOut] = []
     created_by: int | None = None
@@ -760,11 +732,13 @@ class TestScheduleOut(ORMBase):
 
 # ============ ExecutionPlan 执行方案 ============
 class PlanItemIn(BaseModel):
-    """方案成员提交：dataset 覆盖须属于该成员用例；套件成员禁配覆盖（服务层校验）"""
+    """方案成员提交：dataset 覆盖须属于该成员用例（服务层校验）；
+    pass_vars 为传给下一棒的输出变量名单（chain 相邻定向传参，combo 忽略）"""
     case_id: int
     dataset_id: int | None = None
     dataset_row_index: int | None = None
     run_count: int = 1
+    pass_vars: list[str] | None = None
     sort_order: int = 0
 
 
@@ -778,10 +752,10 @@ class PlanItemOut(BaseModel):
     dataset_id: int | None = None
     dataset_row_index: int | None = None
     run_count: int
+    pass_vars: list[str] | None = None
     sort_order: int
     # 展示回填（详情接口填充）
     case_name: str | None = None
-    case_type: str | None = None
     dataset_name: str | None = None
     sheet_label: str | None = None  # 选中的 sheet 名（默认第 1 行时也回填）
     case_dataset_id: int | None = None  # 用例自身绑定（dataset_id 空时实际生效者，前端标记用）
@@ -793,6 +767,8 @@ class ExecutionPlanCreate(BaseModel):
     project_id: int | None = None
     name: str
     description: str | None = None
+    mode: Literal["combo", "chain"] = "combo"  # combo 并行组合 / chain 串行链
+    rounds: int = 1  # chain 整链轮数（combo 恒 1）
     concurrency: int = 4
 
 
@@ -800,6 +776,8 @@ class ExecutionPlanUpdate(BaseModel):
     """局部更新；schedule_off=True 显式清除定时（schedule_type=None 表示「未提供」无法区分清除）"""
     name: str | None = None
     description: str | None = None
+    mode: Literal["combo", "chain"] | None = None
+    rounds: int | None = None  # chain 整链轮数（combo 恒 1）
     concurrency: int | None = None
     enabled: bool | None = None
     schedule_type: Literal["interval", "daily"] | None = None
@@ -814,6 +792,8 @@ class ExecutionPlanOut(ORMBase):
     project_id: int | None = None
     name: str
     description: str | None = None
+    mode: str = "combo"  # combo 并行组合 / chain 串行链
+    rounds: int = 1
     concurrency: int
     enabled: bool
     schedule_type: str | None = None

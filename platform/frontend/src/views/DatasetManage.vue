@@ -296,8 +296,7 @@ async function load(keepCase = true) {
       caseGroupApi.list(store.currentProjectId).catch(() => [] as CaseGroup[]),
       datasetApi.list({ project_id: store.currentProjectId }),
     ])
-    // 套件不持有数据集（成员各自绑定），左侧树不展示
-    cases.value = cs.filter((c) => c.case_type !== 'suite')
+    cases.value = cs
     groups.value = gs
     datasets.value = ds
     // 首次（无展开记忆）默认全展开（含未分组虚拟节点）
