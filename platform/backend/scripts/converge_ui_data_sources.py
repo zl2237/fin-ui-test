@@ -168,7 +168,7 @@ def main():
             print(f"  节点 {node_id} 步骤值 -> ${{{mv['field']}}}")
         if node_dirty and args.apply:
             api(headers, f"/testcases/{t['case_id']}", {"node_configs": case["node_configs"]})
-            print(f"  已保存用例编排")
+            print("  已保存用例编排")
         print()
 
     if not args.apply:
