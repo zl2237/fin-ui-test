@@ -227,9 +227,11 @@ export interface UiStep {
   absent?: boolean  // toast_watch 反向断言：观察窗内出现提示即失败（value 空=任何提示）
   custom_id?: number  // custom 动作引用 custom_actions.id
 }
-/** UI 节点参数：单动作（{action,...}）或动作组（{steps:[...]}，页面级节点，steps 优先） */
+/** UI 节点参数：单动作（{action,...}）或动作组（{steps:[...]}，页面级节点，steps 优先）
+ *  scope：节点页面域（编排改造——节点即页面域，动作只能操作该域下元素） */
 export interface UiParams extends Partial<UiStep> {
   steps?: UiStep[]
+  scope?: string
 }
 export interface NodeConfig {
   id?: number; case_id?: number; node_id: string; api_id?: number | null

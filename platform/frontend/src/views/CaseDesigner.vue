@@ -6,25 +6,42 @@
       <el-button size="small" @click="initialLoad">重试</el-button>
     </div>
     <template v-else>
-    <!-- 左侧组件面板：UI 操作动作库（纯 UI 编排，接口注册面已裁撤） -->
+    <!-- 左侧组件面板：页面域树（编排改造——画布节点即页面域，动作在节点内编排） -->
     <div class="api-panel">
       <div class="panel-title">
-        <span class="title-text">UI 操作</span>
+        <span class="title-text">页面域</span>
+        <span class="panel-count">{{ scopeTree.length }} 域 · {{ uiElements.length }} 元素</span>
       </div>
-      <!-- 浏览器动作面板（基础+组合动作，点击添加为 UI 节点） -->
+      <div class="panel-search">
+        <el-input v-model="scopeFilter" size="small" clearable placeholder="搜索页面域 / 元素">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+      </div>
       <div class="api-list">
-        <button
-          v-for="a in UI_ACTIONS"
-          :key="a.action"
-          type="button"
-          class="api-item"
-          :title="`UI ${a.action}：${a.desc}`"
-          @click="onAddUiNode(a.action)"
-        >
-          <span class="api-item-name">{{ a.name }}<span class="ui-action-key">{{ a.action }}</span></span>
-          <span class="api-item-path">{{ a.desc }}</span>
-        </button>
-        <p class="ui-panel-tip">UI 节点由 Playwright 驱动浏览器执行，节点间在 DAG 中自由连线编排。</p>
+        <div v-for="g in scopeTree" :key="g.scope" class="group-block">
+          <div class="scope-row" :class="{ 'is-open': expandedScopes.has(g.scope) }">
+            <button type="button" class="group-header" @click="toggleScope(g.scope)">
+              <el-icon class="expand-icon" :class="{ expanded: expandedScopes.has(g.scope) }"><ArrowRight /></el-icon>
+              <span class="group-name" :title="g.scope">{{ g.label }}</span>
+              <span class="group-count">{{ g.elements.length }}</span>
+            </button>
+            <button type="button" class="scope-add" :title="`添加「${g.label}」页面域节点到画布`" @click="onAddUiNode(g)">＋</button>
+          </div>
+          <div v-if="expandedScopes.has(g.scope)" class="scope-elements">
+            <div
+              v-for="el in g.elements"
+              :key="el.id"
+              class="api-item element-row"
+              :title="`${el.element_key}${el.description ? `（${el.description}）` : '（无描述）'}`"
+            >
+              <span class="api-item-name">{{ el.description || el.element_key }}</span>
+              <span class="api-item-path">{{ el.element_key }}</span>
+            </div>
+            <p v-if="!g.elements.length" class="scope-empty">该域暂无元素（在「元素库」页维护）</p>
+          </div>
+        </div>
+        <p v-if="!scopeTree.length" class="scope-empty">元素库为空或无匹配：先在「元素库」页导入</p>
+        <p class="ui-panel-tip">点 ＋ 将页面域添加为画布节点；节点内编排多个动作，动作只能操作本域元素。</p>
       </div>
     </div>
 
@@ -99,7 +116,7 @@
           </el-tooltip>
         </div>
         <div class="canvas-hint">
-          提示：点击左侧 UI 操作添加节点；单击选中、双击或 Enter 打开配置；Delete 删除选中节点；Ctrl+C/V 复制粘贴；Ctrl+S 保存用例；双击连线删除。
+          提示：点左侧页面域的 ＋ 添加节点；单击选中、双击或 Enter 打开配置；Delete 删除选中节点；Ctrl+C/V 复制粘贴；Ctrl+S 保存用例；双击连线删除。
         </div>
       </div>
     </div>
@@ -167,17 +184,16 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search, ArrowRight } from '@element-plus/icons-vue'
 import DagCanvas from '@/components/DagCanvas.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
-import { caseApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type SplitVar } from '@/api'
+import { caseApi, elementApi, scopeLabelApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type UiElement, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
 import { buildRefGroups, type RefGraphCtx } from '@/composables/useRefGroups'
 import type { RefVarGroup } from '@/components/VarRefSelect.vue'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
-import { UI_ACTIONS, uiActionName } from '@/utils/ui'
 
 const route = useRoute()
 const router = useRouter()
@@ -214,6 +230,60 @@ const dirty = ref(false)
 const loading = ref(false)
 // 页面级加载失败（接口/用例编排数据拉取失败）：内联错误块 + 重试，不让画布静默空壳
 const loadError = ref('')
+
+// ===== 左侧页面域树（编排改造：节点=页面域；域下元素仅信息展示） =====
+const uiElements = ref<UiElement[]>([])
+const scopeLabels = ref<Record<string, string>>({})
+const scopeFilter = ref('')
+const expandedScopes = ref<Set<string>>(new Set())
+let scopePanelLoaded = false
+
+async function loadScopePanel() {
+  if (scopePanelLoaded || !store.currentProjectId) return
+  try {
+    const [els, labels] = await Promise.all([
+      elementApi.list(store.currentProjectId),
+      scopeLabelApi.getMap(store.currentProjectId),
+    ])
+    uiElements.value = els
+    scopeLabels.value = labels
+    scopePanelLoaded = true
+  } catch (e: any) {
+    ElMessage.warning(`元素库加载失败：${e?.message || '请稍后重试'}（无法添加页面域节点）`)
+  }
+}
+
+/** 域树数据：元素按 page_scope 分组（关键词过滤域中文名/scope 编码/元素名；
+ *  域名命中时整组保留，元素未命中也显示空组） */
+const scopeTree = computed<{ scope: string; label: string; elements: UiElement[] }[]>(() => {
+  const kw = scopeFilter.value.trim().toLowerCase()
+  const groups: { scope: string; label: string; elements: UiElement[] }[] = []
+  for (const scope of [...new Set(uiElements.value.map((e) => e.page_scope))].sort()) {
+    const label = scopeLabels.value[scope] || scope
+    const scopeHit = !kw || label.toLowerCase().includes(kw) || scope.toLowerCase().includes(kw)
+    if (!scopeHit && !kw) {
+      groups.push({ scope, label, elements: uiElements.value.filter((e) => e.page_scope === scope) })
+      continue
+    }
+    if (scopeHit) {
+      groups.push({ scope, label, elements: uiElements.value.filter((e) => e.page_scope === scope) })
+      continue
+    }
+    const elements = uiElements.value.filter(
+      (e) => e.page_scope === scope
+        && (e.element_key.toLowerCase().includes(kw) || (e.description || '').toLowerCase().includes(kw)),
+    )
+    if (elements.length) groups.push({ scope, label, elements })
+  }
+  return groups
+})
+
+function toggleScope(scope: string) {
+  const next = new Set(expandedScopes.value)
+  if (next.has(scope)) next.delete(scope)
+  else next.add(scope)
+  expandedScopes.value = next
+}
 
 async function initialLoad() {
   const id = Number(route.params.id)
@@ -252,7 +322,7 @@ const currentConfig = computed<NodeConfig>(() => {
   }
   const found = configs.value.find((c) => c.node_id === selectedNodeId.value)
   if (found) return found
-  // UI 节点兜底：画布节点 data 已携带 step_type/ui_action，配置缺失时按其初始化（统一动作组形态）
+  // UI 节点兜底：画布节点 data 已携带 step_type/ui_action/scope，配置缺失时按其初始化（统一动作组形态）
   const nodeData = nodes.value.find((n) => n.id === selectedNodeId.value)?.data || {}
   const fresh: NodeConfig = {
     node_id: selectedNodeId.value,
@@ -260,6 +330,7 @@ const currentConfig = computed<NodeConfig>(() => {
     ...(nodeData.step_type === 'ui' ? {
       step_type: 'ui',
       ui_params: {
+        ...(nodeData.scope ? { scope: nodeData.scope as string } : {}),
         steps: [{ action: (nodeData.ui_action && nodeData.ui_action !== 'steps' ? nodeData.ui_action : 'goto') as UiStep['action'] }],
       },
     } : {}),
@@ -403,16 +474,15 @@ const onBeforeUnload = (e: BeforeUnloadEvent) => {
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
-/** 添加 UI 操作节点：不绑 api_id，页面级动作组（steps），首步为拖选的动作 */
-function onAddUiNode(action: string) {
+/** 添加页面域节点：画布节点即页面域（首步 goto 进域页面，节点内再编排动作） */
+function onAddUiNode(g: { scope: string; label: string }) {
   const id = `node_${Date.now()}`
   const position = canvasRef.value?.findFreePosition?.() ?? { x: 80, y: 60 }
-  const name = uiActionName(action)
   const node = {
     id,
     position,
-    data: { label: name, step_type: 'ui', ui_action: 'steps', ui_steps_len: 1 },
-    label: name,
+    data: { label: g.label, step_type: 'ui', scope: g.scope, ui_action: 'steps', ui_steps_len: 1 },
+    label: g.label,
   }
   nodes.value.push(node)
   canvasRef.value?.addNode(node)
@@ -420,7 +490,7 @@ function onAddUiNode(action: string) {
     node_id: id,
     api_id: null,
     step_type: 'ui',
-    ui_params: { steps: [{ action: action as UiStep['action'] }] },
+    ui_params: { scope: g.scope, steps: [{ action: 'goto' as UiStep['action'] }] },
     pre_process: [],
     post_extract: [],
     assertions: [],
@@ -455,9 +525,15 @@ function onConfigSave(_config: NodeConfig) {
   if (idx >= 0) configs.value[idx] = { ..._config }
   const nd = nodes.value.find((n) => n.id === _config.node_id)
   if (nd && _config.step_type === 'ui' && _config.ui_params?.steps?.length) {
-    // UI 组节点：同步画布徽标（UI·组N动作）与首步名，保持画布可读
+    // UI 组节点：同步画布徽标（N 动作）与页面域（旧节点在抽屉里首次补设域时回写）
     nd.data.ui_action = 'steps'
     nd.data.ui_steps_len = _config.ui_params.steps.length
+    const scope = _config.ui_params.scope
+    if (scope) {
+      nd.data.scope = scope
+      const zh = scopeLabels.value[scope] || scope
+      if (nd.data.label !== zh) nd.data.label = zh
+    }
   }
   dirty.value = true
 }
@@ -558,6 +634,7 @@ async function onRun() {
 
 onMounted(async () => {
   await initialLoad()
+  loadScopePanel()
   window.addEventListener('keydown', onKeydown)
 })
 onUnmounted(() => {
@@ -700,6 +777,72 @@ function onKeydown(e: KeyboardEvent) {
   margin-left: 6px;
   font-family: var(--app-font-mono);
   font-size: 10px;
+  color: var(--app-text-faint);
+}
+/* ===== 页面域树 ===== */
+.panel-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--app-text-faint);
+  flex-shrink: 0;
+}
+/* 域行：折叠头 + 加号按钮同行 */
+.scope-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 展开组吸顶：滚动元素列表时域名钉在面板可视区顶部不消失
+   （仅展开组 sticky——收起态列表滚动不受粘滞干扰） */
+.scope-row.is-open {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--app-card);
+  border-bottom: 1px solid var(--app-border);
+}
+.scope-row .group-header {
+  flex: 1;
+  min-width: 0;
+}
+.scope-add {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--app-radius-sm);
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.scope-add:hover {
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+  color: var(--app-primary);
+}
+.scope-add:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: -2px;
+}
+/* 域下元素列表（信息展示，不可点） */
+.scope-elements {
+  border-left: 1px solid var(--app-border);
+  margin-left: 14px;
+}
+.element-row {
+  cursor: default;
+}
+.element-row:hover {
+  background: var(--app-hover);
+  border-left-color: transparent;
+}
+.scope-empty {
+  padding: 8px 12px;
+  font-size: 11px;
   color: var(--app-text-faint);
 }
 .ui-panel-tip {

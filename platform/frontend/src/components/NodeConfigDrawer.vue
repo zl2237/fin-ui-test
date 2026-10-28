@@ -15,6 +15,27 @@
           <el-form-item label="节点ID">
             <el-input :model-value="draft.node_id" disabled />
           </el-form-item>
+          <el-form-item label="页面域" required>
+            <!-- 编排改造：节点=页面域。新节点建域时已固定；存量无域节点在此补设后保存 -->
+            <el-select
+              v-if="!nodeScope"
+              v-model="scopeDraft"
+              filterable
+              placeholder="选择本节点操作的页面域"
+              style="width: 100%"
+            >
+              <el-option v-for="s in scopeOptions" :key="s" :label="scopeDisplay(s)" :value="s">
+                <div class="scope-opt">
+                  <span>{{ scopeLabels[s] || s }}</span>
+                  <span v-if="scopeLabels[s]" class="scope-en">{{ s }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <el-input v-else :model-value="scopeDisplay(nodeScope)" disabled>
+              <template #suffix><span class="scope-fixed-tag">固定</span></template>
+            </el-input>
+            <p class="tip action-tip">节点即页面域：节点内所有动作只能操作该域下的元素（跨域绑定会被拦截）。</p>
+          </el-form-item>
           <el-form-item label="页面动作">
             <div class="steps-wrap">
               <!-- 工具行：计数 + 过滤定位 + 添加 -->
@@ -61,7 +82,7 @@
                     <el-icon class="step-arrow" :class="{ expanded: openIdx === i }"><ArrowDown /></el-icon>
                   </div>
                   <div v-if="openIdx === i" class="step-edit">
-                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :scope-labels="scopeLabels" />
+                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :scope-labels="scopeLabels" :node-scope="nodeScope || scopeDraft || undefined" />
                   </div>
                 </div>
                 <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
@@ -175,6 +196,16 @@ const draft = ref<NodeConfig | null>(null)
 const isUiNode = computed(() => draft.value?.step_type === 'ui')
 // 动作序列（打开抽屉时已规范化保证 steps 存在）
 const uiSteps = computed<UiStep[]>(() => draft.value!.ui_params!.steps!)
+// ===== 页面域（编排改造：节点=页面域） =====
+// 已定域节点：域固定不可改（改域=跨域元素全失效）；存量无域节点：scopeDraft 补设
+const nodeScope = computed(() => draft.value?.ui_params?.scope || '')
+const scopeDraft = ref('')
+/** 可选域：元素库出现的域（新域节点必须能从元素树追溯） */
+const scopeOptions = computed(() => [...new Set(uiElements.value.map((e) => e.page_scope))].sort())
+function scopeDisplay(s: string): string {
+  const zh = scopeLabels.value[s]
+  return zh ? `${zh}（${s}）` : s
+}
 // 各步骤表单实例（collect 收敛校验；手风琴只挂载展开中的步骤）
 const stepFormRefs = ref<any[]>([])
 // 手风琴：当前展开编辑的步骤下标（-1 全折叠）；过滤定位关键字
@@ -346,8 +377,9 @@ watch(
   async (v) => {
     if (!v) return
     const d: NodeConfig = JSON.parse(JSON.stringify(props.config))
-    // UI 节点规范化：统一为动作序列 steps；旧单动作节点（顶层 action）迁移为单步组
+    // UI 节点规范化：统一为动作序列 steps；旧单动作节点（顶层 action）迁移为单步组（scope 随迁）
     if (d.step_type === 'ui') {
+      const keepScope = d.ui_params?.scope
       if (!d.ui_params) d.ui_params = { steps: [{ action: 'goto' }] }
       if (!Array.isArray(d.ui_params.steps) || !d.ui_params.steps.length) {
         const single: UiStep = {
@@ -364,7 +396,9 @@ watch(
         }
         d.ui_params = { steps: [single] }
       }
+      if (keepScope) d.ui_params.scope = keepScope
       draft.value = d
+      scopeDraft.value = ''
       stepFormRefs.value = []
       openIdx.value = -1
       filterText.value = ''
@@ -392,6 +426,12 @@ function onSave() {
       ElMessage.warning('动作组至少需要一个动作')
       return
     }
+    // 页面域必设（新节点建时已定；存量节点在此补设）——与后端保存强校验对齐
+    const scope = nodeScope.value || scopeDraft.value
+    if (!scope) {
+      ElMessage.warning('请先选择本节点的页面域（节点=页面域，动作只能操作该域元素）')
+      return
+    }
     // 展开中的步骤先收敛局部状态（elementMode/多值/时长等写回数据）
     if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
     // 全量数据校验（折叠步骤无表单实例，走数据级校验兜底）
@@ -405,9 +445,24 @@ function onSave() {
         })
         return
       }
+      // 域归属前置校验：库元素跨域引用在这里拦下（与后端 validate_ui_scope_bindings 同语义）
+      const eid = steps[i].element?.element_id
+      if (eid != null) {
+        const el = uiElements.value.find((x) => x.id === eid)
+        if (!el) {
+          ElMessage.warning(`步骤 ${i + 1}：引用的元素 #${eid} 不在元素库中，请重选本域元素`)
+          openIdx.value = i
+          return
+        }
+        if (el.page_scope !== scope) {
+          ElMessage.warning(`步骤 ${i + 1}（${uiActionName(steps[i].action)}）跨页面域绑定：元素「${el.description || el.element_key}」属于 ${scopeDisplay(el.page_scope)}，请重选「${scopeDisplay(scope)}」下的元素`)
+          openIdx.value = i
+          return
+        }
+      }
     }
-    // 固化为组形态：顶层仅保留 steps（后端 steps 优先）
-    draft.value.ui_params = { steps: JSON.parse(JSON.stringify(steps)) }
+    // 固化为组形态：scope + steps（后端 steps 优先，scope 供归属校验与执行期防御）
+    draft.value.ui_params = { scope, steps: JSON.parse(JSON.stringify(steps)) }
   } else if (!draft.value.api_id) {
     // api 节点仍要求绑定接口（UI 节点不绑 api_id）
     ElMessage.warning('请先绑定接口，未绑定接口的节点不会执行')
@@ -602,6 +657,11 @@ function onSave() {
 .inline-tip {
   margin: 0 0 0 10px;
   display: inline;
+}
+/* 页面域固定徽标（已定域节点） */
+.scope-fixed-tag {
+  font-size: 10px;
+  color: var(--app-text-faint);
 }
 </style>
 

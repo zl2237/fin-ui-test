@@ -2,7 +2,11 @@
 """保存校验器单测：四来源参数模型静态完整性。"""
 import pytest
 
-from app.engine.validation import validate_case_configs, validate_ui_step_data_sources
+from app.engine.validation import (
+    validate_case_configs,
+    validate_ui_step_data_sources,
+    validate_ui_scope_bindings,
+)
 
 DAG = {"nodes": [{"id": "n1"}, {"id": "n2"}], "edges": [{"source": "n1", "target": "n2"}]}
 
@@ -262,3 +266,97 @@ class TestChineseNodeNames:
             n1_config(params={"body": {"x": {"source": "ref", "node_id": "n2", "var_path": "a"}}}),
         ])
         assert any("拓扑后置" in e and "n1" in e for e in errs)
+
+
+class TestUiScopeBindings:
+    """页面域归属强校验（2026-10-28 编排改造）：节点=页面域，动作元素不得跨域。"""
+
+    NAMED_DAG = {
+        "nodes": [
+            {"id": "n1", "data": {"label": "订单列表页"}},
+            {"id": "n2", "data": {"label": "新增订单弹窗"}},
+        ],
+        "edges": [{"source": "n1", "target": "n2"}],
+    }
+    # 元素库缩影 {element_id: (page_scope, element_key)}
+    ELEMENTS = {163: ("order_list", "提单号输入框"), 278: ("order_create", "保存按钮")}
+
+    def ui_node(self, scope, steps, node_id="n1"):
+        return {"node_id": node_id, "step_type": "ui",
+                "ui_params": {"scope": scope, "steps": steps},
+                "post_extract": [], "assertions": []}
+
+    def test_same_scope_allowed(self):
+        validate_ui_scope_bindings(
+            [self.ui_node("order_list", [
+                {"action": "fill", "element": {"element_id": 163}, "value": "${bl_no}"},
+            ])],
+            self.ELEMENTS, self.NAMED_DAG)
+
+    def test_cross_scope_rejected(self):
+        with pytest.raises(ValueError, match="跨页面域绑定"):
+            validate_ui_scope_bindings(
+                [self.ui_node("order_list", [
+                    {"action": "click", "element": {"element_id": 278}},
+                ])],
+                self.ELEMENTS, self.NAMED_DAG)
+
+    def test_cross_scope_message_shows_names(self):
+        with pytest.raises(ValueError) as ei:
+            validate_ui_scope_bindings(
+                [self.ui_node("order_list", [
+                    {"action": "click", "element": {"element_id": 278}},
+                ])],
+                self.ELEMENTS, self.NAMED_DAG)
+        msg = str(ei.value)
+        assert "「订单列表页」" in msg and "保存按钮" in msg and "order_create" in msg
+
+    def test_missing_scope_rejected(self):
+        with pytest.raises(ValueError, match="未设置页面域"):
+            validate_ui_scope_bindings(
+                [self.ui_node("", [{"action": "click", "element": {"element_id": 163}}])],
+                self.ELEMENTS, self.NAMED_DAG)
+
+    def test_element_not_in_library(self):
+        with pytest.raises(ValueError, match="不在元素库中"):
+            validate_ui_scope_bindings(
+                [self.ui_node("order_list", [
+                    {"action": "click", "element": {"element_id": 999}},
+                ])],
+                self.ELEMENTS, self.NAMED_DAG)
+
+    def test_custom_locator_allowed_in_any_scope(self):
+        """自定义定位（strategy+value，无 element_id）：随节点域，不受元素库归属约束"""
+        validate_ui_scope_bindings(
+            [self.ui_node("order_list", [
+                {"action": "click", "element": {"strategy": "text", "value": "详情"}},
+            ])],
+            self.ELEMENTS, self.NAMED_DAG)
+
+    def test_element_free_step_allowed(self):
+        """无元素动作（goto/wait/evaluate）：不校验归属"""
+        validate_ui_scope_bindings(
+            [self.ui_node("order_list", [
+                {"action": "goto", "url": "/order/list"},
+                {"action": "wait", "ms": 500},
+            ])],
+            self.ELEMENTS, self.NAMED_DAG)
+
+    def test_api_node_ignored(self):
+        validate_ui_scope_bindings(
+            [{"node_id": "n2", "params": {"url": "http://x"}, "post_extract": [], "assertions": []}],
+            self.ELEMENTS, self.NAMED_DAG)
+
+    def test_single_step_form_scanned(self):
+        """无 steps 包装的单动作形态（历史节点）同样校验"""
+        with pytest.raises(ValueError, match="跨页面域绑定"):
+            validate_ui_scope_bindings(
+                [{"node_id": "n1", "step_type": "ui",
+                  "ui_params": {"scope": "order_list",
+                                "action": "click", "element": {"element_id": 278}},
+                  "post_extract": [], "assertions": []}],
+                self.ELEMENTS, self.NAMED_DAG)
+
+    def test_none_configs_pass(self):
+        validate_ui_scope_bindings(None, self.ELEMENTS, self.NAMED_DAG)
+        validate_ui_scope_bindings([], self.ELEMENTS, None)
