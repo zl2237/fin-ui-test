@@ -15,7 +15,7 @@
 
     <el-form label-width="70px" inline class="scope-form">
       <el-form-item label="页面域" required>
-        <el-input v-model="scope" placeholder="元素归属页面域，如 ordermanage/business_order_add" style="width: 420px" />
+        <el-input v-model="scope" placeholder="元素归属页面域（业务系统真实路由），如 orderManage/businessOrder" style="width: 420px" />
       </el-form-item>
     </el-form>
 

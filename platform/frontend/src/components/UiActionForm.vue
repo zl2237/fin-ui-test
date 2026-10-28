@@ -51,14 +51,22 @@
       <template v-if="elementMode === 'library'">
         <el-form-item label="页面域" :required="elementRequired">
           <el-select v-model="elementScope" filterable clearable placeholder="选择页面域" style="width: 100%" @change="onScopeChange">
-            <el-option v-for="s in scopeList" :key="s" :label="s" :value="s" />
+            <el-option v-for="s in scopeList" :key="s" :label="scopeDisplay(s)" :value="s">
+              <div class="scope-opt">
+                <span>{{ props.scopeLabels?.[s] || s }}</span>
+                <span v-if="props.scopeLabels?.[s]" class="scope-en">{{ s }}</span>
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="选择元素" :required="elementRequired">
           <el-select v-model="st.element!.element_id" filterable clearable placeholder="先选页面域，再选元素" style="width: 100%" :disabled="!elementScope">
             <el-option v-for="el in scopeElements" :key="el.id" :label="elementLabel(el)" :value="el.id" />
           </el-select>
-          <p class="tip action-tip">元素库在「元素库」页面维护（支持 locator JSON 批量导入）</p>
+          <p v-if="danglingElement" class="tip action-tip dangling-tip">
+            当前引用的元素 #{{ st.element!.element_id }} 不在元素库中（元素库变更后遗留的悬空引用），请重选页面域与元素
+          </p>
+          <p v-else class="tip action-tip">元素库在「元素库」页面维护（支持 locator JSON 批量导入）</p>
         </el-form-item>
       </template>
       <template v-else>
@@ -214,6 +222,8 @@ const props = defineProps<{
   actionDocs?: UiActionDoc[]
   /** 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；空=不渲染插入按钮） */
   dsSheets?: DsVarSheet[]
+  /** 页面域 scope → 中文名（元素库页维护）：下拉/回显显示中文而非裸编码 */
+  scopeLabels?: Record<string, string>
 }>()
 
 // 光标处插入 ${sheet.字段}：value 与 url 各一条通道（复用 SQL 引用插入器，
@@ -228,6 +238,12 @@ const urlIns = useSqlInsert(
 )
 
 const st = computed(() => props.step)
+/** 悬空元素引用：element_id 不在元素库（库重建/元素删除后遗留）——
+ * 页面域回显空、下拉显示原始数字即此态；显式提示重选而非静默 */
+const danglingElement = computed(() => {
+  const id = st.value.element?.element_id
+  return id != null && !props.uiElements.some((x) => x.id === id)
+})
 const selectedCustom = computed(() => props.customActions.find((c) => c.id === st.value.custom_id))
 const needsElement = computed(() => ELEMENT_ACTIONS.includes(st.value.action))
 const elementRequired = computed(() => ELEMENT_REQUIRED_ACTIONS.includes(st.value.action))
@@ -264,6 +280,12 @@ const timeoutMs = computed<number>({
 
 function elementLabel(el: UiElement): string {
   return el.description ? `${el.element_key}（${el.description}）` : el.element_key
+}
+
+/** 页面域下拉显示值：有中文名时「中文（编码）」，否则裸编码 */
+function scopeDisplay(s: string): string {
+  const zh = props.scopeLabels?.[s]
+  return zh ? `${zh}（${s}）` : s
 }
 
 /** 切换动作：保留通用参数（value/timeout 等），清掉与新动作无关的专属字段 */
@@ -445,6 +467,18 @@ defineExpose({ collect })
   color: #b45309;
   background: rgba(180, 83, 9, 0.12);
 }
+/* 页面域下拉项：中文名主显 + scope 编码次显（与元素库页一致） */
+.scope-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.scope-opt .scope-en {
+  font-family: var(--app-font-mono);
+  font-size: 11px;
+  color: var(--app-text-faint);
+}
 .tip {
   margin-top: 4px;
   margin-bottom: 0;
@@ -457,6 +491,9 @@ defineExpose({ collect })
   background: var(--app-hover);
   padding: 1px 5px;
   border-radius: 3px;
+}
+.dangling-tip {
+  color: var(--el-color-danger);
 }
 .inline-tip {
   margin: 0 0 0 10px;

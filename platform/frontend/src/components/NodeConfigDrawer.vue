@@ -61,7 +61,7 @@
                     <el-icon class="step-arrow" :class="{ expanded: openIdx === i }"><ArrowDown /></el-icon>
                   </div>
                   <div v-if="openIdx === i" class="step-edit">
-                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" />
+                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :scope-labels="scopeLabels" />
                   </div>
                 </div>
                 <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
@@ -144,7 +144,7 @@ import AssertionTable from './AssertionTable.vue'
 import UiActionForm from './UiActionForm.vue'
 import DatasetVarMenu, { type DsVarSheet } from './DatasetVarMenu.vue'
 import { useAppStore } from '@/stores'
-import { elementApi, customActionApi, uiActionDocApi, caseApi, type NodeConfig, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
+import { elementApi, customActionApi, uiActionDocApi, caseApi, scopeLabelApi, type NodeConfig, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
 import type { RefVarGroup } from './VarRefSelect.vue'
 import { UI_ACTIONS, uiActionName, validateUiStepData } from '@/utils/ui'
 
@@ -184,6 +184,9 @@ const filterText = ref('')
 // 元素库数据（一次全量加载，组内各步骤共享）
 const uiElements = ref<UiElement[]>([])
 let uiElementsLoaded = false
+// 页面域中文名映射（scope → label）：页面域下拉/摘要显示中文而非裸 scope 编码
+const scopeLabels = ref<Record<string, string>>({})
+let scopeLabelsLoaded = false
 // 自定义动作模板（一次加载，custom 步骤下拉用）
 const customActions = ref<CustomAction[]>([])
 let customActionsLoaded = false
@@ -226,6 +229,16 @@ async function loadUiElements() {
   }
 }
 
+async function loadScopeLabels() {
+  if (scopeLabelsLoaded || !store.currentProjectId) return
+  try {
+    scopeLabels.value = await scopeLabelApi.getMap(store.currentProjectId)
+    scopeLabelsLoaded = true
+  } catch {
+    scopeLabels.value = {}  // 中文映射加载失败回落裸 scope 编码，静默降级
+  }
+}
+
 async function loadCustomActions() {
   if (customActionsLoaded || !store.currentProjectId) return
   try {
@@ -246,11 +259,16 @@ async function loadActionDocs() {
   }
 }
 
-/** 步骤单行摘要：定位目标 + 关键参数（列表行展示，tooltip 看全文） */
+/** 步骤单行摘要：定位目标 + 关键参数（列表行展示，tooltip 看全文）。
+ * 元素显示中文描述优先（element_key 兜底）——2026-10-28：此前裸显 元素#163
+ * 系元素库重建后引用悬空，现修复悬空并让摘要直读中文 */
 function stepBrief(st: UiStep): string {
   const el = st.element
   const elTxt = el?.element_id
-    ? (uiElements.value.find((x) => x.id === el.element_id)?.element_key ?? `元素#${el.element_id}`)
+    ? (() => {
+        const found = uiElements.value.find((x) => x.id === el.element_id)
+        return found ? (found.description || found.element_key) : `元素#${el.element_id}（库中不存在，请重选）`
+      })()
     : (el?.value ? `${el.strategy || 'css'}=${el.value}` : '')
   const v = st.value
   switch (st.action) {
@@ -350,7 +368,7 @@ watch(
       stepFormRefs.value = []
       openIdx.value = -1
       filterText.value = ''
-      await Promise.all([loadUiElements(), loadCustomActions(), loadActionDocs(), loadDsSheets()])
+      await Promise.all([loadUiElements(), loadCustomActions(), loadActionDocs(), loadDsSheets(), loadScopeLabels()])
     } else {
       draft.value = d
     }
