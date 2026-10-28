@@ -3,7 +3,7 @@
 import pytest
 
 from app.engine.variables import (
-    SUITE_NS,
+    PREV_NS,
     CycleError,
     ReferenceError,
     VariableRegistry,
@@ -38,18 +38,18 @@ class TestVariableRegistry:
         assert r.resolve({"node_id": "n_a", "var_path": "bl_no"}) == "SMOKE-1"
 
     def test_suite_pseudo_ns(self):
-        """套件伪命名空间批量注入（API 参数侧平铺注入已退役；__dataset__ 仅承载
+        """__prev__ 伪命名空间注入（链上一棒快照；API 参数侧平铺注入已退役；__dataset__ 仅承载
         legacy 平铺行键，见 TestDatasetFlatInjection）。"""
         r = VariableRegistry()
-        r.inject(SUITE_NS, {"pol": "ANTING", "pod": "AOSHANWEI"})
-        assert r.vars_of(SUITE_NS) == {"pol": "ANTING", "pod": "AOSHANWEI"}
-        assert r.read(SUITE_NS, "pol") == "ANTING"
+        r.inject(PREV_NS, {"pol": "ANTING", "pod": "AOSHANWEI"})
+        assert r.vars_of(PREV_NS) == {"pol": "ANTING", "pod": "AOSHANWEI"}
+        assert r.read(PREV_NS, "pol") == "ANTING"
 
     def test_inject_and_write_no_cross_talk(self):
         r = VariableRegistry()
-        r.inject("__suite__", {"a": 1})
+        r.inject("__prev__", {"a": 1})
         r.write("n1", "a", 2)
-        assert r.read("__suite__", "a") == 1
+        assert r.read("__prev__", "a") == 1
         assert r.read("n1", "a") == 2
 
     def test_null_value_resolved_raises(self):
@@ -62,11 +62,11 @@ class TestVariableRegistry:
 class TestPlaceholder:
     def test_split_ref(self):
         assert split_ref("n_create.order_id") == ("n_create", "order_id")
-        assert split_ref("__suite__.to_customer.a") == ("__suite__", "to_customer.a")
+        assert split_ref("__prev__.to_customer.a") == ("__prev__", "to_customer.a")
 
     def test_extract_refs(self):
-        sql = "SELECT 1 FROM t WHERE bl_no={{n_create.bl_no}} AND id={{__suite__.main_id}}"
-        assert extract_refs(sql) == [("n_create", "bl_no"), ("__suite__", "main_id")]
+        sql = "SELECT 1 FROM t WHERE bl_no={{n_create.bl_no}} AND id={{__prev__.main_id}}"
+        assert extract_refs(sql) == [("n_create", "bl_no"), ("__prev__", "main_id")]
 
     def test_old_syntax_not_matched(self):
         """旧 ${xxx} 语法不再是占位符——迁移后残留应被校验拦截。"""
@@ -144,12 +144,12 @@ class TestDatasetFlatInjection:
         assert ExpressionEngine(ctx).evaluate("${bl_no}") == "X1"
 
     def test_priority_suite_overrides_dataset(self):
-        """平铺池后写命名空间优先：套件注入 > 数据集行。"""
+        """平铺池后写命名空间优先：链注入 > 数据集行。"""
         from app.engine.context import ExecutionContext
         from app.engine.expression import ExpressionEngine
 
         ctx = ExecutionContext(dataset_vars={"bl_no": "FROM-DATASET"},
-                               suite_vars={"bl_no": "FROM-SUITE"})
+                               prev_vars={"bl_no": "FROM-SUITE"})
         assert ExpressionEngine(ctx).evaluate("${bl_no}") == "FROM-SUITE"
 
     def test_priority_runtime_overrides_dataset(self):
@@ -197,10 +197,10 @@ class TestAllSheetsInjection:
         assert self._eval(ctx, "${bl_no}") == "CHOSEN"
 
     def test_suite_still_overrides_sheets(self):
-        """套件注入仍在数据集类注入之后：suite > sheet 具名注入"""
+        """链注入仍在数据集类注入之后：__prev__ > sheet 具名注入"""
         ctx = self._ctx(
             dataset_vars={"bl_no": "CHOSEN"},
-            suite_vars={"bl_no": "SUITE"},
+            prev_vars={"bl_no": "SUITE"},
             dataset_sheets=[{"label": "s1", "data": {"bl_no": "OTHER"}}])
         assert self._eval(ctx, "${bl_no}") == "SUITE"
 

@@ -261,6 +261,30 @@ def remove_node_config(db: Session, dataset_id: int, node_id: str,
 
 # ============ 执行展开（单套语义：每个数据集 = 一套入参配置） ============
 
+def list_case_rows(db: Session, case, dataset_id=None) -> list[dict]:
+    """列出绑定数据集的全部数据行（row 形状与 plan_case_expansion 一致，不带 sheets）。
+
+    串行链整链轮次取值用：第 r 轮取第 r 个 sheet（不足沿用末个）——
+    校验口径与 plan_case_expansion 完全一致（未绑定/悬空/无数据行均在此报错）。
+    """
+    effective = dataset_id if dataset_id is not None else getattr(case, "dataset_id", None)
+    if not effective:
+        raise ValueError("用例未绑定数据集：请先在用例管理绑定，并在数据集页完成入参配置")
+    ds = crud.get_dataset(db, effective)
+    if not ds:
+        raise ValueError(f"用例绑定的数据集不存在: {effective}")
+    if ds.case_id != case.id:
+        raise ValueError("数据集不属于该用例（数据集按用例隔离，请在用例自己的数据集中选择）")
+    rows = crud.list_rows(db, effective)
+    if not rows:
+        raise ValueError("数据集无数据行，请先在数据集页完成入参配置")
+    return [{
+        "row_index": x.row_index,
+        "data": dict(x.data or {}),
+        "label": x.label or (ds.name + (f" 第{x.row_index}行" if len(rows) > 1 else "")),
+    } for x in rows]
+
+
 def plan_case_expansion(db: Session, case, dataset_id=None, row_index=None) -> list:
     """按用例绑定生成执行展开计划。
 
@@ -351,14 +375,10 @@ def ensure_case_dataset(db: Session, case, user_id: int | None = None,
                         *, allow_create: bool = True) -> None:
     """保存用例钩子：未绑定 → 自动建「默认数据集」（示例值初始化全部节点）并绑定；
     已绑定 → 行内缺失的画布节点（新加节点）按接口字段补初始参数。
-
-    - 套件用例跳过（成员用例各自管理数据集）
     - 已有节点的参数一律不动（契约出入走接口保存/数据集保存的同步弹窗许可）
     - allow_create=False 用于用户显式解绑数据集的保存：不重建绑定，仅增量
     - 初始化失败不阻断保存（打印日志，数据集页可见未配置状态）
     """
-    if getattr(case, "case_type", "normal") == "suite":
-        return
     try:
         if not getattr(case, "dataset_id", None):
             if not allow_create:
