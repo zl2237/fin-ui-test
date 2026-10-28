@@ -22,6 +22,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -105,6 +106,15 @@ def merge_case(case):
                 continue
             if f"{{{b}." in case_json:
                 skips.append((a, b, f"存在 {{{{{b}.xxx}}}} 引用（防御性拦截）"))
+                continue
+            # B 步骤引用 ${A.变量} → 不可并：合并后变组内自引用，post_extract
+            # 要等整组跑完才落注册表，组内消费时序必失败（case 287 rc_n5 实证，
+            # 修复手术见 split_self_ref_node.py）
+            pb_text = json.dumps((cb.get("ui_params") or {}).get("steps")
+                                 or cb.get("ui_params") or {},
+                                 ensure_ascii=False, default=str)
+            if re.search(r"\$\{" + re.escape(a) + r"\.", pb_text):
+                skips.append((a, b, f"B 步骤引用 ${{{a}.变量}}（合并后成组内自引用，时序断裂）"))
                 continue
             hit = (a, b)
             break
