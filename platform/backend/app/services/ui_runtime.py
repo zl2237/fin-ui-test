@@ -29,6 +29,7 @@ import hashlib
 import os
 import sys
 import threading
+import time
 from datetime import datetime
 from typing import Any
 
@@ -212,7 +213,9 @@ class UiRuntime:
         self.config: dict = cfg if isinstance(cfg, dict) else {}
         self._playwright = None
         self._browser = None
+        self._context = None
         self._page = None
+        self._login_check_done = False
 
     # ---------- 浏览器生命周期 ----------
     @staticmethod
@@ -260,6 +263,7 @@ class UiRuntime:
                 args=launch_args,
             )
             browser_context = self._browser.new_context(viewport=viewport)
+            self._context = browser_context
             self._inject_session_cookies(browser_context)
             self._page = browser_context.new_page()
             return self._page
@@ -323,7 +327,7 @@ class UiRuntime:
                 self._playwright.stop()
             except Exception as e:  # noqa: BLE001
                 print(f"[UI清理] playwright 停止失败（忽略）: {e}")
-        self._page = self._browser = self._playwright = None
+        self._page = self._browser = self._context = self._playwright = None
         self._release()
 
     def _release(self):
@@ -486,7 +490,84 @@ class UiRuntime:
         if wait_until not in ("load", "domcontentloaded", "networkidle"):
             wait_until = "load"
         page.goto(str(url), wait_until=wait_until, timeout=timeout_ms)
+        if self._recover_from_login_redirect(page, url, wait_until, timeout_ms):
+            return {"url": page.url, "session_recovered": "relogin-after-stale-token"}
         return {"url": page.url}
+
+    def _wait_login_mark(self, page, detect_ms: int) -> str | None:
+        """检测窗内轮询登录信号，返回命中描述（未命中 None）。
+
+        双标记：URL 含登录标记，或页面出现可见密码框（SPA 渲染登录表单
+        早于 hash 路由跳转——实测密码框 +1.5s、URL +2.0s，单查 URL 会扑空）。
+        健康页轮询空转到窗满即止。
+        """
+        mark = str(self.config.get("login_url_mark") or "login")
+        pwd = page.locator("input[type=password]").first
+        deadline = time.monotonic() + max(0, detect_ms) / 1000
+        while True:
+            landed = str(page.url or "")
+            if mark in landed:
+                return landed
+            try:
+                if pwd.is_visible():
+                    return f"{landed} (password-input)"
+            except Exception:  # noqa: BLE001 页面跳转瞬间 locator 可查询失败
+                pass
+            if time.monotonic() >= deadline:
+                return None
+            page.wait_for_timeout(150)
+
+    def _recover_from_login_redirect(self, page, url, wait_until, timeout_ms) -> bool:
+        """goto 目标页却被 SPA 重定向到登录页 → 共享 token 已失效，自动重登恢复。
+
+        单会话系统下 EnvTokenCache 的 token 会被其他端登录顶掉或自然过期，
+        注入旧 cookie 后页面静默跳登录页，后续元素定位全部超时且报错与真实
+        故障无法区分（execution 888/889 实录：n1 等不到「新建订单」按钮）。
+        API 管线有 401 条件重登，UI 管线在此补齐等价能力：
+        清缓存 → shared 重登 → 现有 context 重注 cookie → 重新 goto。
+
+        触发条件（缺一不可，避免误伤「用例就是测登录页」的场景）：
+        - 环境配置了 inject_token_cookie（会话注入在用）；
+        - 首次 goto 才检测（一次执行只查一次——健康页要空转整个检测窗，
+          多 goto 用例按次查会线性加时；恢复成功后会话已新鲜，后续 goto 无需再查）；
+        - 检测窗内（browser_config.login_detect_ms，默认 4000ms）出现登录信号
+          （URL 含 login_url_mark 或可见密码框）且目标 URL 本身不含标记。
+        恢复后仍在登录页（同窗复检）→ 抛明确错误（登录配置/账号状态问题）。
+        """
+        cookie_name = self.config.get("inject_token_cookie")
+        target = str(url)
+        mark = str(self.config.get("login_url_mark") or "login")
+        if not cookie_name or mark in target or self._login_check_done:
+            return False
+        self._login_check_done = True
+        try:
+            detect_ms = int(self.config.get("login_detect_ms", 4000))
+        except (TypeError, ValueError):
+            detect_ms = 4000
+        landed = self._wait_login_mark(page, detect_ms)
+        if not landed:
+            return False
+        print(f"[UI会话] goto 被重定向到登录页（{landed}）：共享 token 已失效，自动重登恢复")
+        from .token_cache import EnvTokenCache
+        EnvTokenCache.invalidate(self.env.id)
+        token = self._shared_login()
+        if not token:
+            raise UiActionError(
+                f"页面被重定向到登录页（{landed}）且自动重登失败：请检查环境登录配置"
+            )
+        if self._context is not None:
+            self._context.add_cookies([{
+                "name": cookie_name,
+                "value": token,
+                "url": self.env.base_url,
+            }])
+        page.goto(target, wait_until=wait_until, timeout=timeout_ms)
+        # 同窗复检：重登后仍落登录页 = 登录配置/账号本身有问题（token 对但进不去）
+        if self._wait_login_mark(page, detect_ms):
+            raise UiActionError(
+                f"自动重登后仍被重定向到登录页（{page.url}）：登录配置或账号状态异常"
+            )
+        return True
 
     def _do_click(self, page, params, timeout_ms):
         """点击元素。mode='js' 时走 JS 直调（绕过可点击性校验，替换原 js_click）。"""
