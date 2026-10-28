@@ -299,7 +299,7 @@ class UiRuntime:
     def _shared_login(self) -> str | None:
         """空缓存兜底：借 API 管线的 shared 登录入缓存，返回 token。
 
-        后端重启后 EnvTokenCache 清空，若套件首个节点是 UI 节点（无 API 节点
+        后端重启后 EnvTokenCache 清空，若首个节点是 UI 节点（无 API 节点
         先跑触发登录），原实现静默无 cookie → 落登录页整轮全挂（execution 867）。
         这里构造一次性 HttpClient 走 login()，与 API 节点首跑完全同路径
         （含 login_shared 加锁、验证码、session 模式跳过）；失败降级返回 None。

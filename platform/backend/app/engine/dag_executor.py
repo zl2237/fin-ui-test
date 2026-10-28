@@ -76,7 +76,7 @@ class DagExecutor:
                  sink: ExecutionSink | None = None,
                  dataset_row: dict[str, Any] | None = None,
                  dataset_sheets: list[dict[str, Any]] | None = None,
-                 suite_vars: dict[str, Any] | None = None,
+                 prev_vars: dict[str, Any] | None = None,
                  suppress_notify: bool = False,
                  start_node: str | None = None,
                  context_seed: dict[str, Any] | None = None,
@@ -86,11 +86,11 @@ class DagExecutor:
         self.env = env
         # 参数模型 v2：节点命名空间注册表。数据集行数据（各节点入参配置）由
         # context.dataset_vars 承载（不进注册表）；全 sheet 以 label 为 ns 注入
-        # （${sheet.字段} 引用，见 context.py 注入顺序契约）；套件白名单注入
-        # __suite__；断点续跑 seed 注入 __resume__
+        # （${sheet.字段} 引用，见 context.py 注入顺序契约）；串行链方案白名单注入
+        # __prev__；断点续跑 seed 注入 __resume__
         self.context = ExecutionContext(dataset_vars=dataset_row,
                                         dataset_sheets=dataset_sheets,
-                                        suite_vars=suite_vars,
+                                        prev_vars=prev_vars,
                                         resume_seed=context_seed)
         # 数据驱动批量执行时抑制逐条通知（由聚合器等全部完成后发一条汇总）
         self.suppress_notify = suppress_notify
