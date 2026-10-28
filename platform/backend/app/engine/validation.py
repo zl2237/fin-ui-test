@@ -298,6 +298,59 @@ def validate_ui_step_data_sources(node_configs: list | None, dag: dict | None = 
                                 f"整体放进绑定数据集的单元格，动作里引用 ${{sheet.字段}}")
 
 
+# ============ 页面域节点归属强校验（2026-10-28 编排改造：节点=页面域） ============
+# 新编排模型：画布一级单元为页面域节点（ui_params.scope 必填），节点内嵌多个
+# 动作；动作引用的元素必须归属本节点页面域，跨域绑定保存即拒。自定义定位
+# （strategy+value，无 element_id）不落元素库、无从校验域，随节点域走。
+
+def validate_ui_scope_bindings(node_configs: list | None, element_scopes: dict[int, tuple[str, str]],
+                               dag: dict | None = None) -> None:
+    """编排保存入口：UI 节点页面域与动作元素归属强校验。
+
+    :param element_scopes: 元素库索引 {element_id: (page_scope, element_key)}，
+        由路由层一次性查库构建（引擎层不持有 DB 会话）
+    :raises ValueError: 域缺失 / 元素不存在 / 跨域绑定（路由转 400）
+    """
+    if not node_configs:
+        return
+    names = _node_names(dag)
+    for nc in node_configs:
+        if nc is None:
+            continue
+        if not isinstance(nc, dict):
+            nc = nc.model_dump() if hasattr(nc, "model_dump") else vars(nc)
+        if nc.get("step_type") != "ui":
+            continue
+        params = nc.get("ui_params") or {}
+        if not isinstance(params, dict):
+            continue
+        disp = _disp(names, nc.get("node_id") or "?")
+        scope = str(params.get("scope") or "").strip()
+        if not scope:
+            raise ValueError(
+                f"节点 {disp} 未设置页面域——新编排模型中画布节点即页面域，"
+                f"请在节点配置里选择该节点操作的页面域")
+        steps = params.get("steps") if isinstance(params.get("steps"), list) else [params]
+        for i, st in enumerate(steps, 1):
+            if not isinstance(st, dict):
+                continue
+            el = st.get("element") or {}
+            eid = el.get("element_id") if isinstance(el, dict) else None
+            if eid is None:
+                continue  # 自定义定位/无元素动作（goto/wait/evaluate...）：随节点域
+            hit = element_scopes.get(int(eid) if isinstance(eid, (int, float)) else eid)
+            if hit is None:
+                raise ValueError(
+                    f"节点 {disp} 步骤{i}（{st.get('action') or '?'}）引用的元素 #{eid} "
+                    f"不在元素库中，请重新选择本页面域下的元素")
+            e_scope, e_key = hit
+            if e_scope != scope:
+                raise ValueError(
+                    f"节点 {disp} 步骤{i}（{st.get('action') or '?'}）跨页面域绑定："
+                    f"元素「{e_key}」属于 {e_scope}，节点页面域为 {scope}——"
+                    f"动作只能操作本节点页面域下的元素")
+
+
 # ============ 后置提取 SQL 基本校验 ============
 # 目标是拦截"肉眼难察、运行时静默失败"的低级笔误（提取结果为空、报告里查不到原因）：
 # - 列名与关键字粘连（pay_invoice_apply_idfrom —— FROM 非独立词，TiDB 直接语法错误）
