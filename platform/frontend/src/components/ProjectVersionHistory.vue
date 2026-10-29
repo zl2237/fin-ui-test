@@ -8,7 +8,7 @@
     @open="loadVersions"
   >
     <div class="pv-toolbar">
-      <span class="pv-hint">手动保存项目快照（含全部接口+用例，不含环境），可随时回滚或对比。</span>
+      <span class="pv-hint">手动保存项目快照（含全部用例/元素库/动作库，不含环境），可随时回滚或对比。</span>
       <el-button type="primary" @click="onOpenCreate">保存新版本</el-button>
     </div>
 
@@ -270,7 +270,7 @@ async function onCreate() {
 async function onRollback(row: ProjectVersionListItem) {
   try {
     await ElMessageBox.confirm(
-      `确认回滚到版本「v${row.version_no}（${row.name}）」？\n\n此操作会删除当前所有接口和用例，用快照数据重建。回滚前会自动保存一个「回滚前快照」以确保可恢复`,
+      `确认回滚到版本「v${row.version_no}（${row.name}）」？\n\n此操作会删除当前全部用例/分组/元素库/动作库，用快照数据重建。回滚前会自动保存一个「回滚前快照」以确保可恢复`,
       '提示',
       { type: 'warning', confirmButtonText: '回滚', cancelButtonText: '取消' }
     )
@@ -316,10 +316,11 @@ const diffData = ref<ProjectVersionDiff | null>(null)
 const activeDiffSections = ref<string[]>([])
 
 const DIFF_LABELS: Record<string, string> = {
-  api_groups: '接口分组',
   case_groups: '用例分组',
-  apis: '接口',
   cases: '用例',
+  elements: '元素库',
+  scope_labels: '页面域语义',
+  custom_actions: '动作库',
 }
 
 const diffSections = computed(() => {

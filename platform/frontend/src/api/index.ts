@@ -332,12 +332,15 @@ export interface ProjectVersionListItem {
   created_at?: string
 }
 
+/** 项目版本快照/对比口径（2026-10-29）：UI 平台编排资产——
+ *  元素库/页面域语义/动作库 + 用例分组/用例；不再含 fork 自 API 平台的接口域 */
 export interface ProjectVersion extends ProjectVersionListItem {
   snapshot?: {
-    api_groups: any[]
     case_groups: any[]
-    apis: any[]
     cases: any[]
+    elements: any[]
+    scope_labels: any[]
+    custom_actions: any[]
   }
 }
 
@@ -345,10 +348,11 @@ export interface ProjectVersionDiff {
   base: ProjectVersion
   target: ProjectVersion
   diff: {
-    api_groups: CollectionDiff
     case_groups: CollectionDiff
-    apis: CollectionDiff
     cases: CollectionDiff
+    elements: CollectionDiff
+    scope_labels: CollectionDiff
+    custom_actions: CollectionDiff
   }
 }
 

@@ -15,7 +15,7 @@ def create_version(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """手动生成项目版本快照（接口+用例，不含环境）"""
+    """手动生成项目版本快照（用例/元素库/动作库/分组，不含环境）"""
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(404, "项目不存在")
@@ -89,7 +89,7 @@ def diff_version(
 
 @router.post("/api/project-versions/{version_id}/rollback", response_model=schemas.MessageOut)
 def rollback_version(version_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """硬回滚项目到指定版本：删当前所有接口/用例/分组，用快照重建。
+    """硬回滚项目到指定版本：删当前所有用例/分组/元素库/动作库，用快照重建。
     回滚前自动打一个"回滚前快照"留痕，确保可恢复。"""
     v = crud.get_project_version(db, version_id)
     if not v:
