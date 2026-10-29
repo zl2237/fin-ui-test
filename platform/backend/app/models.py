@@ -609,6 +609,11 @@ class ExecutionPlan(Base):
     created_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="创建人 user_id")
     updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="更新人 user_id")
 
+    # 非列字段：列表路由数据库端聚合成员数后暂挂实例供响应序列化（routers/plans.py）。
+    # __allow_unmapped__ 使普通注解不参与 ORM 映射（ClassVar 会禁止实例赋值）
+    __allow_unmapped__ = True
+    item_count: int
+
     project: Mapped["Project"] = relationship("Project")
     items: Mapped[list["ExecutionPlanItem"]] = relationship(
         "ExecutionPlanItem", back_populates="plan", cascade="all, delete-orphan",

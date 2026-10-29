@@ -663,7 +663,8 @@ def _step_pane(s: Any, idx: int, sid: str, db: Any = None) -> str:
         # 失败组顶层 facts 无 url/title 时，从 partial steps 回溯最后出现值，还原失败页面
         page_url = s.api_path or ""
         page_title = str(resp.get("title") or "")
-        ui_done = resp.get("steps") if isinstance(resp.get("steps"), list) else []
+        raw_steps = resp.get("steps")  # 局部变量承接：isinstance 收窄对二次 .get() 不生效
+        ui_done = raw_steps if isinstance(raw_steps, list) else []
         for st in reversed(ui_done):
             if not isinstance(st, dict):
                 continue
