@@ -50,16 +50,52 @@
                 >
                   <template #prefix><el-icon><Search /></el-icon></template>
                 </el-input>
-                <el-dropdown trigger="click" @command="addStep">
-                  <el-button size="small" type="primary" plain>+ 添加动作</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu class="action-add-menu">
-                      <el-dropdown-item v-for="a in UI_ACTIONS" :key="a.action" :command="a.action">
-                        {{ a.name }}（{{ a.action }}）
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
+                <!-- 不用 el-dropdown：其开启后会把焦点移入 teleport 到 body 的菜单，
+                     被 el-drawer 的 focus-trap 拽回抽屉，菜单随即"自动关闭"
+                     （线上实测 ~3.5s 必现）。改用 SqlRefMenu 同款自管 popover 弹层 -->
+                <el-popover
+                  v-model:visible="addMenuVisible"
+                  trigger="click"
+                  placement="bottom-end"
+                  :width="360"
+                  :persistent="false"
+                  popper-class="action-add-pop"
+                >
+                  <template #reference>
+                    <el-button size="small" type="primary" plain>+ 添加动作</el-button>
                   </template>
-                </el-dropdown>
+                  <div class="aam-body">
+                    <el-input
+                      v-model="addKeyword"
+                      size="small"
+                      clearable
+                      placeholder="搜索动作名 / 标识"
+                      class="aam-search"
+                    >
+                      <template #prefix><el-icon><Search /></el-icon></template>
+                    </el-input>
+                    <!-- 滚动收敛在弹层内部列表（同 SqlRefMenu）：行div不抢焦点，避免 drawer 焦点圈打架 -->
+                    <div class="aam-list">
+                      <template v-for="g in addActionGroups" :key="g.key">
+                        <div class="aam-title">{{ g.label }}（{{ g.items.length }}）</div>
+                        <div
+                          v-for="it in g.items"
+                          :key="it.key"
+                          class="aam-item"
+                          :title="it.desc"
+                          @click="pickAddAction(it)"
+                        >
+                          <span class="aam-name">{{ it.name }}</span>
+                          <span class="aam-code">{{ it.code }}</span>
+                        </div>
+                      </template>
+                      <div v-if="!addActionGroups.some((g) => g.items.length)" class="aam-empty">无匹配动作</div>
+                    </div>
+                    <div v-if="!customActions.length" class="aam-hint">
+                      JS 模板在「动作库」页维护后可在此直接添加（与动作库清单一致）
+                    </div>
+                  </div>
+                </el-popover>
               </div>
               <!-- 紧凑动作行：单行摘要，点击展开编辑（手风琴，同时只展开一个） -->
               <div class="steps-list">
@@ -338,10 +374,55 @@ function toggleStep(i: number) {
   }
 }
 
-/** 添加动作（下拉点选）：追加并展开滚动到新步骤 */
-function addStep(action: UiStep['action']) {
+// ===== 「+ 添加动作」弹层：清单与动作库页同构（原生 → 封装 → JS 模板） =====
+// 词表 custom 占位不再单列——JS 模板即 custom 步骤的实体形态，点选直建带 custom_id 的步骤，
+// 可选动作数量/形态与动作库页完全一致
+const addMenuVisible = ref(false)
+const addKeyword = ref('')
+interface AddActionItem { key: string; name: string; code: string; desc: string; customId?: number }
+const addActionGroups = computed<{ key: string; label: string; items: AddActionItem[] }[]>(() => {
+  const kw = addKeyword.value.trim().toLowerCase()
+  const hit = (it: AddActionItem) => !kw || `${it.name} ${it.code} ${it.desc}`.toLowerCase().includes(kw)
+  const builtin = UI_ACTIONS.filter((a) => a.origin === 'wrapped' && a.action !== 'custom')
+  return [
+    {
+      key: 'native',
+      label: '原生',
+      items: UI_ACTIONS.filter((a) => a.origin === 'native')
+        .map((a) => ({ key: a.action, name: a.name, code: a.action, desc: a.desc }))
+        .filter(hit),
+    },
+    {
+      key: 'builtin',
+      label: '组合封装',
+      items: builtin
+        .map((a) => {
+          const doc = actionDocs.value.find((d) => d.action_key === a.action)
+          return { key: a.action, name: a.name, code: a.action, desc: doc?.usage_text || a.desc }
+        })
+        .filter(hit),
+    },
+    {
+      key: 'js',
+      label: 'JS 模板（动作库）',
+      items: customActions.value
+        .map((ca) => ({ key: `custom:${ca.id}`, name: ca.name, code: `custom:${ca.id}`, desc: ca.description || '', customId: ca.id }))
+        .filter(hit),
+    },
+  ]
+})
+
+/** 弹层点选：关弹层后追加步骤（JS 模板直建 custom 步骤并带上 custom_id） */
+function pickAddAction(it: AddActionItem) {
+  addMenuVisible.value = false
+  addKeyword.value = ''
+  addStep(it.customId != null ? 'custom' : (it.code as UiStep['action']), it.customId)
+}
+
+/** 添加动作（弹层点选）：追加并展开滚动到新步骤 */
+function addStep(action: UiStep['action'], customId?: number) {
   if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
-  uiSteps.value.push({ action })
+  uiSteps.value.push(customId != null ? { action, custom_id: customId } : { action })
   openIdx.value = uiSteps.value.length - 1
   filterText.value = ''
   nextTick(() => {
@@ -650,10 +731,6 @@ function onSave() {
 .steps-tip {
   margin: 2px 0 0;
 }
-.action-add-menu {
-  max-height: 320px;
-  overflow-y: auto;
-}
 .inline-tip {
   margin: 0 0 0 10px;
   display: inline;
@@ -686,6 +763,56 @@ function onSave() {
   flex-shrink: 0;
   margin-bottom: 0;
   padding: 0 20px;
+}
+/* 「+ 添加动作」弹层（teleport 到 body，样式需全局） */
+.action-add-pop .aam-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.action-add-pop .aam-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.action-add-pop .aam-title {
+  padding: 4px 4px 2px;
+  font-size: 12px;
+  color: var(--app-text-muted, #909399);
+}
+.action-add-pop .aam-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 0;
+}
+.action-add-pop .aam-item:hover {
+  background: var(--app-hover, #f5f7fa);
+}
+.action-add-pop .aam-name {
+  flex-shrink: 0;
+}
+.action-add-pop .aam-code {
+  font-family: var(--app-font-mono, monospace);
+  color: var(--app-text-muted, #909399);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-add-pop .aam-empty {
+  padding: 12px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--app-text-faint, #c0c4cc);
+}
+.action-add-pop .aam-hint {
+  padding: 4px 2px 0;
+  font-size: 11px;
+  color: var(--app-text-faint, #c0c4cc);
 }
 /* tab content 区域独立滚动 */
 .node-config-tabs > .el-tabs__content {
