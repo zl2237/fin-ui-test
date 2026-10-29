@@ -271,7 +271,8 @@ def validate_ui_step_data_sources(node_configs: list | None, dag: dict | None = 
         if not isinstance(params, dict):
             continue
         disp = _disp(names, nc.get("node_id") or "?")
-        steps = params.get("steps") if isinstance(params.get("steps"), list) else [params]
+        raw_steps = params.get("steps")  # 局部变量承接：isinstance 收窄对二次 .get() 不生效
+        steps = raw_steps if isinstance(raw_steps, list) else [params]
         for i, st in enumerate(steps, 1):
             if not isinstance(st, dict):
                 continue
@@ -330,7 +331,8 @@ def validate_ui_scope_bindings(node_configs: list | None, element_scopes: dict[i
             raise ValueError(
                 f"节点 {disp} 未设置页面域——新编排模型中画布节点即页面域，"
                 f"请在节点配置里选择该节点操作的页面域")
-        steps = params.get("steps") if isinstance(params.get("steps"), list) else [params]
+        raw_steps = params.get("steps")
+        steps = raw_steps if isinstance(raw_steps, list) else [params]
         for i, st in enumerate(steps, 1):
             if not isinstance(st, dict):
                 continue

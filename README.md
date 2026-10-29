@@ -10,14 +10,14 @@
 
 ## Features
 
-- **DAG 可视化编排** — 画布上把 UI 操作节点连成流程，双击节点配置动作链、提取与断言
+- **DAG 可视化编排** — 画布上把 UI 操作节点连成流程，双击节点配置动作链、提取与断言；**节点即页面域**（保存期校验缺域/库外元素/跨域绑定，元素按域沉淀）
 - **60+ 浏览器动作** — goto / click / fill / hover / 断言类动作 / 组合动作，事实（facts）结构统一
 - **元素库沉淀** — 多策略 + 兜底链定位（test_id / label / text / xpath…），按名引用，系统改版只改一处
-- **`${}` 表达式** — 步骤值引用上游提取变量、内置函数（`now()` / `generate_bl_no()` 等）、`db.query_one` 取数
+- **数据集收口** — 步骤只引用 `${sheet.字段}` / `${label.字段}`；生成规则（`${函数(...)}` / `${db.query_*}`）写在数据集单元格，执行时求值——保存校验拒绝步骤自带生成规则，取数逻辑全部可见可 diff
 - **提取 + 断言引擎** — 页面事实 JSONPath 提取、17 种断言规则、DB 交叉校验、失败自动重试
 - **失败取证** — 失败节点自动截图入文件中心，报告内直接查看
 - **环境管理** — 多环境（地址 / 登录 / 数据库连接），连通性即时测试，执行严格绑定用例环境
-- **套件编排** — 跨系统串联用例成链，上游变量白名单注入下游
+- **执行方案** — 跨系统串联用例：`combo` 并行组合 / `chain` 串行链（轮数 × 轮间并行、相邻成员 `pass_vars` 定向传参 `__prev__`、失败阻断本轮下游）、方案内嵌定时
 
 ## Quick Start
 
@@ -49,7 +49,7 @@ UI 运行时 (ui_runtime)         Playwright 动作链 · 多策略定位 · fac
 
 [FastAPI](https://fastapi.tiangolo.com/) · [SQLAlchemy](https://www.sqlalchemy.org/) · [Playwright](https://playwright.dev/) · [Vue 3](https://vuejs.org/) · [TypeScript](https://www.typescriptlang.org/) · [Element Plus](https://element-plus.org/) · [Vue Flow](https://vueflow.dev/)
 
-> 本项目由 fin-api-test（API 自动化平台）的 DAG 编排核心派生，共享执行器 / 变量池 / 断言引擎等基础设施；接口注册与数据集入参两个 API 工作面已裁撤。
+> 本项目由 fin-api-test（API 自动化平台）的 DAG 编排核心派生，共享执行器 / 变量池 / 断言引擎等基础设施；接口注册工作面已裁撤（历史 API 节点仍可执行回放），数据集改造为 UI 场景驱动的 sheet 模型（Excel 场景表一键迁移）。
 
 ## License
 
