@@ -31,16 +31,19 @@ import sys
 import threading
 import time
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ..engine.context import ExecutionContext
 from ..engine.expression import ExpressionEngine
+
+if TYPE_CHECKING:  # playwright 为可选依赖，类型仅静态检查用（运行时禁止顶层 import）
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright, ViewportSize
 
 try:  # playwright 为可选依赖（仅 UI 节点执行时需要）；版本间导出路径有差异：
     from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
 except ImportError:  # pragma: no cover
     try:
-        from playwright.sync_api import PlaywrightTimeoutError  # type: ignore[no-redef]
+        from playwright.sync_api import PlaywrightTimeoutError  # type: ignore[no-redef, attr-defined]
     except ImportError:
         class PlaywrightTimeoutError(Exception):  # type: ignore[no-redef]
             pass
@@ -211,10 +214,12 @@ class UiRuntime:
         self.db_client = db_client
         cfg = getattr(env, "browser_config", None) or {}
         self.config: dict = cfg if isinstance(cfg, dict) else {}
-        self._playwright = None
-        self._browser = None
-        self._context = None
-        self._page = None
+        # 浏览器句柄全部可空（惰性启动/关闭后置 None）；缺注解会被推断成
+        # 永久 None 类型，导致后续 is-not-None 守卫被判「不可达」（2026-10-29 mypy 清理）
+        self._playwright: "Playwright | None" = None
+        self._browser: "Browser | None" = None
+        self._context: "BrowserContext | None" = None
+        self._page: "Page | None" = None
         self._login_check_done = False
 
     # ---------- 浏览器生命周期 ----------
@@ -255,7 +260,9 @@ class UiRuntime:
                     "playwright 未安装：pip install playwright && playwright install --with-deps chromium"
                 ) from e
             self._playwright = sync_playwright().start()
-            viewport = self.config.get("viewport") or {"width": 1920, "height": 1080}
+            # config 里的 viewport 是自由 dict（用户配置），运行时按 playwright
+            # 约定键值对使用，cast 只做静态收口不改运行时行为
+            viewport = cast("ViewportSize", self.config.get("viewport") or {"width": 1920, "height": 1080})
             launch_args = list(self.config.get("launch_args") or ["--disable-dev-shm-usage"])
             self._browser = self._playwright.chromium.launch(
                 headless=bool(self.config.get("headless", True)),
@@ -389,7 +396,7 @@ class UiRuntime:
 
     def _element_text(self, locator) -> str | None:
         try:
-            return locator.inner_text(timeout=1000)
+            return str(locator.inner_text(timeout=1000))
         except Exception:  # noqa: BLE001 文本是附加产物
             return None
 
@@ -483,7 +490,7 @@ class UiRuntime:
     @staticmethod
     def _safe_title(page) -> str:
         try:
-            return page.title()
+            return str(page.title())
         except Exception:  # noqa: BLE001
             return ""
 

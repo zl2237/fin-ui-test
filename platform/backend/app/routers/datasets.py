@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
 class DataSetCreateIn(schemas.DataSetCreate):
     # project_id 以归属用例为准（body 可不传，防口径漂移）；copy_from 为复制来源
-    project_id: int | None = None
+    project_id: int | None = None  # type: ignore[assignment]  # pydantic 允许子类宽化必填字段为可选
     copy_from_dataset_id: int | None = None
 
 
