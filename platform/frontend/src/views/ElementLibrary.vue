@@ -172,8 +172,7 @@
     <!-- 页面域语义配置（英文域 → 中文，侧栏树展示） -->
     <el-dialog v-model="labelDialogVisible" title="页面域语义" width="min(560px, 92vw)">
       <el-alert type="info" :closable="false" style="margin-bottom: 10px">
-        为英文页面域配置中文语义（如 orderManage/entrustedOrder → 委托订单），
-        保存后左侧页面域树以中文展示。清空文本即删除该域语义。
+        为英文页面域配中文语义，保存后左侧树按中文展示；清空即删除
       </el-alert>
       <div class="label-rows">
         <div v-for="d in labelDrafts" :key="d.page_scope" class="label-row">

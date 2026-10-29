@@ -212,8 +212,7 @@
     <!-- 批量删除弹窗：多条件组合 → 预览命中 → 确认删除（引用计数安全） -->
     <el-dialog v-model="batchDel.visible" title="批量删除" width="620px" align-center :close-on-click-modal="false">
       <div class="batch-del-tip">
-        条件为「与」组合（同时满足）；必须至少一个条件。先「预览匹配」确认范围再删除——
-        与单个删除同样安全：内容仍有副本（引用计数 &gt; 1）时物理文件保留。
+        条件为「与」组合且至少一项；建议先「预览匹配」再删，仍有副本引用的文件不会物理删除
       </div>
       <el-form label-width="90px">
         <el-form-item label="文件 ID">
