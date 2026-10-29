@@ -267,32 +267,55 @@ const sideRows = computed<SideRow[]>(() => {
   return out
 })
 
-// ----- 上次访问记忆（按 用户|项目 分槽）：进入页面直接回到上次的用例与数据集 -----
-// 单槽时代（projectId 顶层字段）任何项目/用户不匹配都会回落列表首项并把坏值写回，
-// 互相踩毁记忆；分槽后各项目各自持有，切换项目/多用户共用浏览器互不影响（2026-10-29）。
+// ----- 上次访问记忆（按 用户|项目 分槽，槽内再按用例嵌套）-----
+// 结构演进：v1 顶层单槽（projectId 字段）→ v2 槽内扁平 {caseId, datasetId}
+// → v3 槽内按用例嵌套 {caseId, cases: {caseId: {datasetId}}}。
+// v3 动因（2026-10-29 与 API 平台同源同修）：v2 整槽只存一份数据集，切到别的
+// 用例即被覆盖，切回时槽内 id 不属于本用例 → 回落列表首项（记忆丢失）。
 const LAST_KEY = 'fin_ui_ds_last'
+type CaseMem = { datasetId?: number }
+type SlotMem = { caseId?: number; cases?: Record<string, CaseMem> }
+
 function lastSlotKey(): string {
   return `${store.user?.username ?? ''}|${store.currentProjectId ?? ''}`
 }
-function readLast(): { caseId?: number; datasetId?: number } {
+/** v2 扁平槽（整槽一份）折叠成 v3 按用例嵌套；v3 原样放行 */
+function foldSlot(slot: unknown): SlotMem {
+  if (!slot || typeof slot !== 'object') return {}
+  const s = slot as Record<string, unknown>
+  if (s.cases && typeof s.cases === 'object') return s as SlotMem
+  if (typeof s.caseId !== 'number') return {}
+  if (s.datasetId === undefined) return { caseId: s.caseId }
+  return { caseId: s.caseId, cases: { [String(s.caseId)]: { datasetId: s.datasetId as number } } }
+}
+function readSlot(): SlotMem {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST_KEY) || '{}')
-    // 旧单槽结构迁移读取：仅当项目匹配时沿用
-    if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.projectId !== undefined) {
-      return raw.projectId === store.currentProjectId ? raw : {}
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    // v1 顶层单槽迁移读取：仅当项目匹配时沿用
+    if (raw.projectId !== undefined) {
+      return raw.projectId === store.currentProjectId ? foldSlot(raw) : {}
     }
-    const slot = raw?.slots?.[lastSlotKey()]
-    return slot && typeof slot === 'object' ? slot : {}
+    return foldSlot(raw.slots?.[lastSlotKey()])
   } catch { return {} }
+}
+/** 某用例的上次访问数据集记忆，跨用例互不覆盖 */
+function caseMemOf(caseId: number | null | undefined): CaseMem {
+  if (!caseId) return {}
+  const mem = readSlot().cases?.[String(caseId)]
+  return mem && typeof mem === 'object' ? mem : {}
 }
 function writeLast() {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST_KEY) || '{}')
     const slots = raw?.slots && typeof raw.slots === 'object' ? raw.slots : {}
-    slots[lastSlotKey()] = {
-      caseId: currentCase.value?.id,
-      datasetId: current.value?.id,
+    const prev = foldSlot(slots[lastSlotKey()])
+    const cid = currentCase.value?.id
+    const cases: Record<string, CaseMem> = { ...(prev.cases || {}) }
+    if (cid !== undefined) {
+      cases[String(cid)] = { datasetId: currentId.value ?? undefined }
     }
+    slots[lastSlotKey()] = { caseId: cid, cases }
     localStorage.setItem(LAST_KEY, JSON.stringify({ slots }))
   } catch { /* 存储失败忽略 */ }
 }
@@ -319,12 +342,12 @@ async function load(keepCase = true) {
       currentCase.value = cases.value.find((c) => c.id === currentCase.value!.id) || null
     }
     if (!currentCase.value && cases.value.length) {
-      const last = readLast()
-      currentCase.value = cases.value.find((c) => c.id === last.caseId) || cases.value[0]
+      currentCase.value = cases.value.find((c) => c.id === readSlot().caseId) || cases.value[0]
     }
     if (currentCase.value && !caseDatasets.value.some((d) => d.id === currentId.value)) {
-      const last = readLast()
-      currentId.value = caseDatasets.value.find((d) => d.id === last.datasetId && d.case_id === currentCase.value!.id)?.id
+      // 该用例自己的上次访问数据集（按用例嵌套记忆，跨用例不串）
+      const mem = caseMemOf(currentCase.value.id)
+      currentId.value = caseDatasets.value.find((d) => d.id === mem.datasetId)?.id
         || caseDatasets.value[0]?.id || null
     }
     writeLast()
@@ -339,8 +362,9 @@ function selectCaseById(id: number) {
   const c = cases.value.find((x) => x.id === id)
   if (!c) return
   currentCase.value = c
-  const last = readLast()
-  currentId.value = caseDatasets.value.find((d) => d.id === last.datasetId && d.case_id === c.id)?.id
+  // 该用例自己的上次访问数据集（无记忆才回落列表首项）
+  const mem = caseMemOf(c.id)
+  currentId.value = caseDatasets.value.find((d) => d.id === mem.datasetId)?.id
     || caseDatasets.value[0]?.id || null
   writeLast()
 }
