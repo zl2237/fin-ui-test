@@ -121,6 +121,8 @@ def _launch_chain(db: Session, plan: models.ExecutionPlan, items: list,
     records: list[models.ExecutionRecord] = []
     for item in items:
         case = crud.get_testcase(db, item.case_id)
+        if case is None:
+            raise ValueError(f"成员用例 #{item.case_id} 已不存在，请编辑方案移除该成员后重试")
         # 预检口径的展开（含 row_index 校验）；sheets 全量供 ${sheet.字段} 引用
         expansion = dataset_service.plan_case_expansion(
             db, case, dataset_id=item.dataset_id, row_index=item.dataset_row_index)
@@ -182,7 +184,7 @@ def _submit_chain(plan: models.ExecutionPlan, rounds: int, members: list[dict]) 
     from ..database import SessionLocal
 
     plan_id = plan.id
-    payload = {
+    payload: dict[str, Any] = {  # 值类型异构（int/list/dict），宽注解防推断成 dict[str, object]
         "plan_id": plan_id,
         "rounds": rounds,
         "concurrency": max(1, plan.concurrency or 1),
