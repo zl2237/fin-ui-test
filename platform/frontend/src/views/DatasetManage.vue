@@ -267,21 +267,33 @@ const sideRows = computed<SideRow[]>(() => {
   return out
 })
 
-// ----- 上次访问记忆（按项目）：进入页面直接回到上次的用例与数据集 -----
+// ----- 上次访问记忆（按 用户|项目 分槽）：进入页面直接回到上次的用例与数据集 -----
+// 单槽时代（projectId 顶层字段）任何项目/用户不匹配都会回落列表首项并把坏值写回，
+// 互相踩毁记忆；分槽后各项目各自持有，切换项目/多用户共用浏览器互不影响（2026-10-29）。
 const LAST_KEY = 'fin_ui_ds_last'
+function lastSlotKey(): string {
+  return `${store.user?.username ?? ''}|${store.currentProjectId ?? ''}`
+}
 function readLast(): { caseId?: number; datasetId?: number } {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST_KEY) || '{}')
-    return raw?.projectId === store.currentProjectId ? raw : {}
+    // 旧单槽结构迁移读取：仅当项目匹配时沿用
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.projectId !== undefined) {
+      return raw.projectId === store.currentProjectId ? raw : {}
+    }
+    const slot = raw?.slots?.[lastSlotKey()]
+    return slot && typeof slot === 'object' ? slot : {}
   } catch { return {} }
 }
 function writeLast() {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify({
-      projectId: store.currentProjectId,
+    const raw = JSON.parse(localStorage.getItem(LAST_KEY) || '{}')
+    const slots = raw?.slots && typeof raw.slots === 'object' ? raw.slots : {}
+    slots[lastSlotKey()] = {
       caseId: currentCase.value?.id,
       datasetId: current.value?.id,
-    }))
+    }
+    localStorage.setItem(LAST_KEY, JSON.stringify({ slots }))
   } catch { /* 存储失败忽略 */ }
 }
 

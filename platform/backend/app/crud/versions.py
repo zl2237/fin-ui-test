@@ -1,55 +1,49 @@
 """项目版本域：快照（snapshot）/ 对比（diff）/ 回滚（rollback）。
 
 从 legacy.py 整族迁出（迁移策略见 crud/__init__.py）——回滚是高风险机制
-（删当前全部接口/用例/分组后按快照重建，执行记录分离再重关联），独立成域
-后本文件内自洽可读，可在此用假 Session 补测试。对外接口经 crud 包显式
-re-export，旧引用 `crud.rollback_project_version` 等继续可用。
+（删当前全部用例/分组/元素库/动作库后按快照重建，执行记录分离再重关联），
+独立成域后本文件内自洽可读，可在此用假 Session 补测试。对外接口经 crud
+包显式 re-export，旧引用 `crud.rollback_project_version` 等继续可用。
 
 """
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from .. import models
 from .legacy import get_user_name_map
 
 # ============ 快照构建 ============
-def _snapshot_api_groups(db: Session, project_id: int) -> list[dict]:
-    rows = db.query(models.ApiGroup).filter(models.ApiGroup.project_id == project_id)\
-        .order_by(models.ApiGroup.sort_order, models.ApiGroup.id).all()
-    return [{"id": g.id, "parent_id": g.parent_id, "name": g.name, "sort_order": g.sort_order} for g in rows]
-
-
 def _snapshot_case_groups(db: Session, project_id: int) -> list[dict]:
     rows = db.query(models.CaseGroup).filter(models.CaseGroup.project_id == project_id)\
         .order_by(models.CaseGroup.sort_order, models.CaseGroup.id).all()
     return [{"id": g.id, "parent_id": g.parent_id, "name": g.name, "sort_order": g.sort_order} for g in rows]
 
 
-def _snapshot_apis(db: Session, project_id: int) -> list[dict]:
-    apis = db.query(models.ApiDefinition).filter(models.ApiDefinition.project_id == project_id)\
-        .order_by(models.ApiDefinition.sort_order, models.ApiDefinition.id).all()
-    result = []
-    for a in apis:
-        result.append({
-            "id": a.id,
-            "group_id": a.group_id,
-            "name": a.name,
-            "code": a.code,
-            "category": a.category,
-            "method": a.method,
-            "path": a.path,
-            "description": a.description,
-            "request_template": a.request_template if a.request_template is not None else {},
-            "headers_template": a.headers_template or {},
-            "sort_order": a.sort_order,
-            "fields": [
-                {
-                    "key": f.key, "label": f.label, "field_type": f.field_type,
-                    "required": f.required, "default_value": f.default_value,
-                    "remark": f.remark, "sort_order": f.sort_order,
-                } for f in (a.fields or [])
-            ],
-        })
-    return result
+def _snapshot_elements(db: Session, project_id: int) -> list[dict]:
+    rows = db.query(models.UiElement).filter(models.UiElement.project_id == project_id)\
+        .order_by(models.UiElement.page_scope, models.UiElement.element_key).all()
+    return [
+        {
+            "id": e.id, "page_scope": e.page_scope, "element_key": e.element_key,
+            "strategies": e.strategies or {}, "description": e.description,
+        }
+        for e in rows
+    ]
+
+
+def _snapshot_scope_labels(db: Session, project_id: int) -> list[dict]:
+    rows = db.query(models.PageScopeLabel).filter(models.PageScopeLabel.project_id == project_id)\
+        .order_by(models.PageScopeLabel.page_scope).all()
+    return [{"id": r.id, "page_scope": r.page_scope, "label": r.label} for r in rows]
+
+
+def _snapshot_custom_actions(db: Session, project_id: int) -> list[dict]:
+    rows = db.query(models.CustomAction).filter(models.CustomAction.project_id == project_id)\
+        .order_by(models.CustomAction.id).all()
+    return [
+        {"id": r.id, "name": r.name, "description": r.description, "script": r.script}
+        for r in rows
+    ]
 
 
 def _snapshot_cases(db: Session, project_id: int) -> list[dict]:
@@ -67,7 +61,7 @@ def _snapshot_cases(db: Session, project_id: int) -> list[dict]:
             "sort_order": c.sort_order,
             "node_configs": [
                 {
-                    "node_id": nc.node_id, "api_id": nc.api_id,
+                    "node_id": nc.node_id,
                     "step_type": nc.step_type or "api",
                     "ui_params": nc.ui_params,
                     "pre_process": nc.pre_process or [],
@@ -92,12 +86,16 @@ def _next_project_version_no(db: Session, project_id: int) -> int:
 
 
 def build_project_snapshot(db: Session, project_id: int) -> dict:
-    """构建项目完整快照（接口分组/用例分组/接口+字段/用例+节点配置），不含环境"""
+    """构建项目完整快照（用例分组/用例+节点配置/元素库/页面域语义/自定义动作），不含环境。
+
+    UI 平台资产口径（2026-10-29）：自 API 平台 fork 过来的快照域曾收 api_groups/apis，
+    该两表在 UI 平台恒为空残留；改为本平台真正的编排资产——元素库与动作库。"""
     return {
-        "api_groups": _snapshot_api_groups(db, project_id),
         "case_groups": _snapshot_case_groups(db, project_id),
-        "apis": _snapshot_apis(db, project_id),
         "cases": _snapshot_cases(db, project_id),
+        "elements": _snapshot_elements(db, project_id),
+        "scope_labels": _snapshot_scope_labels(db, project_id),
+        "custom_actions": _snapshot_custom_actions(db, project_id),
     }
 
 
@@ -149,7 +147,8 @@ def fill_version_audit_names(db: Session, versions: list) -> None:
 # ============ 版本对比 ============
 def _diff_collection(base: list[dict], target: list[dict], key: str) -> dict:
     """对比两组快照列表，返回 added/removed/modified。
-    匹配键：apis 用 code，cases/groups 用 name。modified 项附带字段级 diff。"""
+    匹配键：元素用「页面域/元素键」，动作/语义用 name/page_scope，用例/分组用 name。
+    modified 项附带字段级 diff。"""
     base_map = {item[key]: item for item in base}
     target_map = {item[key]: item for item in target}
     added = []
@@ -171,27 +170,61 @@ def _diff_collection(base: list[dict], target: list[dict], key: str) -> dict:
     return {"added": added, "removed": removed, "modified": modified}
 
 
+def _element_key(e: dict) -> str:
+    return f"{e.get('page_scope')}/{e.get('element_key')}"
+
+
+def _resolve_group_ref(groups: list[dict], items: list[dict], fk: str) -> list[dict]:
+    """把快照条目里的分组引用从 group_id 换成分组名再对比。
+
+    回滚会重建分组（id 换号），直接比 parent_id/group_id 会在两次快照
+    结构完全相同时也误报 modified；名字在同一项目内才是稳定标识。"""
+    name_by_id = {g.get("id"): g.get("name") for g in groups}
+    return [{**it, fk: name_by_id.get(it.get(fk))} for it in items]
+
+
 def diff_project_versions(base: models.ProjectVersion, target: models.ProjectVersion) -> dict:
     """对比两个项目版本快照，返回各类资源的 added/removed/modified"""
     b = base.snapshot or {}
     t = target.snapshot or {}
     return {
-        "api_groups": _diff_collection(b.get("api_groups", []), t.get("api_groups", []), "name"),
-        "case_groups": _diff_collection(b.get("case_groups", []), t.get("case_groups", []), "name"),
-        "apis": _diff_collection(b.get("apis", []), t.get("apis", []), "code"),
-        "cases": _diff_collection(b.get("cases", []), t.get("cases", []), "name"),
+        "case_groups": _diff_collection(
+            _resolve_group_ref(b.get("case_groups", []), b.get("case_groups", []), "parent_id"),
+            _resolve_group_ref(t.get("case_groups", []), t.get("case_groups", []), "parent_id"),
+            "name",
+        ),
+        "cases": _diff_collection(
+            _resolve_group_ref(b.get("case_groups", []), b.get("cases", []), "group_id"),
+            _resolve_group_ref(t.get("case_groups", []), t.get("cases", []), "group_id"),
+            "name",
+        ),
+        "elements": _diff_collection(
+            [_with_key(e, _element_key(e)) for e in b.get("elements", [])],
+            [_with_key(e, _element_key(e)) for e in t.get("elements", [])],
+            "_key",
+        ),
+        "scope_labels": _diff_collection(b.get("scope_labels", []), t.get("scope_labels", []), "page_scope"),
+        "custom_actions": _diff_collection(b.get("custom_actions", []), t.get("custom_actions", []), "name"),
     }
 
 
-# ============ 回滚（高风险：删当前全部接口/用例/分组后按快照重建） ============
+def _with_key(item: dict, key: str) -> dict:
+    """给快照条目附加对比键 _key（元素以「页面域/元素键」为项目内唯一标识）"""
+    return {"_key": key, **item}
+
+
+# ============ 回滚（高风险：删当前全部用例/分组/元素库/动作库后按快照重建） ============
 def rollback_project_version(
     db: Session,
     project: models.Project,
     version: models.ProjectVersion,
     user_id: int | None = None,
 ) -> None:
-    """硬回滚项目到指定版本：删当前所有接口/用例/分组，用快照重建。
-    回滚前会自动打一个"回滚前快照"留痕，确保可恢复。"""
+    """硬回滚项目到指定版本：删当前所有用例/分组/元素库/动作库，用快照重建。
+    回滚前会自动打一个"回滚前快照"留痕，确保可恢复。
+
+    引用保全：元素/页面域语义/自定义动作按快照原 id 重建（数据集同法）——
+    用例步骤引用的是 element_id / custom:{id} 数字 id，换号即悬空。"""
     # 1. 回滚前留痕
     create_project_version(
         db, project.id,
@@ -204,18 +237,26 @@ def rollback_project_version(
 
     # 2. 分离执行记录（不删除，回滚后重新关联到新用例）+ 删除其他数据
     # 执行记录含 steps/assertions 子表，直接删除会导致回滚后历史执行记录丢失，
-    # 改为：先分离（case_id 置空），重建用例后再按 old_case_id → new_case_id 重新关联
-    case_ids = [c.id for c in db.query(models.TestCase).filter(models.TestCase.project_id == project.id).all()]
-    exec_case_map: dict = {}  # exec_id → old_case_id
+    # 改为：先分离（case_id 置空），重建用例后再重新关联。
+    # 归属对齐一律按「用例名」：回滚重建用例会换 id（且可能已被上一轮回滚换过），
+    # id 在快照与当前状态之间没有稳定对应；名字是项目内稳定标识（2026-10-29 修复：
+    # 旧实现按 id join，首次回滚成功后当前 id 全部换新，二次回滚起数据集被丢弃→1452）
+    cur_cases = db.query(models.TestCase).filter(models.TestCase.project_id == project.id).all()
+    case_ids = [c.id for c in cur_cases]
+    # 键类型放宽到 int | None：execution_records.case_id 可空，.get(None) 返回 None 由下游跳过
+    case_name_by_id: dict[int | None, str] = {c.id: c.name for c in cur_cases}
+    exec_case_map: dict = {}  # exec_id → 当前归属用例名
     # 定时任务/数据集快照缓存（case_ids 为空的项目也需要初始化，供重建阶段引用）
     sched_rows: list[dict] = []
     ds_snap: list[dict] = []
     ds_rows_map: dict = {}
+    plan_item_rows: list[dict] = []
     if case_ids:
         # 定时任务/数据集同为 NOT NULL 外键引用用例：整行收集后删除，重建用例后
-        # 按 case_id_map 恢复（配置与数据资产不丢；数据集按原 id 重建，绑定无需转换）
+        # 按归属用例名恢复（配置与数据资产不丢；数据集按原 id 重建，绑定无需转换）
         sched_rows = [
-            {"case_id": s.case_id, "env_id": s.env_id, "schedule_type": s.schedule_type,
+            {"case_name": case_name_by_id.get(s.case_id), "env_id": s.env_id,
+             "schedule_type": s.schedule_type,
              "interval_minutes": s.interval_minutes, "daily_time": s.daily_time,
              "enabled": s.enabled, "created_by": s.created_by}
             for s in db.query(models.TestSchedule)
@@ -231,57 +272,60 @@ def rollback_project_version(
                 ds_rows_map.setdefault(r.dataset_id, []).append(
                     {"row_index": r.row_index, "data": r.data})
             ds_snap = [
-                {"id": d.id, "case_id": d.case_id, "name": d.name,
+                {"id": d.id, "case_name": case_name_by_id.get(d.case_id), "name": d.name,
                  "description": d.description,
                  "project_id": d.project_id}
                 for d in db.query(models.DataSet).filter(models.DataSet.id.in_(ds_ids)).all()
             ]
+            # 先解绑用例→数据集引用（test_cases.dataset_id 外键 RESTRICT，不解绑删数据集报 1451）。
+            # 用例本身随后整体删除并按快照重建，dataset_id 由 dataset_bind 二阶段回填，绑定不丢
+            db.query(models.TestCase).filter(models.TestCase.dataset_id.in_(ds_ids)).update(
+                {models.TestCase.dataset_id: None}, synchronize_session=False
+            )
             db.query(models.DataSetRow).filter(models.DataSetRow.dataset_id.in_(ds_ids))\
                 .delete(synchronize_session=False)
             db.query(models.DataSet).filter(models.DataSet.id.in_(ds_ids))\
                 .delete(synchronize_session=False)
         execs = db.query(models.ExecutionRecord).filter(models.ExecutionRecord.case_id.in_(case_ids)).all()
         for e in execs:
-            exec_case_map[e.id] = e.case_id
+            exec_case_map[e.id] = case_name_by_id.get(e.case_id)
         # 分离执行记录，避免删除用例时外键约束冲突
         db.query(models.ExecutionRecord).filter(models.ExecutionRecord.case_id.in_(case_ids)).update(
             {models.ExecutionRecord.case_id: None}, synchronize_session=False
         )
         # CaseNodeConfig 属于用例配置，需随用例一起从快照重建
         db.query(models.CaseNodeConfig).filter(models.CaseNodeConfig.case_id.in_(case_ids)).delete(synchronize_session=False)
-
-    api_ids = [a.id for a in db.query(models.ApiDefinition).filter(models.ApiDefinition.project_id == project.id).all()]
-    if api_ids:
-        db.query(models.ApiField).filter(models.ApiField.api_id.in_(api_ids)).delete(synchronize_session=False)
+        # 方案成员（execution_plan_items.case_id 外键指向用例）：整行收集后删除，
+        # 重建用例后按归属用例名恢复——否则删用例时外键挡路/级联清空执行方案成员
+        plan_item_rows = [
+            {"plan_id": p.plan_id, "case_name": case_name_by_id.get(p.case_id),
+             "dataset_id": p.dataset_id,
+             "run_count": p.run_count, "pass_vars": p.pass_vars, "sort_order": p.sort_order}
+            for p in db.query(models.ExecutionPlanItem)
+            .filter(models.ExecutionPlanItem.case_id.in_(case_ids)).all()
+        ]
+        db.query(models.ExecutionPlanItem).filter(models.ExecutionPlanItem.case_id.in_(case_ids))\
+            .delete(synchronize_session=False)
+        # suite_members 遗留死表（旧「套件」功能残留，无 ORM 模型/无代码引用）：
+        # 两个外键均 RESTRICT 指向用例，不清行会挡住用例删除（1451）
+        db.execute(
+            text("DELETE FROM suite_members WHERE suite_case_id IN :ids OR member_case_id IN :ids")
+            .bindparams(bindparam("ids", expanding=True)),
+            {"ids": case_ids},
+        )
 
     db.query(models.TestCase).filter(models.TestCase.project_id == project.id).delete(synchronize_session=False)
-    db.query(models.ApiDefinition).filter(models.ApiDefinition.project_id == project.id).delete(synchronize_session=False)
     # 分组有自引用外键(parent_id)，批量删除前先置空 parent_id 避免约束冲突
     db.query(models.CaseGroup).filter(models.CaseGroup.project_id == project.id).update({models.CaseGroup.parent_id: None}, synchronize_session=False)
-    db.query(models.ApiGroup).filter(models.ApiGroup.project_id == project.id).update({models.ApiGroup.parent_id: None}, synchronize_session=False)
     db.query(models.CaseGroup).filter(models.CaseGroup.project_id == project.id).delete(synchronize_session=False)
-    db.query(models.ApiGroup).filter(models.ApiGroup.project_id == project.id).delete(synchronize_session=False)
+    # 元素库/页面域语义/自定义动作（项目级资产，原 id 重建）
+    db.query(models.UiElement).filter(models.UiElement.project_id == project.id).delete(synchronize_session=False)
+    db.query(models.PageScopeLabel).filter(models.PageScopeLabel.project_id == project.id).delete(synchronize_session=False)
+    db.query(models.CustomAction).filter(models.CustomAction.project_id == project.id).delete(synchronize_session=False)
     # 不在此处 commit：让删除+重建+重新关联执行记录在同一事务中完成，
     # 若重建失败可整体回滚，避免执行记录 case_id 被永久置空
 
-    # 3. 重建分组（建立 old_id -> new_id 映射；parent_id 在全部分组创建后回填）
-    api_group_map: dict = {}
-    api_group_rows: list = []
-    for g in snap.get("api_groups", []):
-        old_id = g.get("id")
-        ng = models.ApiGroup(project_id=project.id, name=g["name"], sort_order=g.get("sort_order", 0))
-        db.add(ng)
-        db.flush()
-        if old_id is not None:
-            api_group_map[old_id] = ng.id
-        api_group_rows.append((ng, g.get("parent_id")))
-
-    # 回填 parent_id（old_parent_id → new_parent_id）
-    for ng, old_parent_id in api_group_rows:
-        if old_parent_id is not None and old_parent_id in api_group_map:
-            ng.parent_id = api_group_map[old_parent_id]
-    db.flush()
-
+    # 3. 重建用例分组（建立 old_id -> new_id 映射；parent_id 在全部分组创建后回填）
     case_group_map: dict = {}
     case_group_rows: list = []
     for g in snap.get("case_groups", []):
@@ -298,50 +342,39 @@ def rollback_project_version(
             ng.parent_id = case_group_map[old_parent_id]
     db.flush()
 
-    # 4. 重建接口（建立 old_api_id -> new_api_id 映射，转换 group_id）
-    api_id_map: dict = {}
-    for a in snap.get("apis", []):
-        old_id = a.get("id")
-        old_group_id = a.get("group_id")
-        new_group_id = api_group_map.get(old_group_id) if old_group_id else None
-        na = models.ApiDefinition(
+    # 3.2 重建元素库/页面域语义/自定义动作（原 id 复用，保用例步骤引用）
+    for e in snap.get("elements", []):
+        db.add(models.UiElement(
+            id=e.get("id"),
             project_id=project.id,
-            group_id=new_group_id,
+            page_scope=e["page_scope"],
+            element_key=e["element_key"],
+            strategies=e.get("strategies") or {},
+            description=e.get("description"),
+        ))
+    for s in snap.get("scope_labels", []):
+        db.add(models.PageScopeLabel(
+            id=s.get("id"),
+            project_id=project.id,
+            page_scope=s["page_scope"],
+            label=s["label"],
+        ))
+    for a in snap.get("custom_actions", []):
+        db.add(models.CustomAction(
+            id=a.get("id"),
+            project_id=project.id,
             name=a["name"],
-            code=a["code"],
-            category=a.get("category"),
-            method=a.get("method", "POST"),
-            path=a["path"],
             description=a.get("description"),
-            request_template=a.get("request_template", {}),
-            headers_template=a.get("headers_template", {}),
-            sort_order=a.get("sort_order", 0),
-            created_by=user_id,
-            updated_by=user_id,
-        )
-        db.add(na)
-        db.flush()
-        if old_id is not None:
-            api_id_map[old_id] = na.id
-        # 重建字段
-        for f in a.get("fields", []):
-            db.add(models.ApiField(
-                api_id=na.id,
-                key=f["key"],
-                label=f.get("label"),
-                field_type=f.get("field_type", "string"),
-                required=f.get("required", False),
-                default_value=f.get("default_value"),
-                remark=f.get("remark"),
-                sort_order=f.get("sort_order", 0),
-            ))
+            script=a["script"],
+        ))
+    db.flush()
 
-    # 5. 重建用例（转换 group_id，node_configs 的 api_id 用映射转换）
-    # 同时建立 old_case_id → new_case_id 映射，用于重新关联执行记录
-    case_id_map: dict = {}
+    # 4. 重建用例（转换 group_id）
+    # 同时建立 name → new_case_id 映射：数据集/定时/方案成员/执行记录的归属
+    # 都按用例名对齐（id 会被历次回滚换掉，名字稳定——见第 2 步注释）
+    case_name_map: dict = {}
     dataset_bind: list[tuple] = []   # (new_case, 快照 dataset_id) 二阶段回填（data_sets 重建前后再绑，避免 FK 循环）
     for c in snap.get("cases", []):
-        old_case_id = c.get("id")
         old_group_id = c.get("group_id")
         new_group_id = case_group_map.get(old_group_id) if old_group_id else None
         nc = models.TestCase(
@@ -356,17 +389,13 @@ def rollback_project_version(
         )
         db.add(nc)
         db.flush()
-        if old_case_id is not None:
-            case_id_map[old_case_id] = nc.id
+        case_name_map[c["name"]] = nc.id
         if c.get("dataset_id"):
             dataset_bind.append((nc, c["dataset_id"]))
         for cfg in c.get("node_configs", []):
-            old_api_id = cfg.get("api_id")
-            new_api_id = api_id_map.get(old_api_id) if old_api_id else None
             db.add(models.CaseNodeConfig(
                 case_id=nc.id,
                 node_id=cfg["node_id"],
-                api_id=new_api_id,
                 step_type=cfg.get("step_type") or "api",
                 ui_params=cfg.get("ui_params"),
                 pre_process=cfg.get("pre_process", []),
@@ -377,26 +406,29 @@ def rollback_project_version(
 
 
     # 5.2 重建数据集（原 id 复用 → test_cases.dataset_id / data_set_rows.dataset_id
-    # 引用零转换）：归属 case_id 经 map 转换；用例不在快照中的数据集丢弃（回到快照时刻）
+    # 引用零转换）：归属按用例名对齐；归属用例不在快照中的数据集丢弃（回到快照时刻）。
+    # 快照绑定的数据集若已被删除（不在保留集合）则放弃该绑定——绑定悬空比回滚失败可恢复性强
+    kept_ds_ids: set = set()
     for d in ds_snap:
-        new_cid = case_id_map.get(d["case_id"])
+        new_cid = case_name_map.get(d["case_name"])
         if new_cid is None:
             continue
+        kept_ds_ids.add(d["id"])
         db.add(models.DataSet(
             id=d["id"], project_id=d.get("project_id") or project.id, case_id=new_cid,
             name=d["name"], description=d.get("description"),
-            columns=d.get("columns") or [],
         ))
         for r in ds_rows_map.get(d["id"], []):
             db.add(models.DataSetRow(dataset_id=d["id"], row_index=r["row_index"], data=r["data"]))
     db.flush()
     for case_obj, ds_id in dataset_bind:
-        case_obj.dataset_id = ds_id
+        if ds_id in kept_ds_ids:
+            case_obj.dataset_id = ds_id
     db.flush()
 
     # 5.3 重建定时任务（配置跟随新用例；用例不在快照中的任务丢弃）
     for s in sched_rows:
-        new_cid = case_id_map.get(s["case_id"])
+        new_cid = case_name_map.get(s["case_name"])
         if new_cid is None:
             continue
         db.add(models.TestSchedule(
@@ -405,10 +437,20 @@ def rollback_project_version(
             enabled=s["enabled"], created_by=s["created_by"],
         ))
 
-    # 6. 重新关联执行记录到新用例
+    # 5.4 重建方案成员（归属按用例名对齐；用例不在快照中的成员丢弃——同定时任务语义）
+    for p in plan_item_rows:
+        new_cid = case_name_map.get(p["case_name"])
+        if new_cid is None:
+            continue
+        db.add(models.ExecutionPlanItem(
+            plan_id=p["plan_id"], case_id=new_cid, dataset_id=p["dataset_id"],
+            run_count=p["run_count"], pass_vars=p["pass_vars"], sort_order=p["sort_order"],
+        ))
+
+    # 6. 重新关联执行记录到新用例（按用例名对齐）
     # 快照中存在的用例：更新 case_id 到新 ID；不在快照中的用例（快照后新建）：删除其执行记录及子表
-    for exec_id, old_cid in exec_case_map.items():
-        new_cid = case_id_map.get(old_cid)
+    for exec_id, case_name in exec_case_map.items():
+        new_cid = case_name_map.get(case_name)
         if new_cid is not None:
             db.query(models.ExecutionRecord).filter(models.ExecutionRecord.id == exec_id).update(
                 {models.ExecutionRecord.case_id: new_cid}, synchronize_session=False

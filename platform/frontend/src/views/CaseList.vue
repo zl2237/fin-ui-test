@@ -496,8 +496,7 @@
     <!-- 绑定数据集（只切绑定关系；数据集编辑集中在数据集管理页，口径对齐 API 平台用例列表） -->
     <el-dialog v-model="bindVisible" title="绑定数据集" width="480px">
       <div class="bind-tip">
-        绑定后执行时缺省取该数据集第 1 行（执行按钮旁 ▾ 可临时换套数据/换行）。
-        数据集按用例隔离，仅可选本用例名下的数据集；多场景去数据集页复制
+        绑定后缺省取第 1 行（执行旁 ▾ 可临时换套/换行）；数据集按用例隔离，多场景去数据集页复制
       </div>
       <el-select v-model="bindDatasetId" placeholder="选择数据集（空=不绑定）" clearable :loading="bindLoading" style="width: 100%">
         <el-option v-for="d in bindDatasets" :key="d.id" :label="`${d.name}（${d.rows.length} 个 sheet）`" :value="d.id" />
