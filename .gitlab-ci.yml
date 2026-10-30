@@ -173,15 +173,13 @@ deploy:
           warn="$warn 依赖安装失败(已用现有依赖重启);"
         fi
 
-        # Playwright 浏览器二进制：装机时装过一次就持久（~/.cache/ms-playwright），
-        # 部署只查缺补装，不重复下载 120MB
-        if ! ls /root/.cache/ms-playwright/chromium* >/dev/null 2>&1; then
-          echo "[deploy][playwright] 浏览器缺失，补装 chromium ..."
-          ( cd "$BACKEND_DIR" && source venv/bin/activate \
-            && PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
-               python -m playwright install chromium ) \
-            || warn="$warn playwright浏览器补装失败;"
-        fi
+        # Playwright 浏览器二进制：幂等安装——build 已与驱动版本匹配则秒过（本地校验），
+        # 驱动升级后缺对应 build 才真正下载（npmmirror 镜像）。
+        # 旧守卫「缓存存在即跳过」漏掉驱动升级场景：新驱动+旧 build 起动即死（exec978 事故）
+        ( cd "$BACKEND_DIR" && source venv/bin/activate \
+          && PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/ \
+             python -m playwright install chromium ) \
+          || warn="$warn playwright浏览器补装失败;"
 
         if ! (
           cd "$BACKEND_DIR" && source venv/bin/activate && alembic upgrade head
