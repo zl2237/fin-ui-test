@@ -576,6 +576,16 @@ class UiRuntime:
                 "value": token,
                 "url": self.env.base_url,
             }])
+        # 恢复点当前停在登录页（与 target 仅差 #hash）：直接 goto(target) 是同文档
+        # hash 导航——SPA 不会重读 cookie（守卫仍按旧会话态判未登录），且旧登录
+        # 表单还挂在 DOM（_wait_login_mark 密码框分支立即误报「仍在登录页」）。
+        # 先 goto about:blank 强制离场旧文档，再整页加载 target 让应用重读新 cookie
+        # （2026-10-31 五连败 exec964-968 复盘 + verify_recovery.py 进程外实证：
+        # hash-only 复检 PWD|目标路由 误报必现；about:blank 配方 3s 无登录信号通过）。
+        try:
+            page.goto("about:blank", timeout=5000)
+        except Exception:  # noqa: BLE001 about:blank 基本不失败，防御性兜底
+            pass
         page.goto(target, wait_until=wait_until, timeout=timeout_ms)
         # 同窗复检：重登后仍落登录页 = 登录配置/账号本身有问题（token 对但进不去）
         if self._wait_login_mark(page, detect_ms):
@@ -1259,7 +1269,13 @@ class UiRuntime:
                 # 真选中校验：未选中时 Esc 会清空筛选文本，input 显示模型值（空）。
                 # 匹配放宽为双向包含：数据（Excel）与选项文案允许有出入
                 # （如数据'韩方浦'对应选项'韩方浦1'——历史 8 轮运行实证）
-                last_seen = locator.input_value(timeout=timeout_ms) or ""
+                try:
+                    last_seen = locator.input_value(timeout=timeout_ms) or ""
+                except PlaywrightTimeoutError:
+                    # 回读瞬断：远程懒加载下拉选中/关闭触发组件 re-render，input
+                    # 被替换 detach（exec956 n14 费用主体实证：click/Esc 全过、
+                    # 回读 15s 死等且在 try 外不可重试）——按本轮未生效走整体重试
+                    continue
                 if not last_seen:
                     # multiple/tags 形态 el-select：选中值渲染为 el-select__tags 内的
                     # tag 文本而非 input value（检索区「订单生效状态」筛选项实证）——
