@@ -148,7 +148,8 @@ def test_login_redirect_triggers_relogin_recovery(monkeypatch):
 
     assert rt._recover_from_login_redirect(
         page, "http://test.local/#/dev/order", "load", 15000) is True
-    assert page.goto_calls == ["http://test.local/#/dev/order"]  # 重新 goto 原目标
+    # 3d84139：re-goto 前先 about:blank 换文档，强制 SPA 重新读 cookie
+    assert page.goto_calls == ["about:blank", "http://test.local/#/dev/order"]
     assert [c["value"] for c in ctx.cookies] == ["fresh-token"]  # 新 token 已注入
     assert EnvTokenCache.get(TEST_ENV_ID) == "fresh-token"  # 旧缓存被顶替
 
