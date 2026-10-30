@@ -1259,7 +1259,13 @@ class UiRuntime:
                 # 真选中校验：未选中时 Esc 会清空筛选文本，input 显示模型值（空）。
                 # 匹配放宽为双向包含：数据（Excel）与选项文案允许有出入
                 # （如数据'韩方浦'对应选项'韩方浦1'——历史 8 轮运行实证）
-                last_seen = locator.input_value(timeout=timeout_ms) or ""
+                try:
+                    last_seen = locator.input_value(timeout=timeout_ms) or ""
+                except PlaywrightTimeoutError:
+                    # 回读瞬断：远程懒加载下拉选中/关闭触发组件 re-render，input
+                    # 被替换 detach（exec956 n14 费用主体实证：click/Esc 全过、
+                    # 回读 15s 死等且在 try 外不可重试）——按本轮未生效走整体重试
+                    continue
                 if not last_seen:
                     # multiple/tags 形态 el-select：选中值渲染为 el-select__tags 内的
                     # tag 文本而非 input value（检索区「订单生效状态」筛选项实证）——
