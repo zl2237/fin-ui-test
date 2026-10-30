@@ -21,4 +21,7 @@ cryptography>=42.0.0
 openpyxl>=3.1.2
 # UI 自动化（Playwright，step_type=ui 节点执行）；缺失时 UI 节点优雅报错，API 用例不受影响
 # 安装后需执行一次：playwright install --with-deps chromium（浏览器二进制不进 pip）
-playwright>=1.48.0
+# 锁死版本：>= 浮动会让 deploy 的 pip 升级驱动而 chromium 缓存还是旧 build，
+# 浏览器起动即死（exec978 Connection closed 事故）；升级时须连同 CI 的
+# playwright install 一起走，由 deploy 幂等安装补齐对应 build
+playwright==1.64.1
