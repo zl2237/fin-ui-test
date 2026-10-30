@@ -679,13 +679,23 @@ class UiRuntime:
             resolved.extend(p.strip() for p in s.split(",") if p.strip())
         if not resolved:
             return {"target": "upload", "skipped": "empty-value"}
-        paths = [self._resolve_file_path(p) for p in resolved]
+        entries = [self._resolve_file_entry(p) for p in resolved]
+        paths = [p for p, _ in entries]
         locator, desc = self._locator(params)
         handle = locator.element_handle(timeout=timeout_ms)
         if handle is None:
             raise UiActionError(f"upload 未定位到文件输入框: {desc}")
-        handle.set_input_files(paths)
-        return {"target": desc, "value": paths}
+        # FilePayload（buffer+原始名+mimeType）：按路径 set 会把浏览器侧
+        # File.name 变成 storage_path 的 sha256 基名（无扩展名），被测系统
+        # 按扩展名校验直接 code:400 拒收（fin-tidb 发票上传五轮实证）
+        import mimetypes
+        payloads = []
+        for p, disp in entries:
+            mime = mimetypes.guess_type(disp)[0] or "application/octet-stream"
+            with open(p, "rb") as fh:
+                payloads.append({"name": disp, "mimeType": mime, "buffer": fh.read()})
+        handle.set_input_files(payloads)
+        return {"target": desc, "value": paths, "names": [n for _, n in entries]}
 
     def _do_screenshot(self, page, params, timeout_ms):  # noqa: ARG002
         # 截图落库由 DagExecutor 统一处理（screenshot=always 时每步都存），这里只返回标记
@@ -1344,6 +1354,13 @@ class UiRuntime:
         """上传文件解析：整数/数字串 → 文件中心 test_files.storage_path；
         绝对路径原样；相对文件名 → 文件中心按 name 检索（承接原框架
         module files 目录的迁移数据，文件预先导入文件中心即可）。"""
+        return self._resolve_file_entry(spec)[0]
+
+    def _resolve_file_entry(self, spec: Any) -> tuple[str, str]:
+        """同 _resolve_file_path，额外返回展示文件名（保留原始扩展名）。
+        被测系统普遍按文件名扩展名校验上传（fin-tidb uploadFile 实证
+        code:400 文件类型错误），而文件中心 storage_path 以 sha256 为名、
+        无扩展名——set_input_files 必须用 FilePayload 携带原始名。"""
         spec = self._evaluate(spec)
         s = str(spec)
         if s.isdigit():
@@ -1352,9 +1369,9 @@ class UiRuntime:
             f = self.db.query(models.TestFile).filter(models.TestFile.id == int(s)).first()
             if not f:
                 raise UiActionError(f"文件中心不存在文件 id={s}")
-            return str(resolve_physical_path(f.storage_path))
+            return str(resolve_physical_path(f.storage_path)), (f.original_name or f.name or s)
         if os.path.isabs(s):
-            return s
+            return s, os.path.basename(s)
         from .. import models
         from .file_helpers import resolve_physical_path
         f = (self.db.query(models.TestFile)
@@ -1362,6 +1379,6 @@ class UiRuntime:
                      models.TestFile.name == s)
              .order_by(models.TestFile.id.desc()).first())
         if f:
-            return str(resolve_physical_path(f.storage_path))
+            return str(resolve_physical_path(f.storage_path)), (f.original_name or f.name or s)
         raise UiActionError(
             f"上传文件无法解析: {s!r}（文件中心无此名称文件，且非绝对路径/id）")
