@@ -576,6 +576,16 @@ class UiRuntime:
                 "value": token,
                 "url": self.env.base_url,
             }])
+        # 恢复点当前停在登录页（与 target 仅差 #hash）：直接 goto(target) 是同文档
+        # hash 导航——SPA 不会重读 cookie（守卫仍按旧会话态判未登录），且旧登录
+        # 表单还挂在 DOM（_wait_login_mark 密码框分支立即误报「仍在登录页」）。
+        # 先 goto about:blank 强制离场旧文档，再整页加载 target 让应用重读新 cookie
+        # （2026-10-31 五连败 exec964-968 复盘 + verify_recovery.py 进程外实证：
+        # hash-only 复检 PWD|目标路由 误报必现；about:blank 配方 3s 无登录信号通过）。
+        try:
+            page.goto("about:blank", timeout=5000)
+        except Exception:  # noqa: BLE001 about:blank 基本不失败，防御性兜底
+            pass
         page.goto(target, wait_until=wait_until, timeout=timeout_ms)
         # 同窗复检：重登后仍落登录页 = 登录配置/账号本身有问题（token 对但进不去）
         if self._wait_login_mark(page, detect_ms):
