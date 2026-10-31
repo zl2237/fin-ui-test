@@ -235,8 +235,8 @@ const mode = ref<'combo' | 'chain'>('combo')
 const rounds = ref(1)
 
 // 模式说明（tooltip 文案集中在此，界面不再铺文字）
-const chainTip = '轮内按序串行＋相邻定向传参＋失败阻断本轮下游；第 r 轮取各成员数据集第 r 个 sheet（不足沿用末个，成员显式选 sheet 则每轮固定）'
-const comboTip = '成员独立并行执行，失败互不影响；并发为提交上限（1=串行）'
+const chainTip = '轮内按序串行＋相邻定向传参＋失败阻断本轮下游；第 r 轮取各成员数据集第 r 个 sheet（不足沿用末个，成员显式选 sheet 则每轮固定）。轮间并发含 UI 用例时上限 2（同时存活的浏览器槽位）'
+const comboTip = '成员独立并行执行，失败互不影响；并发为提交上限（1=串行）。成员含 UI 用例时上限 2（同时存活的浏览器槽位），超出会被拒绝'
 
 function onModeChange() {
   dirty.value = true

@@ -59,6 +59,7 @@ function confirm() {
       <el-input-number v-model="concurrency" :min="1" :max="16" size="small" />
       <span class="batch-run-concurrency-hint">{{ concurrency === 1 ? '串行：一个执行完再下一个' : `同时执行 ${concurrency} 个` }}</span>
     </div>
+    <div class="batch-run-tip">所选用例含 UI 用例时并发上限 2（同时存活的浏览器槽位），超出会被拒绝；纯 API 用例可到 16。</div>
     <div class="batch-run-list">
       <div v-for="it in items" :key="it.id" class="batch-run-row">
         <el-tooltip :content="it.name" placement="top" popper-class="app-tip">

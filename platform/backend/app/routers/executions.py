@@ -7,7 +7,7 @@ from .. import crud, models, schemas
 from ..auth import get_current_user
 from ..crud import executions as exec_domain
 from ..database import get_db
-from ..services.execution_launcher import build_launch_plan, commit_launch
+from ..services.execution_launcher import build_launch_plan, commit_launch, validate_concurrency_for_cases
 from ..services import replay_service
 
 router = APIRouter(prefix="/api", tags=["执行"])
@@ -78,6 +78,13 @@ def batch_execute(data: schemas.BatchExecutionCreate, db: Session = Depends(get_
                                            run_count=run_count))
         except ValueError as e:
             raise HTTPException(400, f"用例 {case.name}: {e}")
+
+    # 并发上限按用例类型收敛：批次含 UI 用例且多份并行时 ≤ 浏览器槽位
+    # （每个 UI 执行独占一个 Chromium；超出者在信号量上排队、600s 超时作废）
+    try:
+        validate_concurrency_for_cases(db, data.concurrency, list(data.case_ids))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     # 全部用例平铺进一个批次专用线程池（并发数 = concurrency，1 即串行）
     commit_launch(plans, concurrency=data.concurrency)

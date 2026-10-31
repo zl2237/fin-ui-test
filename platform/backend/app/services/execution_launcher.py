@@ -83,3 +83,50 @@ def commit_launch(plans: list[LaunchPlan],
     specs = [spec for plan in plans for spec in plan.specs]
     if specs:
         submit_batch_execution(specs, concurrency=concurrency)
+
+
+# ============ 并发上限按用例类型收敛（2026-10-31 定案） ============
+# 平台两级并发：批次线程池 concurrency（1~MAX_CONCURRENCY=16）管线程数；
+# UI 执行另有进程级浏览器闸门 UI_SEMAPHORE（默认 2，环境变量
+# UI_BROWSER_CONCURRENCY 覆盖）——每个 UI 执行独占一个 Chromium 槽位，
+# 超出槽位数的并行 UI 执行 acquire 排队，UI_ACQUIRE_TIMEOUT_S（默认 600s）
+# 等不到即整条作废。配置期按槽位数收敛，而不是执行期排队超时。
+
+
+def ui_concurrency_cap() -> int:
+    """UI 用例的有效并发上限 = 浏览器槽位数（进程级常量，lazy 读避免链式 import）。"""
+    from .ui_runtime import UI_BROWSER_CONCURRENCY
+    return max(1, int(UI_BROWSER_CONCURRENCY))
+
+
+def case_ids_with_ui_nodes(db: Session, case_ids: list[int]) -> set[int]:
+    """case_ids 中含 UI 节点（case_node_configs.step_type='ui'）的用例 id 集。"""
+    ids = sorted({c for c in case_ids if c})
+    if not ids:
+        return set()
+    from .. import models
+    rows = db.query(models.CaseNodeConfig.case_id).filter(
+        models.CaseNodeConfig.case_id.in_(ids),
+        models.CaseNodeConfig.step_type == "ui").distinct().all()
+    return {r[0] for r in rows}
+
+
+def validate_concurrency_for_cases(db: Session, concurrency: int,
+                                   case_ids: list[int]) -> None:
+    """并发数按成员用例类型收敛：含 UI 用例 → 并发 ≤ 浏览器槽位数，超出抛 ValueError。
+
+    通用上限（1~16）由调用方先行校验；concurrency=1 恒通过（串行无槽位竞争）。
+    覆盖三入口：方案保存/成员替换（配置期提示）、方案执行（预检兜底，含定时）、
+    手动单发/批量执行。"""
+    if concurrency <= 1:
+        return
+    if not case_ids_with_ui_nodes(db, case_ids):
+        return
+    cap = ui_concurrency_cap()
+    if concurrency > cap:
+        raise ValueError(
+            f"并发数 {concurrency} 超出 UI 用例支撑上限 {cap}"
+            f"（浏览器槽位 UI_BROWSER_CONCURRENCY，同时存活的 Chromium 数；"
+            f"超出的 UI 执行会排队、10 分钟等不到槽位即作废）。"
+            f"成员含 UI 用例时并发请 ≤ {cap}，或把 UI 用例拆到单独方案串行跑")
+
