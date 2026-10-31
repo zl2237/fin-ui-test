@@ -57,6 +57,70 @@ UI_SEMAPHORE = threading.BoundedSemaphore(UI_BROWSER_CONCURRENCY)
 # 改为限时获取：泄漏时 10 分钟内显式报错，指引走 CI 部署重启回收，而不是无限排队。
 UI_ACQUIRE_TIMEOUT_S = max(60, int(os.getenv("UI_ACQUIRE_TIMEOUT_S", "600")))
 
+# 槽位持有者注册表：acquire 成功即登记（runtime 引用 + exec_id + 时刻）。
+# 卡死在 Playwright 调用内的线程走不到 close() 的 release()，槽位永久泄漏
+# （exec1009 实录：两槽全被僵尸线程占满，后续执行 600s 超时排队后全废）。
+# terminate 钩子与 acquire 超时自愈据此定向回收：只清 _semaphore_held 标志并补
+# 一次 release；僵尸线程日后若苏醒走到 _release()，标志已 False 不会双放
+# （BoundedSemaphore 双放会抛 ValueError）。其浏览器句柄泄漏到进程重启，可接受。
+_UI_HOLDER_LOCK = threading.Lock()
+_UI_HOLDERS: "dict[int, dict]" = {}
+
+
+def register_ui_holder(rt: "UiRuntime", execution_id: int | None) -> None:
+    with _UI_HOLDER_LOCK:
+        _UI_HOLDERS[id(rt)] = {"rt": rt, "exec_id": execution_id, "at": time.time()}
+
+
+def _unregister_ui_holder(rt: "UiRuntime") -> None:
+    with _UI_HOLDER_LOCK:
+        _UI_HOLDERS.pop(id(rt), None)
+
+
+def force_release_ui_holders(exec_ids: "list[int] | None" = None, db: Any = None) -> int:
+    """强制回收卡死线程占用的浏览器槽位，返回回收数。
+
+    exec_ids 给定：只回收这些执行的持有者（terminate 钩子——调用方已先落
+    terminated，无需再查状态）。
+    exec_ids=None：自愈扫描，回收 DB 已非 running 记录的持有者（需 db）；
+    无 db 或 exec_id 未知（None）的持有者不动。
+    只动信号量不动浏览器：健康线程随后照常 close()（标志已 False 不双放）。
+    """
+    with _UI_HOLDER_LOCK:
+        holders = list(_UI_HOLDERS.items())
+    want = set(exec_ids) if exec_ids is not None else None
+    freed = 0
+    for key, info in holders:
+        eid = info["exec_id"]
+        if want is not None:
+            if eid is None or eid not in want:
+                continue
+        else:
+            if eid is None or db is None:
+                continue
+            try:
+                from .. import models
+                rec = db.query(models.ExecutionRecord).filter(
+                    models.ExecutionRecord.id == eid).first()
+            except Exception:  # noqa: BLE001 扫描失败不阻塞正常执行路径
+                continue
+            if rec is None or rec.status == "running":
+                continue
+        rt = info["rt"]
+        held = getattr(rt, "_semaphore_held", False)
+        if held:
+            rt._semaphore_held = False
+            try:
+                UI_SEMAPHORE.release()
+            except ValueError:  # pragma: no cover
+                rt._semaphore_held = True
+                continue
+            freed += 1
+            print(f"[UI槽位] 强制回收: exec={eid} 持有 {int(time.time() - info['at'])}s")
+        with _UI_HOLDER_LOCK:
+            _UI_HOLDERS.pop(key, None)
+    return freed
+
 # 无头页长时间驻留（如 8 分钟静默等待）会被 Chromium 后台计时器节流乃至整页
 # 冻结，页内自限超时的轮询脚本随之停摆不返回（exec1000/1002/1004 实录：
 # Date.now() 墙钟 8 分钟上限的脚本 25 分钟以上不归）。默认启动参数禁用这一族行为。
@@ -222,12 +286,14 @@ class UiRuntime:
     """单条用例的浏览器运行时：一个 Chromium + 一个 Page 贯穿全 DAG。"""
 
     def __init__(self, db, env, context: ExecutionContext, project_id: int | None = None,
-                 db_client: Any = None):
+                 db_client: Any = None, execution_id: int | None = None):
         self.db = db
         self.env = env
         self.context = context
         self.project_id = project_id
         self.db_client = db_client
+        # 所属执行记录 id（槽位持有者注册表用；手工构造/测试可为 None）
+        self.execution_id = execution_id
         cfg = getattr(env, "browser_config", None) or {}
         self.config: dict = cfg if isinstance(cfg, dict) else {}
         # 浏览器句柄全部可空（惰性启动/关闭后置 None）；缺注解会被推断成
@@ -266,13 +332,18 @@ class UiRuntime:
             return self._page
 
         if not UI_SEMAPHORE.acquire(timeout=UI_ACQUIRE_TIMEOUT_S):
-            raise UiActionError(
-                "浏览器并发槽位（%d 个）已被占用 %d 分钟未释放：大概率有执行线程卡死泄漏了槽位"
-                "（terminate 为协作式标记，卡在 Playwright 调用内的线程不会释放信号量）。"
-                "请稍后重试；若持续报此错，推任意提交到 main 触发 CI 部署（服务重启）即可回收。"
-                % (UI_BROWSER_CONCURRENCY, UI_ACQUIRE_TIMEOUT_S // 60)
-            )
+            # 自愈：回收已终态执行仍占着的槽位（卡死线程泄漏），回收后再短等一次
+            freed = force_release_ui_holders(db=self.db)
+            if not freed or not UI_SEMAPHORE.acquire(timeout=60):
+                raise UiActionError(
+                    "浏览器并发槽位（%d 个）已被占用 %d 分钟未释放：大概率有执行线程卡死泄漏了槽位"
+                    "（terminate 为协作式标记，卡在 Playwright 调用内的线程不会释放信号量；"
+                    "已自动回收 %d 个终态槽位仍不足）。请稍后重试；若持续报此错，"
+                    "推任意提交到 main 触发 CI 部署（服务重启）即可回收。"
+                    % (UI_BROWSER_CONCURRENCY, UI_ACQUIRE_TIMEOUT_S // 60, freed)
+                )
         self._semaphore_held = True
+        register_ui_holder(self, self.execution_id)
         restore, prev_policy = self._proactor_policy_guard()
         try:
             try:
@@ -361,6 +432,7 @@ class UiRuntime:
 
     def _release(self):
         # 只在确实持锁后释放（ensure_browser 成功拿到信号量后任意路径都要归还）
+        _unregister_ui_holder(self)
         if getattr(self, "_semaphore_held", False):
             self._semaphore_held = False
             try:

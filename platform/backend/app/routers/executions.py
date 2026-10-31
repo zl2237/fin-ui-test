@@ -192,6 +192,16 @@ def terminate_execution(exec_id: int, db: Session = Depends(get_db), user: model
             cascade_records.append(child)
             cascaded += 1
     db.commit()
+    # 槽位回收：卡死在 Playwright 调用内的线程走不到 close() 的 release()，
+    # terminate 落库后按记录 id 定向回收（健康线程随后 close() 时标志已清、不会双放）
+    try:
+        from ..services.ui_runtime import force_release_ui_holders
+        freed = force_release_ui_holders(
+            exec_ids=[exec_id] + [child.id for child in cascade_records])
+        if freed:
+            print(f"[terminate] exec {exec_id} 定向回收 UI 槽位 ×{freed}")
+    except Exception as e:  # noqa: BLE001 回收失败不影响 terminate 语义
+        print(f"[terminate] UI 槽位回收失败（忽略）: {e}")
     # 僵尸记录场景执行线程已不在（活动执行的 DagExecutor 终结时会再回写同值，
     # 幂等无害）；此处兜底保证 terminated 也更新用例「最近执行」列
     exec_domain.touch_case_last_exec(db, obj)
