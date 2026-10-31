@@ -3309,6 +3309,125 @@
     }
    ],
    "_note": "穿透链终章：第二次付款单核销=用户定义的穿透核销完成点。"
+  },
+  {
+   "key": "s24",
+   "label": "应付核销记录·生成应收核销（穿透）",
+   "scope": "financialManage/payable/verificationRecord",
+   "scope_label": "应付核销记录",
+   "start": {
+    "kind": "nav_link",
+    "value": "应付核销记录"
+   },
+   "route_field": "s24_route",
+   "route_value": "#/development/financialManage/payable/verificationRecord",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "应付核销记录"
+   ],
+   "elements": {
+    "pw_gen_recv_button": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper button:visible:has-text(\"生成应收核销记录\"), .vxe-table--body-wrapper .vxe-button--item:visible:has-text(\"生成应收核销记录\")"
+     },
+     "description": "行操作·生成应收核销记录（最新待生成行，首可见匹配）"
+    },
+    "pw_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "生成确认弹框·确定（您确定要生成待确认的应收核销记录吗）"
+    }
+   },
+   "button_overrides": {
+    "生成应收核销记录": "pw_gen_recv_button",
+    "确定": "pw_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "pw_gen_recv_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 800
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const onRoute=()=>location.hash.indexOf('payable/verificationRecord')>=0;if(!onRoute()){location.hash='#/development/financialManage/payable/verificationRecord';await sleep(2500)}const hit=()=>[...document.querySelectorAll('.vxe-table--body-wrapper .vxe-body--row')].filter(vis).find(r=>[...r.querySelectorAll('button,.vxe-button--item,a')].filter(vis).some(x=>tt(x).indexOf('生成应收核销记录')>=0));const t0=Date.now();while(Date.now()-t0<10000){const row=hit();if(row)return{ok:true,rowText:tt(row).slice(0,90)};await sleep(500)}throw new Error('应付核销记录列表10s未见生成应收核销记录按钮 hash='+location.hash+' rows='+document.querySelectorAll('.vxe-body--row').length);})()"
+      }
+     ]
+    },
+    {
+     "after_element": "pw_ok_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 1200
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const dlgs=()=>[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);const t0=Date.now();while(Date.now()-t0<6000){const toasts=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>tt(m));const gone=!dlgs().some(w=>tt(w).indexOf('生成待确认')>=0);if(toasts.some(t=>t.indexOf('成功')>=0)&&gone)return{ok:true,toasts:toasts.slice(0,2)};await sleep(400)}const site=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>tt(m)).join('|');const dl=dlgs().map(w=>tt(w).slice(0,60)).join('|');throw new Error('生成应收核销确认后6s未见成功toast toasts='+site+' dlg='+dl);})()"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "s25",
+   "label": "应收核销记录·确认核销（穿透）",
+   "scope": "financialManage/receivable/verificationRecord",
+   "scope_label": "应收核销记录",
+   "start": {
+    "kind": "nav_link",
+    "value": "应收核销记录"
+   },
+   "route_field": "s25_route",
+   "route_value": "#/development/financialManage/receivable/verificationRecord",
+   "nav_click_texts": [
+    "财务管理",
+    "应收管理",
+    "应收核销记录"
+   ],
+   "elements": {
+    "rw_confirm_button": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper button:visible:has-text(\"确认核销\"), .vxe-table--body-wrapper .vxe-button--item:visible:has-text(\"确认核销\")"
+     },
+     "description": "行操作·确认核销（最新待确认行，首可见匹配；点击后跳转详情页）"
+    }
+   },
+   "button_overrides": {
+    "确认核销": "rw_confirm_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "rw_confirm_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 800
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const onRoute=()=>location.hash.indexOf('receivable/verificationRecord')>=0;if(!onRoute()){location.hash='#/development/financialManage/receivable/verificationRecord';await sleep(2500)}const rows=()=>[...document.querySelectorAll('.vxe-table--body-wrapper .vxe-body--row')].filter(vis);const hit=()=>rows().find(r=>[...r.querySelectorAll('button,.vxe-button--item,a')].filter(vis).some(x=>tt(x).indexOf('确认核销')>=0));const t0=Date.now();while(Date.now()-t0<10000){const row=hit();if(row)return{ok:true,rowText:tt(row).slice(0,90)};await sleep(500)}throw new Error('应收核销记录列表10s未见确认核销按钮 hash='+location.hash+' rows='+rows().length);})()"
+      }
+     ]
+    },
+    {
+     "after_element": "rw_confirm_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 1500
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const t0=Date.now();while(Date.now()-t0<15000){if(location.hash.indexOf('verificationRecordDetails')>=0)break;await sleep(500)}if(location.hash.indexOf('verificationRecordDetails')<0)throw new Error('确认核销后15s未跳转详情页 hash='+location.hash);const lbl=()=>[...document.querySelectorAll('.el-form-item')].filter(vis).find(f=>{const l=tt(f.querySelector('.el-form-item__label')).replace(/^\\*/,'');return l.indexOf('收款账户')>=0||l.indexOf('收款账号')>=0});let f=null;const t1=Date.now();while(Date.now()-t1<8000){f=lbl();if(f)break;await sleep(500)}if(!f)throw new Error('详情页8s未见收款账户字段 labels='+[...document.querySelectorAll('.el-form-item__label')].filter(vis).map(x=>tt(x)).slice(0,14).join(','));const inp=f.querySelector('input');if(!inp)throw new Error('收款账户字段无input');inp.click();await sleep(1200);const lis=()=>[...document.querySelectorAll('.el-select-dropdown')].filter(vis).flatMap(d=>[...d.querySelectorAll('li')]).filter(vis);const t2=Date.now();while(Date.now()-t2<8000){if(lis().length)break;await sleep(500)}const L=lis();if(!L.length)throw new Error('收款账户下拉8s无选项');const pick=L.find(l=>tt(l).indexOf('CNY')>=0)||L[0];const picked=tt(pick).slice(0,50);pick.click();await sleep(800);const btns=()=>[...document.querySelectorAll('button')].filter(vis).filter(b=>tt(b).indexOf('确认核销')>=0);const t3=Date.now();while(Date.now()-t3<8000){if(btns().length)break;await sleep(500)}const bs=btns();if(!bs.length)throw new Error('底部确认核销按钮缺失 picked='+picked);bs.sort((a,b)=>b.getBoundingClientRect().y-a.getBoundingClientRect().y)[0].click();const t4=Date.now();while(Date.now()-t4<10000){const toasts=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>tt(m));if(toasts.some(t=>t.indexOf('确认成功')>=0))return{ok:true,picked:picked};await sleep(400)}const site=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>tt(m)).join('|');throw new Error('底部确认核销后10s未见确认成功toast toasts='+site+' hash='+location.hash.slice(0,80));})()"
+      }
+     ]
+    }
+   ]
   }
  ],
  "variants": [
@@ -3325,7 +3444,7 @@
   {
    "name": "全链路·建单到穿透核销（codegen 导入）",
    "stop_after": null,
-   "description": "codegen 链式导入最全：…→付款单核销→联动应收开票→开票审批→生成应付开票+上传发票→按提单付款→审批→付款单核销·穿透（截止：穿透核销）"
+   "description": "codegen 链式导入最全：…→付款单核销→联动应收开票→开票审批→生成应付开票+上传发票→按提单付款→审批→付款单核销→生成应收核销记录→应收核销确认（收款账户CNY，全流程闭环）"
   }
  ]
 }

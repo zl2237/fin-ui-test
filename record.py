@@ -377,6 +377,11 @@ def run(playwright: Playwright) -> None:
     page.get_by_role("button", name="付款核销").click()
     page.get_by_role("button", name="提交核销").click()
     page.get_by_role("button", name="确定").click()
+    page.get_by_role("link", name="应付核销记录").click()
+    page.get_by_role("button", name="生成应收核销记录").click()
+    page.get_by_role("button", name="确定").click()
+    page.get_by_role("link", name="应收核销记录").click()
+    page.get_by_role("button", name="确认核销").click()
     page.close()
 
     # ---------------------
