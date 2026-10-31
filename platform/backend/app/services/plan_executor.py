@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models
 from . import dataset_service
-from .execution_launcher import build_launch_plan, commit_launch
+from .execution_launcher import build_launch_plan, commit_launch, validate_concurrency_for_cases
 
 # 与 executions 路由的批量执行同上限（routers/executions.py MAX_RUN_COUNT）
 MAX_RUN_COUNT = 9999
@@ -82,6 +82,9 @@ def run_plan(db: Session, plan: models.ExecutionPlan, user_id: int, *,
         if not case:
             raise ValueError(f"成员用例已不存在（id={item.case_id}），请移除后重试")
         _validate_item_launchable(db, item, case)
+    # 并发上限按成员类型收敛（含 UI 用例 ≤ 浏览器槽位；定时触发同样经此兜底）
+    validate_concurrency_for_cases(db, plan.concurrency or 1,
+                                   [i.case_id for i in items])
 
     if (plan.mode or "combo") == "chain":
         return _launch_chain(db, plan, items, user_id, trigger_type=trigger_type)

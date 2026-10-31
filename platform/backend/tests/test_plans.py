@@ -88,6 +88,10 @@ class TestRunPlan:
 
         monkeypatch.setattr(plan_executor, "build_launch_plan", fake_build)
         monkeypatch.setattr(plan_executor, "commit_launch", fake_commit)
+        # 并发收敛预检查真库（case_node_configs），替身 db 无 query——
+        # 校验语义在 test_concurrency_cap.py 单独覆盖
+        monkeypatch.setattr(plan_executor, "validate_concurrency_for_cases",
+                            lambda db, concurrency, case_ids: None)
         return SimpleNamespace(built=built, committed=committed)
 
     @pytest.fixture
@@ -204,6 +208,9 @@ class TestLaunchChain:
                 for m in members]})
 
         monkeypatch.setattr(plan_executor, "_submit_chain", fake_submit)
+        # run_plan 预检的并发收敛查真库，替身 db 无 query（同 TestRunPlan.stubbed 注记）
+        monkeypatch.setattr(plan_executor, "validate_concurrency_for_cases",
+                            lambda db, concurrency, case_ids: None)
         return created, submitted
 
     def test_round_major_records_and_submit(self, chain_plan, monkeypatch):
