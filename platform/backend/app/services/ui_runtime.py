@@ -30,6 +30,8 @@ import os
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -56,6 +58,23 @@ UI_SEMAPHORE = threading.BoundedSemaphore(UI_BROWSER_CONCURRENCY)
 # 槽位永久泄漏——后续执行全部无声阻塞在 acquire()（exec1003 实录：0 节点挂 25 分钟）。
 # 改为限时获取：泄漏时 10 分钟内显式报错，指引走 CI 部署重启回收，而不是无限排队。
 UI_ACQUIRE_TIMEOUT_S = max(60, int(os.getenv("UI_ACQUIRE_TIMEOUT_S", "600")))
+
+# evaluate 看门狗：page.evaluate 没有 Playwright 侧超时参数，页面被浏览器后台
+# 冻结/会话被踢导致 Promise 永不结算时，调用线程随之死锁（exec1000/1002/1004
+# 实录：自限 8 分钟的轮询脚本 25 分钟以上不返回）。驱动侧线程池兜底到时抛错，
+# 走节点失败路径，浏览器照常 close() 释放并发槽位；被弃线程随进程退出。
+UI_EVALUATE_TIMEOUT_S = max(60, int(os.getenv("UI_EVALUATE_TIMEOUT_S", "600")))
+_EVAL_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ui-eval")
+
+# 无头页长时间驻留（如 8 分钟静默等待）会被 Chromium 后台计时器节流乃至整页
+# 冻结，页内 setTimeout 停摆。默认启动参数禁用这一族行为。
+_DEFAULT_LAUNCH_ARGS = [
+    "--disable-dev-shm-usage",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-features=IntensiveWakeUpThrottling,CalculateNativeWinOcclusion",
+]
 
 # 元素库 strategies 的解析优先级（自 base_page._get_visible_locator 的策略链简化而来：
 # 语义定位优先，full_xpath 永远兜底）
@@ -274,7 +293,7 @@ class UiRuntime:
             # config 里的 viewport 是自由 dict（用户配置），运行时按 playwright
             # 约定键值对使用，cast 只做静态收口不改运行时行为
             viewport = cast("ViewportSize", self.config.get("viewport") or {"width": 1920, "height": 1080})
-            launch_args = list(self.config.get("launch_args") or ["--disable-dev-shm-usage"])
+            launch_args = list(self.config.get("launch_args") or _DEFAULT_LAUNCH_ARGS)
             self._browser = self._playwright.chromium.launch(
                 headless=bool(self.config.get("headless", True)),
                 slow_mo=int(self.config.get("slow_mo_ms", 0)),
@@ -1338,7 +1357,14 @@ class UiRuntime:
         script = params.get("value") or params.get("script")
         if not script:
             raise UiActionError("evaluate 需要 value（JS 表达式，支持 ${变量} 注入）")
-        result = page.evaluate(str(self._evaluate(script)))
+        fut = _EVAL_POOL.submit(page.evaluate, str(self._evaluate(script)))
+        try:
+            result = fut.result(timeout=UI_EVALUATE_TIMEOUT_S)
+        except FuturesTimeoutError:
+            raise UiActionError(
+                "evaluate %d 秒未返回（页面可能被浏览器后台冻结或登录会话被踢出），"
+                "已中止本节点避免执行线程死锁，请重跑用例" % UI_EVALUATE_TIMEOUT_S
+            )
         return {"result": result}
 
     def _do_custom(self, page, params, timeout_ms):  # noqa: ARG002
