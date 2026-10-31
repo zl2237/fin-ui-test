@@ -51,6 +51,11 @@ except ImportError:  # pragma: no cover
 # 进程级浏览器并发闸门：与批次线程池解耦，只限制同时存活的 Chromium 数
 UI_BROWSER_CONCURRENCY = max(1, int(os.getenv("UI_BROWSER_CONCURRENCY", "2")))
 UI_SEMAPHORE = threading.BoundedSemaphore(UI_BROWSER_CONCURRENCY)
+# 槽位等待上限：执行线程若卡死在 Playwright 调用内（如 exec1000/1002 的 >10 分钟
+# evaluate 死锁），terminate 只是协作式标记、线程走不到 close() 的 release()，
+# 槽位永久泄漏——后续执行全部无声阻塞在 acquire()（exec1003 实录：0 节点挂 25 分钟）。
+# 改为限时获取：泄漏时 10 分钟内显式报错，指引走 CI 部署重启回收，而不是无限排队。
+UI_ACQUIRE_TIMEOUT_S = max(60, int(os.getenv("UI_ACQUIRE_TIMEOUT_S", "600")))
 
 # 元素库 strategies 的解析优先级（自 base_page._get_visible_locator 的策略链简化而来：
 # 语义定位优先，full_xpath 永远兜底）
@@ -249,7 +254,13 @@ class UiRuntime:
         if self._page is not None:
             return self._page
 
-        UI_SEMAPHORE.acquire()
+        if not UI_SEMAPHORE.acquire(timeout=UI_ACQUIRE_TIMEOUT_S):
+            raise UiActionError(
+                "浏览器并发槽位（%d 个）已被占用 %d 分钟未释放：大概率有执行线程卡死泄漏了槽位"
+                "（terminate 为协作式标记，卡在 Playwright 调用内的线程不会释放信号量）。"
+                "请稍后重试；若持续报此错，推任意提交到 main 触发 CI 部署（服务重启）即可回收。"
+                % (UI_BROWSER_CONCURRENCY, UI_ACQUIRE_TIMEOUT_S // 60)
+            )
         self._semaphore_held = True
         restore, prev_policy = self._proactor_policy_guard()
         try:
