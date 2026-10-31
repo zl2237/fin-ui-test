@@ -170,6 +170,8 @@ class DagExecutor:
             self.db.commit()
             self.db.refresh(record)
 
+        # 槽位持有者注册表用（ui_runtime 按执行记录 id 定向回收泄漏槽位）
+        self._record_id = record.id
         # 耗时口径：started_at 取真正开始执行的时刻，而非批量提交时创建 record 的
         # 时刻——排队等待不计入用例耗时（报告/通知的 duration = ended_at - started_at）
         record.started_at = datetime.now()
@@ -608,7 +610,8 @@ class DagExecutor:
         if self._ui_runtime is None:
             from ..services.ui_runtime import UiRuntime
             self._ui_runtime = UiRuntime(db=self.db, env=self.env, context=self.context,
-                                         project_id=self.case.project_id, db_client=self.db_client)
+                                         project_id=self.case.project_id, db_client=self.db_client,
+                                         execution_id=getattr(self, "_record_id", None))
 
         facts: dict = {}
         error: str | None = None
