@@ -30,8 +30,6 @@ import os
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -59,15 +57,9 @@ UI_SEMAPHORE = threading.BoundedSemaphore(UI_BROWSER_CONCURRENCY)
 # 改为限时获取：泄漏时 10 分钟内显式报错，指引走 CI 部署重启回收，而不是无限排队。
 UI_ACQUIRE_TIMEOUT_S = max(60, int(os.getenv("UI_ACQUIRE_TIMEOUT_S", "600")))
 
-# evaluate 看门狗：page.evaluate 没有 Playwright 侧超时参数，页面被浏览器后台
-# 冻结/会话被踢导致 Promise 永不结算时，调用线程随之死锁（exec1000/1002/1004
-# 实录：自限 8 分钟的轮询脚本 25 分钟以上不返回）。驱动侧线程池兜底到时抛错，
-# 走节点失败路径，浏览器照常 close() 释放并发槽位；被弃线程随进程退出。
-UI_EVALUATE_TIMEOUT_S = max(60, int(os.getenv("UI_EVALUATE_TIMEOUT_S", "600")))
-_EVAL_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ui-eval")
-
 # 无头页长时间驻留（如 8 分钟静默等待）会被 Chromium 后台计时器节流乃至整页
-# 冻结，页内 setTimeout 停摆。默认启动参数禁用这一族行为。
+# 冻结，页内自限超时的轮询脚本随之停摆不返回（exec1000/1002/1004 实录：
+# Date.now() 墙钟 8 分钟上限的脚本 25 分钟以上不归）。默认启动参数禁用这一族行为。
 _DEFAULT_LAUNCH_ARGS = [
     "--disable-dev-shm-usage",
     "--disable-background-timer-throttling",
@@ -1357,14 +1349,11 @@ class UiRuntime:
         script = params.get("value") or params.get("script")
         if not script:
             raise UiActionError("evaluate 需要 value（JS 表达式，支持 ${变量} 注入）")
-        fut = _EVAL_POOL.submit(page.evaluate, str(self._evaluate(script)))
-        try:
-            result = fut.result(timeout=UI_EVALUATE_TIMEOUT_S)
-        except FuturesTimeoutError:
-            raise UiActionError(
-                "evaluate %d 秒未返回（页面可能被浏览器后台冻结或登录会话被踢出），"
-                "已中止本节点避免执行线程死锁，请重跑用例" % UI_EVALUATE_TIMEOUT_S
-            )
+        # 注意：Playwright sync API 基于 greenlet、对象绑定创建线程，禁止用线程池
+        # 跨线程调用（会抛 Cannot switch to a different thread，CI job1285 实录），
+        # 也因此无法在驱动侧给 evaluate 加超时——脚本必须自带上限（轮询循环用
+        # Date.now() 墙钟判停）；页面冻结导致的停摆由 _DEFAULT_LAUNCH_ARGS 防住。
+        result = page.evaluate(str(self._evaluate(script)))
         return {"result": result}
 
     def _do_custom(self, page, params, timeout_ms):  # noqa: ARG002
