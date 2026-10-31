@@ -138,6 +138,12 @@ def update(plan_id: int, data: schemas.ExecutionPlanUpdate, db: Session = Depend
     if data.concurrency is not None:
         if not 1 <= data.concurrency <= MAX_CONCURRENCY:
             raise HTTPException(400, f"并发数须在 1~{MAX_CONCURRENCY} 之间")
+        # 成员含 UI 用例时上限收敛到浏览器槽位数（execute 预检同款兜底）
+        try:
+            plan_executor.validate_concurrency_for_cases(
+                db, data.concurrency, [i.case_id for i in obj.items])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         obj.concurrency = data.concurrency
     if data.enabled is not None:
         obj.enabled = data.enabled
@@ -189,6 +195,9 @@ def replace_items(plan_id: int, data: schemas.PlanItemsReplaceIn,
     obj = _get_or_404(db, plan_id)
     try:
         plan_executor.validate_plan_items(db, data.items)
+        # 新成员含 UI 用例时，现有并发不得超过浏览器槽位数（配置期拦截）
+        plan_executor.validate_concurrency_for_cases(
+            db, obj.concurrency or 1, [it.case_id for it in data.items])
     except ValueError as e:
         raise HTTPException(400, str(e))
 
