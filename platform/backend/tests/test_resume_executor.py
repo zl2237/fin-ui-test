@@ -297,3 +297,37 @@ class TestCurrentSheets:
             {"label": "正常单", "data": {"bl_no": "B1"}},
             {"label": "Sheet2", "data": {"bl_no": "B2"}},
         ]
+
+
+class TestResumeRejectsUiCases:
+    """UI 用例续跑入口拦截（2026-10-31 实测 exec1058 定论）：续跑按节点头重放，
+    而 UI 步骤有不可逆副作用（生成应付开票批次点过一次按钮即消失），重放必败 → 400。"""
+
+    def _patch_common(self, monkeypatch):
+        from app.services import replay_service as rs
+        record = SimpleNamespace(status="failed", case_id=3, env_id=2)
+        case = SimpleNamespace(id=3)
+        monkeypatch.setattr(rs.crud, "get_execution", lambda db, i: record)
+        monkeypatch.setattr(rs.crud, "get_testcase", lambda db, i: case)
+        return rs
+
+    def test_ui_case_rejected_with_400(self, monkeypatch):
+        rs = self._patch_common(monkeypatch)
+        import app.services.execution_launcher as el
+        from fastapi import HTTPException
+        monkeypatch.setattr(el, "case_ids_with_ui_nodes", lambda db, ids: {3})
+        with pytest.raises(HTTPException) as e:
+            rs.resume_execution_async(object(), SimpleNamespace(id=1), 9)
+        assert e.value.status_code == 400
+        assert "UI 用例不支持断点续跑" in e.value.detail
+
+    def test_api_case_passes_ui_gate(self, monkeypatch):
+        """纯 API 用例放行：过了 UI 闸才会撞到下一道校验（env 缺失 404）"""
+        rs = self._patch_common(monkeypatch)
+        import app.services.execution_launcher as el
+        from fastapi import HTTPException
+        monkeypatch.setattr(el, "case_ids_with_ui_nodes", lambda db, ids: set())
+        monkeypatch.setattr(rs.crud, "get_environment", lambda db, i: None)
+        with pytest.raises(HTTPException) as e:
+            rs.resume_execution_async(object(), SimpleNamespace(id=1), 9)
+        assert e.value.status_code == 404  # 环境不存在：证明 UI 闸已放行

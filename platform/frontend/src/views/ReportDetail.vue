@@ -77,9 +77,10 @@
           >
             重新执行
           </el-button>
-          <!-- 断点续跑：从首个失败节点用当前配置+数据集重新执行（改参数调试的主路径） -->
+          <!-- 断点续跑：从首个失败节点用当前配置+数据集重新执行（改参数调试的主路径）。
+               UI 用例不支持：续跑按节点头重放，而 UI 步骤有不可逆副作用（生成批次后按钮消失），重放必败 -->
           <el-button
-            v-if="record?.status === 'failed'"
+            v-if="record?.status === 'failed' && !hasUiSteps"
             size="small"
             type="warning"
             :loading="resuming"
@@ -555,6 +556,9 @@ function isUiStep(s?: StepRecord | null): boolean {
   if (!s) return false
   return s.step_kind === 'ui' || s.api_method === 'UI'
 }
+/** 含 UI 步骤即视为 UI 用例：断点续跑入口对其隐藏（后端 resume 同步 400 兜底） */
+const hasUiSteps = computed(() => steps.value.some(isUiStep))
+
 /** UI 步骤动作名：facts（response_body）里的 action 字段 */
 function factsAction(s: StepRecord): string | null {
   const body = s.response_body as any
