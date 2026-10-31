@@ -192,6 +192,11 @@ def resume_execution_async(db: Session, user: models.User, exec_id: int) -> mode
     case = crud.get_testcase(db, record.case_id)
     if not case:
         raise HTTPException(404, f"用例不存在: {record.case_id}")
+    from .execution_launcher import case_ids_with_ui_nodes
+    if case.id in case_ids_with_ui_nodes(db, [case.id]):
+        raise HTTPException(400, "UI 用例不支持断点续跑：续跑从失败节点头重放全部步骤，"
+                                 "而 UI 步骤有不可逆副作用（如「生成应付开票批次」点过一次按钮即消失），"
+                                 "重放必然失败；请修改数据集后整条重新执行")
     if not record.env_id:
         raise HTTPException(400, "记录缺少环境信息，无法续跑")
     env = crud.get_environment(db, record.env_id)
