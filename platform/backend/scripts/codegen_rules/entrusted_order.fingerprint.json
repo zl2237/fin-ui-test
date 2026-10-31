@@ -1,0 +1,467 @@
+{
+ "form_items": [
+  {
+   "label": "*下单客户名称",
+   "for": "customer_id",
+   "placeholder": "请选择",
+   "value": "青岛统济机电制造有限公司",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "客户联系人",
+   "for": "customer_contact_id",
+   "placeholder": "请选择",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "*结算操作",
+   "for": "operator_id",
+   "placeholder": "请选择",
+   "value": "张乐API",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[6]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "*政策类型",
+   "for": "policy_type",
+   "placeholder": "请选择",
+   "value": "结算业务",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[7]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "*服务策略名称",
+   "for": "policy_id",
+   "placeholder": "请选择",
+   "value": "API易汇联对客双主体",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[8]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "提单号",
+   "for": "bl_no",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[9]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "提单号(运踪)",
+   "for": "track_bl_no",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[10]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "*服务项目",
+   "for": "service_items",
+   "placeholder": "",
+   "value": "booking_space",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/label[1]/span[1]/input[1]"
+  },
+  {
+   "label": "业务类型",
+   "for": "business_type",
+   "placeholder": "请选择",
+   "value": "海运整箱",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "成交方式",
+   "for": "trade_term",
+   "placeholder": "请选择",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "承运人",
+   "for": "carrier",
+   "placeholder": "请输入关键词",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "客户单号",
+   "for": "customer_order_sn",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[4]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "预计开航(ETD)",
+   "for": "etd",
+   "placeholder": "",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[5]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "实际开航(ATD)",
+   "for": "atd",
+   "placeholder": "",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[6]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "船名",
+   "for": "ship_name",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[7]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "航次",
+   "for": "voy",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[8]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "起运港",
+   "for": "pol",
+   "placeholder": "请输入关键词",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[9]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "中转港",
+   "for": "pot",
+   "placeholder": "请输入关键词",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[10]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "卸货港",
+   "for": "pod",
+   "placeholder": "请输入关键词",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[13]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "目的地",
+   "for": "del",
+   "placeholder": "请输入关键词",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[14]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "结汇方式",
+   "for": "terms_payment",
+   "placeholder": "请选择",
+   "value": "T/T",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[18]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "运输条款",
+   "for": "terms_transport",
+   "placeholder": "请选择",
+   "value": "CY/CY",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[19]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "付款方式",
+   "for": "pay_type",
+   "placeholder": "请选择",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[20]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "M放货方式",
+   "for": "m_delivery_type",
+   "placeholder": "请选择",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[21]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "货物类型",
+   "for": "cargo_type",
+   "placeholder": "请选择",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]"
+  },
+  {
+   "label": "件数",
+   "for": "num",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "毛重",
+   "for": "gross_weight",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "体积",
+   "for": "bulk",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[4]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "包装",
+   "for": "packer",
+   "placeholder": "请输入内容",
+   "value": "",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[5]/div[1]/div[1]/div[2]/div[2]/input[1]"
+  },
+  {
+   "label": "海运费币制",
+   "for": "sea_trans_currency",
+   "placeholder": "请选择海运费币制",
+   "value": "USD",
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[6]/div[1]/div[1]/div[3]/div[1]/div[1]/div[1]/div[1]/input[1]"
+  }
+ ],
+ "selects": [
+  {
+   "nth": 0,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "*下单客户名称",
+   "options": [
+    "青岛瑞通轮胎有限公司",
+    "莒县元盛食品有限公司",
+    "青岛澳柯森实业有限公司",
+    "青岛福满鑫食品有限公司",
+    "泰安立鼎国际贸易有限公司",
+    "青岛金芝食品有限公司",
+    "青岛沐易帆国际贸易有限公司",
+    "青岛榕信工贸有限公司",
+    "青岛睿玺工业有限公司",
+    "青岛泰越金属制品有限公司",
+    "青岛途威贸易有限公司",
+    "枣庄华润纸业有限公司",
+    "荣成海博海洋食品有限公司",
+    "山东美尔洁地毯有限公司",
+    "兰森玻璃（青岛）有限公司",
+    "青岛菲尔斯特国际贸易有限公司",
+    "青岛特丝特国际贸易有限公司",
+    "德州福达金属制品有限公司",
+    "山东纳百鲜海洋食品有限公司",
+    "星商创新技术（深圳）有限公司",
+    "烟台协成金属制品有限公司",
+    "青岛亿邦特包装科技有限公司",
+    "青岛招银格瑞进出口有限公司",
+    "青岛华鼎进出口有限公司",
+    "日照宏森商贸有限公司",
+    "青岛亿德福经贸有限公司",
+    "滨州亿德福食品有限公司",
+    "欧了么科技（青岛）有限公司",
+    "肥城青正工贸有限公司",
+    "青岛金立高工具有限公司",
+    "杰瑞能源服务有限公司",
+    "杰瑞石油天然气工程有限公司",
+    "山东爱童户外用品有限公司",
+    "山东美华供应链管理有限公司",
+    "烟台杰瑞石油服务集团股份有限公司",
+    "山东海拓机械集团有限公司",
+    "山东倍格国际贸易有限公司",
+    "威海威百进出口有限公司",
+    "高密银鹰新材料股份有限公司",
+    "青岛盛世广诺国际贸易有限公司"
+   ]
+  },
+  {
+   "nth": 1,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "客户联系人",
+   "options": [
+    "张乐"
+   ]
+  },
+  {
+   "nth": 2,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[6]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "*结算操作",
+   "options": [
+    "张乐API"
+   ]
+  },
+  {
+   "nth": 3,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[7]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "*政策类型",
+   "options": [
+    "结算业务",
+    "即时补贴",
+    "其他业务"
+   ]
+  },
+  {
+   "nth": 4,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[8]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "*服务策略名称",
+   "options": [
+    "乐单主体-易航道",
+    "API易汇联对客双主体"
+   ]
+  },
+  {
+   "nth": 5,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[2]/div[2]/div[2]/div[1]/div[3]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/input[1]",
+   "label": null,
+   "options": [
+    "山东旭禾国际贸易有限公司",
+    "青岛海洋报关代理有限公司",
+    "芜湖长信科技股份有限公司"
+   ]
+  },
+  {
+   "nth": 6,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[1]/div[1]/div[2]/div[2]/div[2]/div[1]/div[4]/div[1]/div[1]/div[1]/div[1]/input[1]",
+   "label": null,
+   "options": [
+    "牟增艺",
+    "刘晓静",
+    "潘珑元",
+    "赵胜艳",
+    "于洋",
+    "李明丹tidb",
+    "孙奉盛",
+    "孟娟",
+    "张聪",
+    "李晓倩",
+    "纪珑玉",
+    "于腾洋",
+    "闫娅茹",
+    "陈洪娟",
+    "任方侨",
+    "孙志君",
+    "朱秀莉",
+    "庞燕",
+    "曲静霞",
+    "李国霞",
+    "于杜文泽",
+    "陈嘉遇",
+    "张乐API",
+    "张楠楠",
+    "赵贝贝",
+    "张晗",
+    "房建港",
+    "王欣",
+    "张翔道",
+    "律欣怡",
+    "张清燕",
+    "王夏夏",
+    "陈明珠",
+    "宋为",
+    "姜源",
+    "管延梅",
+    "于佳欣",
+    "郝嘉伟",
+    "时雁蔚",
+    "薛春晓"
+   ]
+  },
+  {
+   "nth": 7,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "业务类型",
+   "options": [
+    "海运整箱",
+    "海运拼箱",
+    "海运散货船",
+    "陆运",
+    "空运",
+    "铁路",
+    "其他"
+   ]
+  },
+  {
+   "nth": 8,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "成交方式",
+   "options": [
+    "CIF",
+    "FOB",
+    "DDP",
+    "DAP",
+    "CFR",
+    "DPU",
+    "FCA",
+    "EXW"
+   ]
+  },
+  {
+   "nth": 9,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[18]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "结汇方式",
+   "options": [
+    "M/T",
+    "T/T",
+    "D/D",
+    "D/P",
+    "D/A",
+    "L/C",
+    "SAE",
+    "SBE",
+    "OTHER"
+   ]
+  },
+  {
+   "nth": 10,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[19]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "运输条款",
+   "options": [
+    "CY/CY",
+    "CY/DOOR",
+    "DOOR/CY",
+    "DOOR/DOOR",
+    "CFS/CFS",
+    "CY/DOOR BY ALL TRUCK",
+    "CY/DOOR BY RAIL+TRUCK",
+    "CY/CY BY ALL RAIL",
+    "CY/RAMP",
+    "Door to Port",
+    "Port to Door",
+    "Port to Port",
+    "Door to Door",
+    "CY/CFS",
+    "CY/FO"
+   ]
+  },
+  {
+   "nth": 11,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[20]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "付款方式",
+   "options": [
+    "FREIGHT PREPAID",
+    "FREIGHT COLLECT",
+    "FREIGHT PREPAID AT THE THIRD PLACE",
+    "FREIGHT COLLECT AT THE THIRD PLACE"
+   ]
+  },
+  {
+   "nth": 12,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[21]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "M放货方式",
+   "options": [
+    "正本",
+    "电放",
+    "异地放单",
+    "SEAWAYBILL",
+    "目放",
+    "事前电放"
+   ]
+  },
+  {
+   "nth": 13,
+   "xpath": "/html[1]/body[1]/div[1]/div[1]/div[2]/section[1]/div[1]/form[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/input[1]",
+   "label": "货物类型",
+   "options": [
+    "普货",
+    "一般化工品",
+    "危险品",
+    "冷冻冷藏",
+    "特种柜及大件货",
+    "冷危",
+    "私人物品",
+    "贵重物品",
+    "超长超重货物",
+    "挂衣",
+    "药品",
+    "易腐生鲜",
+    "整车",
+    "电子产品"
+   ]
+  }
+ ]
+}
