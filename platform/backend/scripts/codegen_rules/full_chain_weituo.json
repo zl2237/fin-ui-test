@@ -1,0 +1,3331 @@
+{
+ "form_id": "full_chain_weituo",
+ "proven": "exec949 全链 12/12 绿（n1-n10 同 #946，n11 垫付申请/n12 垫付审批新增）",
+ "case": {
+  "name": "全链路·建单到付款核销（codegen 导入）",
+  "description": "codegen 链式导入 P2：委托建单分发 → 业务订单编辑(船期箱信息)提交 → 订单费用(海运费) → 生成子订单 → 费用锁定(审批人张乐UI) → 审批中心批量审核通过 → 应收对账 → 未放款开票审批 → 开票审批+收款核销 → 供应商垫付申请+审批 → 应付对账(按提单) → 应付开票批次+上传发票 → 付款需求+审批 → 付款单核销（截止：付款核销）",
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "n1_assert": {
+  "url_contains": "entrustedOrder",
+  "message": "应到达委托订单页（列表或建单页，点新建后路由跳转有竞态取公共子串）"
+ },
+ "literal_map": {
+  "lele1030002": "${bl_no}"
+ },
+ "cell_overrides": {
+  "pol": "AOSHANWEI",
+  "pod": "AOSHANWEI",
+  "recv_bank_account": "802051200000759",
+  "paya_bank_account": "2344678944541566545"
+ },
+ "stages": [
+  {
+   "key": "s1",
+   "label": "委托建单分发",
+   "scope": "orderManage/entrustedOrder",
+   "scope_label": "委托订单",
+   "start": {
+    "kind": "nav_link",
+    "value": "委托订单列表"
+   },
+   "route_field": "entrusted_order_route",
+   "route_value": "#/development/orderManage/entrustedOrder",
+   "nav_click_texts": [
+    "订单管理",
+    "委托订单列表"
+   ],
+   "query": {
+    "text": "查询",
+    "placeholder": "请输入",
+    "wait_ms": 500,
+    "assert_field": "bl_no"
+   },
+   "elements": {
+    "create_order_button": {
+     "strategies": {
+      "button": "新建订单"
+     },
+     "description": "新建订单按钮"
+    },
+    "customer_id_selector": {
+     "strategies": {
+      "for": "customer_id"
+     },
+     "description": "下单客户名称"
+    },
+    "operator_id_selector": {
+     "strategies": {
+      "for": "operator_id"
+     },
+     "description": "结算操作"
+    },
+    "policy_type_selector": {
+     "strategies": {
+      "for": "policy_type"
+     },
+     "description": "政策类型"
+    },
+    "policy_id_selector": {
+     "strategies": {
+      "for": "policy_id"
+     },
+     "description": "服务策略名称"
+    },
+    "bl_no_input": {
+     "strategies": {
+      "for": "bl_no"
+     },
+     "description": "提单号"
+    },
+    "booking_space_supplier_selector": {
+     "strategies": {
+      "xpath": "(//p[contains(@class,'formSt-table-name')][normalize-space(.)='订舱']/ancestor::div[contains(@class,'formSt-table-tr')][1]//input[contains(@class,'el-input__inner')])[1]"
+     },
+     "description": "订舱供应商下拉（n1步骤9）。SUT 2026-10-31 改版：供应商区改为 formSt-table（行结构：订舱|无供应商radio|供应商select|服务人员select），旧20+层绝对full_xpath 命中0致 pick 触发器3连败（exec973/974）。现锚『订舱』行内首个 el-input__inner，probe 实测 n=1、pick 选中回读成功。"
+    },
+    "booking_space_supplier_user_selector": {
+     "strategies": {
+      "css": ".el-select.el-tooltip.item > .el-input > .el-input__inner"
+     },
+     "description": "订舱服务人员"
+    },
+    "save_button": {
+     "strategies": {
+      "button": "保 存"
+     },
+     "description": "保存按钮"
+    },
+    "edit_button": {
+     "strategies": {
+      "button": "编辑"
+     },
+     "description": "编辑按钮"
+    },
+    "entrust_button": {
+     "strategies": {
+      "button": "分 发"
+     },
+     "description": "分发按钮"
+    }
+   },
+   "nth_select_guesses": {
+    "0": [
+     "customer_id",
+     "customer_id_selector",
+     "高：检索词「机电」→统济机电"
+    ],
+    "2": [
+     "operator_id",
+     "operator_id_selector",
+     "中：点首项，建议张乐API"
+    ],
+    "3": [
+     "policy_type",
+     "policy_type_selector",
+     "高：结算业务"
+    ],
+    "4": [
+     "policy_id",
+     "policy_id_selector",
+     "高：API易汇联对客双主体"
+    ],
+    "5": [
+     "supplier_id",
+     "booking_space_supplier_selector",
+     "高：实测订舱供应商，分发必填"
+    ]
+   },
+   "field_suggestions": {
+    "operator_id": "张乐API"
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "bl_no_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "css_picks": {
+    ".el-select.el-tooltip.item > .el-input > .el-input__inner": [
+     "service_operator",
+     "booking_space_supplier_user_selector",
+     "张乐UI"
+    ]
+   },
+   "button_behaviors": {
+    "save_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "保存成功",
+      "暂存成功"
+     ]
+    },
+    "sure_button": {
+     "role": "absorb"
+    },
+    "entrust_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "分发成功"
+     ]
+    },
+    "edit_button": {
+     "role": "row_button",
+     "value": "编辑",
+     "row_field": "bl_no"
+    }
+   }
+  },
+  {
+   "key": "s2",
+   "label": "业务订单编辑",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "nav_link",
+    "value": "业务订单列表"
+   },
+   "route_field": "business_order_route",
+   "route_value": "#/development/orderManage/businessOrder",
+   "nav_click_texts": [
+    "业务订单列表"
+   ],
+   "query": {
+    "text": "查询",
+    "placeholder": "请输入",
+    "wait_ms": 800,
+    "assert_field": "bl_no"
+   },
+   "elements": {
+    "edit_button": {
+     "strategies": {
+      "button": "编辑"
+     },
+     "description": "编辑按钮"
+    },
+    "trade_term_selector": {
+     "strategies": {
+      "for": "trade_term"
+     },
+     "description": "贸易条款（CIF）"
+    },
+    "carrier_selector": {
+     "strategies": {
+      "for": "carrier"
+     },
+     "description": "船公司"
+    },
+    "etd_timepicker": {
+     "strategies": {
+      "for": "etd"
+     },
+     "description": "预计起航日期"
+    },
+    "atd_timepicker": {
+     "strategies": {
+      "for": "atd"
+     },
+     "description": "预计到达日期"
+    },
+    "ship_name_input": {
+     "strategies": {
+      "for": "ship_name"
+     },
+     "description": "船名（低置信@2）"
+    },
+    "voy_input": {
+     "strategies": {
+      "for": "voy"
+     },
+     "description": "航次（低置信@3）"
+    },
+    "pol_selector": {
+     "strategies": {
+      "for": "pol"
+     },
+     "description": "起运港"
+    },
+    "pod_selector": {
+     "strategies": {
+      "for": "pod"
+     },
+     "description": "目的港"
+    },
+    "num_input": {
+     "strategies": {
+      "for": "num"
+     },
+     "description": "件数（低置信@4）"
+    },
+    "gross_weight_input": {
+     "strategies": {
+      "for": "gross_weight"
+     },
+     "description": "毛重（低置信@5）"
+    },
+    "box_type_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(2) input"
+     },
+     "description": "箱型（箱表第2列，td锚定防表序号漂移）"
+    },
+    "box_num_input": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(3) input"
+     },
+     "description": "箱量（箱表第3列）"
+    },
+    "box_weight_input": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(4) input"
+     },
+     "description": "海运费单价（箱表第4列，必填）"
+    },
+    "box_no_input": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(5) input"
+     },
+     "description": "箱号（箱表第5列）"
+    },
+    "box_seal_no_input": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(6) input"
+     },
+     "description": "封号（箱表第6列）"
+    },
+    "ta1_input": {
+     "strategies": {
+      "xpath": "(//textarea)[2]"
+     },
+     "description": "文本域2（录制 nth(1)，语义低置信）"
+    },
+    "ta2_input": {
+     "strategies": {
+      "xpath": "(//textarea)[3]"
+     },
+     "description": "文本域3（录制 nth(2)，语义低置信）"
+    },
+    "ta3_input": {
+     "strategies": {
+      "xpath": "(//textarea)[4]"
+     },
+     "description": "文本域4（录制 nth(3)，语义低置信）"
+    },
+    "submit_button": {
+     "strategies": {
+      "text": "提 交"
+     },
+     "description": "提交"
+    },
+    "dialog_sure_button": {
+     "strategies": {
+      "text": "确定"
+     },
+     "description": "弹窗确定"
+    },
+    "submit_continue_button": {
+     "strategies": {
+      "text": "继续提交"
+     },
+     "description": "继续提交"
+    },
+    "sure_button": {
+     "strategies": {
+      "xpath": "//div[@class='el-dialog__body']//button/span[text()='确认']"
+     },
+     "description": "弹窗确认"
+    }
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "bl_no_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "textbox_picks": {
+    "请输入关键词@0": [
+     "carrier",
+     "carrier_selector"
+    ],
+    "请输入关键词@1": [
+     "pol",
+     "pol_selector"
+    ],
+    "请输入关键词@3": [
+     "pod",
+     "pod_selector"
+    ]
+   },
+   "textbox_fills": {
+    "请输入内容@2": [
+     "ship_name",
+     "ship_name_input",
+     "A"
+    ],
+    "请输入内容@3": [
+     "voy",
+     "voy_input",
+     "A"
+    ],
+    "请输入内容@4": [
+     "num",
+     "num_input",
+     "1"
+    ],
+    "请输入内容@5": [
+     "gross_weight",
+     "gross_weight_input",
+     "1"
+    ]
+   },
+   "date_picks": {
+    ".el-date-editor > .el-input__inner@0": [
+     "etd",
+     "etd_timepicker",
+     "2026-10-30"
+    ],
+    "div:nth-child(6) > .el-form-item > .el-form-item__content > div:nth-child(2) > .el-date-editor > .el-input__inner@0": [
+     "atd",
+     "atd_timepicker",
+     "2026-10-30"
+    ]
+   },
+   "nth_select_guesses": {
+    "3": [
+     "trade_term",
+     "trade_term_selector",
+     "中：CIF=贸易条款（编辑弹窗第4个请选择）"
+    ]
+   },
+   "css_picks": {
+    ".riseTitleSt > .el-form-item > .el-form-item__content > .el-select > .el-input > .el-input__inner": [
+     "box_type",
+     "box_type_selector",
+     "20GP"
+    ]
+   },
+   "css_fills": {
+    ".el-tooltip.width100 > .el-input__inner@0": [
+     "box_num",
+     "box_num_input",
+     "1"
+    ],
+    ".el-table_3_column_18 > .cell > .riseTitleSt > .el-form-item > .el-form-item__content > .el-tooltip > .el-input__inner@0": [
+     "box_weight",
+     "box_weight_input",
+     "1"
+    ],
+    ".boxTitleSt > .el-input > .el-input__inner@0": [
+     "box_no",
+     "box_no_input",
+     "TEST1234567"
+    ],
+    ".el-table_3_column_20 > .cell > .riseTitleSt > .boxTitleSt > .el-input > .el-input__inner@0": [
+     "box_seal_no",
+     "box_seal_no_input",
+     "TEST1234567"
+    ],
+    "textarea@1": [
+     "ta1",
+     "ta1_input",
+     "1"
+    ],
+    "textarea@2": [
+     "ta2",
+     "ta2_input",
+     "1"
+    ],
+    "textarea@3": [
+     "ta3",
+     "ta3_input",
+     "1"
+    ]
+   },
+   "button_behaviors": {
+    "edit_button": {
+     "role": "row_button",
+     "value": "编辑",
+     "row_field": "bl_no"
+    },
+    "submit_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "生效成功"
+     ]
+    },
+    "dialog_sure_button": {
+     "role": "absorb"
+    },
+    "confirm_button": {
+     "role": "absorb"
+    },
+    "submit_continue_button": {
+     "role": "absorb"
+    },
+    "submit_sure_button": {
+     "role": "absorb"
+    },
+    "assert_push_sure_button": {
+     "role": "absorb"
+    },
+    "sure_button": {
+     "role": "absorb"
+    }
+   },
+   "button_overrides": {
+    "提交": "submit_button"
+   }
+  },
+  {
+   "key": "s3",
+   "label": "订单费用录入",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "goto_contains",
+    "value": "businessOrder"
+   },
+   "route_field": "business_order_route",
+   "route_value": "#/development/orderManage/businessOrder",
+   "nav_click_texts": [],
+   "elements": {
+    "order_detail_button": {
+     "strategies": {
+      "button": "详情"
+     },
+     "description": "详情按钮"
+    },
+    "order_real_fee_tab": {
+     "strategies": {
+      "tab": "tab-order_actual_cost"
+     },
+     "description": "订单费用 tab"
+    },
+    "order_real_fee_edit_button": {
+     "strategies": {
+      "xpath": "//input[@placeholder='编辑费用']"
+     },
+     "description": "编辑费用（费用大类）"
+    },
+    "add_standard_fee_button": {
+     "strategies": {
+      "button": "新增标准费用"
+     },
+     "description": "新增标准费用"
+    },
+    "fee_name_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(7) input"
+     },
+     "description": "费用行·费用名称（费用表td7列锚定，实证2026-10-30录选海运费）"
+    },
+    "fee_amount_input": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(13) input"
+     },
+     "description": "费用行·含税单价（费用表td13列锚定，实证2026-10-30）"
+    },
+    "real_fee_save_button": {
+     "strategies": {
+      "button": "保 存"
+     },
+     "description": "费用保存"
+    },
+    "fee_currency_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(12) input"
+     },
+     "description": "费用行·币制（费用表td12列锚定，实证2026-10-30选项USD/CNY）"
+    },
+    "fee_unit_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(14) input"
+     },
+     "description": "费用行·单位（费用表td14列锚定，实证2026-10-30首项=票）"
+    },
+    "fee_box_spec_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(15) input"
+     },
+     "description": "费用行·规格/箱型（费用表td15列锚定，实证2026-10-30录选20GP）"
+    },
+    "fee_policy_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(3) input"
+     },
+     "description": "费用行·应用子策略（费用表td3列锚定；不选则策略标识=异常，保存被拒，实证2026-10-30）"
+    },
+    "fee_subsidy_selector": {
+     "strategies": {
+      "css": ".el-table__row td:nth-child(8) input"
+     },
+     "description": "费用行·补贴及补贴类别（服务端必填：to_customer.0.subsidy_category，DOM 无 is-required 标记；不选保存必被拒）"
+    }
+   },
+   "textbox_picks": {},
+   "nth_select_guesses": {
+    "3": [
+     "fee_sel1",
+     "fee_currency_selector",
+     "实证：币制列td12（USD/CNY），取CNY"
+    ],
+    "4": [
+     "fee_name",
+     "fee_name_selector",
+     "实证：费用名称列td7，录选海运费"
+    ],
+    "5": [
+     "fee_sel3",
+     "fee_unit_selector",
+     "实证：单位列td14选箱型（启用规格列，录制hover重选即高亮项）"
+    ]
+   },
+   "field_suggestions": {
+    "fee_sel1": "CNY",
+    "fee_sel3": "箱型"
+   },
+   "textbox_fills": {
+    "请输入@0": [
+     "fee_amount",
+     "fee_amount_input",
+     "1"
+    ]
+   },
+   "text_click_rules": {
+    "订单费用": "order_real_fee_tab"
+   },
+   "button_behaviors": {
+    "order_detail_button": {
+     "role": "row_button",
+     "value": "详情",
+     "row_field": "bl_no"
+    },
+    "real_fee_save_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "保存成功"
+     ]
+    },
+    "save_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "保存成功"
+     ]
+    }
+   },
+   "textbox_popper_picks": {
+    "编辑费用@0": [
+     "fee_category",
+     "order_real_fee_edit_button"
+    ]
+   },
+   "css_picks": {
+    ".el-table_5_column_40 > .cell > .el-form-item > .el-form-item__content > .el-select > .el-input > .el-input__inner": [
+     "box_type",
+     "fee_box_spec_selector",
+     "20GP"
+    ]
+   },
+   "proven_note": "s3费用表=el-table 22列，录制nth索引受预填状态漂移不可复原，改列锚定语义重绑（2026-10-30探针实证）",
+   "pre_query": {
+    "field": "bl_no",
+    "wait_ms": 1200
+   },
+   "inject_steps": [
+    {
+     "after_element": "add_standard_fee_button",
+     "steps": [
+      {
+       "action": "pick",
+       "element_key": "fee_policy_selector",
+       "value": "${fee_policy}"
+      }
+     ],
+     "dataset": {
+      "fee_policy": "订舱全穿透-道承担"
+     }
+    },
+    {
+     "after_element": "fee_box_spec_selector",
+     "steps": [
+      {
+       "action": "pick",
+       "element_key": "fee_subsidy_selector",
+       "value": "${fee_subsidy}"
+      }
+     ],
+     "dataset": {
+      "fee_subsidy": "不参与补贴"
+     }
+    }
+   ]
+  },
+  {
+   "key": "s4",
+   "label": "生成子订单",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "button",
+    "value": "生成子订单"
+   },
+   "nav_click_texts": [],
+   "elements": {
+    "order_sub_generate_button": {
+     "strategies": {
+      "button": "生成子订单"
+     },
+     "description": "生成子订单"
+    },
+    "sure_button": {
+     "strategies": {
+      "xpath": "//div[@class='el-dialog__body']//button/span[text()='确认']"
+     },
+     "description": "弹窗确认"
+    }
+   },
+   "text_click_rules": {
+    "确认": "sure_button"
+   },
+   "button_behaviors": {
+    "order_sub_generate_button": {
+     "role": "confirm_watchdog",
+     "wait_ms": 800,
+     "watchdog": [
+      "生成子订单成功"
+     ]
+    },
+    "sure_button": {
+     "role": "absorb"
+    },
+    "assert_push_sure_button": {
+     "role": "absorb"
+    }
+   }
+  },
+  {
+   "key": "s5",
+   "label": "费用锁定",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "button",
+    "value": "费用锁定"
+   },
+   "nav_click_texts": [],
+   "elements": {
+    "real_amount_lock_button": {
+     "strategies": {
+      "button": "费用锁定"
+     },
+     "description": "费用锁定"
+    },
+    "fee_lock_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "费用锁定·表头全选（cell 级而非 icon span：隐藏页签的单证/附件 vxe 表同名结构干扰 .first；is--disabled 排除对商不可选表；实证点击即全选）"
+    },
+    "real_amount_lock_submit_button": {
+     "strategies": {
+      "button": "提交"
+     },
+     "description": "锁定提交"
+    },
+    "fee_lock_approver_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "张乐UI-"
+     },
+     "description": "审批人单选 张乐UI"
+    },
+    "sure_button": {
+     "strategies": {
+      "xpath": "//div[@class='el-dialog__body']//button/span[text()='确认']"
+     },
+     "description": "弹窗确认"
+    },
+    "order_real_fee_tab": {
+     "strategies": {
+      "tab": "tab-order_actual_cost"
+     },
+     "description": "订单费用 tab"
+    }
+   },
+   "radio_picks": {
+    "张乐UI-": "fee_lock_approver_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-header--column\\.col_\\d+.*vxe-checkbox--unchecked-icon",
+     "fee_lock_select_all_checkbox"
+    ]
+   ],
+   "text_click_rules": {
+    "确认": "sure_button"
+   },
+   "button_behaviors": {
+    "real_amount_lock_button": {
+     "role": "click"
+    },
+    "real_amount_lock_submit_button": {
+     "role": "click"
+    },
+    "sure_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "提交费用锁定审批流成功"
+     ]
+    },
+    "assert_push_sure_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "提交费用锁定审批流成功"
+     ]
+    },
+    "submit_sure_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "提交费用锁定审批流成功"
+     ]
+    }
+   },
+   "inject_steps": [
+    {
+     "before_element": "real_amount_lock_button",
+     "steps": [
+      {
+       "action": "click",
+       "element_key": "order_real_fee_tab"
+      },
+      {
+       "action": "wait",
+       "value": 1200
+      }
+     ],
+     "dataset": {},
+     "_note": "n4 确认后页面刷新回默认页签，费用表 el-tab-pane display:none → vxe 全选 checkbox 解析到但不可见；先切回订单费用 tab；#925 实证 800ms 偶发不足（点击落在重挂载按钮上被吞）"
+    },
+    {
+     "after_element": "real_amount_lock_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=12000;const has=()=>!!document.querySelector('.vxe-table--header-wrapper .vxe-cell--checkbox');const btn=()=>[...document.querySelectorAll('button')].find(b=>(b.textContent||'').replace(/\\s+/g,'')==='费用锁定'&&!b.disabled&&!!b.offsetParent);let n=0;while(Date.now()-t0<dl){if(has()){return{ok:true,reclick:n,ms:Date.now()-t0};}const b=btn();if(b){b.click();n++;}await new Promise(r=>setTimeout(r,700));}throw new Error('12s内锁定表全选框未出现，已重试点费用锁定'+n+'次');})()"
+      }
+     ],
+     "dataset": {},
+     "_note": "#925 回归守卫：步3点击成功但锁定面板未渲染（截图实证停在订单费用常规视图，无vxe锁定表、无loading/toast，选择器无辜）→ 表格未出现则JS重点「费用锁定」，12s仍无抛错。"
+    }
+   ]
+  },
+  {
+   "key": "s6",
+   "label": "费用锁定审批",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "route_field": "approval_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "nav_click_texts": [
+    "审批中心"
+   ],
+   "elements": {
+    "approval_first_row_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper .vxe-body--row:first-child .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "审批中心·首行勾选（不限定 fixed-left：无头 1920 下该表无 fixed 克隆，录制时窗口宽才有；实证列表首行即 :first-child）"
+    },
+    "batch_audit_button": {
+     "strategies": {
+      "text": "批量审核"
+     },
+     "description": "批量审核"
+    },
+    "audit_pass_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "通过"
+     },
+     "description": "审批结论 通过"
+    },
+    "batch_audit_confirm_button": {
+     "strategies": {
+      "text": "确认"
+     },
+     "description": "审核确认"
+    },
+    "audit_sure_button": {
+     "strategies": {
+      "button": "确定"
+     },
+     "description": "审核确定"
+    }
+   },
+   "radio_picks": {
+    "通过": "audit_pass_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--body-wrapper\\.fixed-left--wrapper.*vxe-body--column\\.col_\\d+.*vxe-checkbox--unchecked-icon",
+     "approval_first_row_checkbox"
+    ]
+   ],
+   "button_behaviors": {
+    "batch_audit_confirm_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "审批成功"
+     ]
+    },
+    "audit_confirm_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "审批成功"
+     ]
+    },
+    "audit_sure_button": {
+     "role": "absorb"
+    },
+    "dialog_sure_button": {
+     "role": "absorb"
+    }
+   },
+   "button_overrides": {
+    "确认": "batch_audit_confirm_button"
+   }
+  },
+  {
+   "key": "s7",
+   "label": "应收对账",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "text_startswith",
+    "value": "订单 lele"
+   },
+   "elements": {
+    "order_action_selector": {
+     "strategies": {
+      "role": "textbox",
+      "role_extra": "订单操作"
+     },
+     "description": "详情页·订单操作下拉"
+    },
+    "np_invoice_sure_button": {
+     "strategies": {
+      "button": "确定"
+     },
+     "description": "未放款开票申请·确定"
+    },
+    "np_invoice_approver_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "张乐UI-"
+     },
+     "description": "未放款开票·审批人"
+    },
+    "np_invoice_confirm_button": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible button:has-text(\"确认\"), .el-message-box__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "未放款开票申请·最终确认（可见弹层内：el-dialog / MessageBox 双形态）"
+    }
+   },
+   "radio_picks": {
+    "张乐UI-": "np_invoice_approver_radio"
+   },
+   "nav_click_texts": [],
+   "css_click_patterns": [],
+   "text_click_rules": {},
+   "button_behaviors": {
+    "np_invoice_sure_button": {
+     "role": "click"
+    }
+   },
+   "button_overrides": {
+    "确定": "np_invoice_sure_button",
+    "确认": "np_invoice_confirm_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "order_action_selector",
+     "steps": [
+      {
+       "action": "confirm",
+       "optional": true
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "dataset": {},
+     "_note": "n6 审批 watchdog 见 toast 即退，其后弹窗残留拦住 n7 真 click；开场可选确认兜底"
+    }
+   ]
+  },
+  {
+   "key": "s8",
+   "label": "未放款开票审批",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "route_field": "approval_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "nav_click_texts": [
+    "审批中心"
+   ],
+   "elements": {
+    "apc_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "审批中心·查询（显式元素：避免落入查询增强断言——审批中心行首列是SP号非bl_no，断言必失败）"
+    },
+    "np_appr_record_tab": {
+     "strategies": {
+      "tab": "tab-approvalRecord"
+     },
+     "description": "订单详情·审批记录页签（DOM id 实证 tab-approvalRecord）"
+    },
+    "np_appr_record_detail_button": {
+     "strategies": {
+      "css": ".el-tab-pane:visible .vxe-body--row:has-text(\"未放款开票申请\") button"
+     },
+     "description": "审批记录·未放款开票申请行内详情按钮（审批记录表是vxe非el-table，probe_s8b实证：.el-table__row全页为0；SP单号动态按行文本锚定；审批已由 申请人=审批人 自动通过，详情仅回看）"
+    }
+   },
+   "button_overrides": {
+    "查询": "apc_query_button",
+    "审批记录": "np_appr_record_tab",
+    "button": "np_appr_record_detail_button"
+   },
+   "_note": "录制L140-144为回看验证段：申请人=审批人(张乐UI-18234337458=登录账号)时未放款开票申请自动通过(probe_s8实证SP...80审批通过@16:36:25)。L144复合定位 get_by_role(row,SP).get_by_role(button) 解析为无名button(label='button')，靠 override 路由；L143 role tab 名'审批记录'同走 override。"
+  },
+  {
+   "key": "s9",
+   "label": "应收开票批次",
+   "scope": "financialManage/receivable/invoiceBatch",
+   "scope_label": "应收开票批次管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应收开票批次管理"
+   },
+   "route_field": "s9_route",
+   "route_value": "#/development/financialManage/receivable/invoiceBatch",
+   "nav_click_texts": [
+    "财务管理",
+    "应收管理",
+    "应收开票批次管理"
+   ],
+   "elements": {
+    "ri_by_bl_button": {
+     "strategies": {
+      "button": "按提单开票"
+     },
+     "description": "列表页·按提单开票入口（整页路由跳 #/receivable/invoiceBatchBl，非弹窗）"
+    },
+    "ri_cross_customer_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "跨下单客户"
+     },
+     "description": "开票范围·跨下单客户（选中后结算对象/费用主体下拉异步渲染）"
+    },
+    "ri_settle_object_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"应收结算对象\") input[placeholder=\"请选择\"]"
+     },
+     "description": "应收结算对象远程下拉（label 锚定替代 nth(1)：页面请选择输入框多达5个）"
+    },
+    "ri_fee_entity_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"费用主体\") input[placeholder=\"请选择\"]"
+     },
+     "description": "费用主体远程下拉（label 锚定替代 nth(2)）"
+    },
+    "ri_bl_search_input": {
+     "strategies": {
+      "css": "input[placeholder=\"请输入提单号\"]"
+     },
+     "description": "提单号检索框（placeholder 精确等值；textarea 批量框是『每行一个』前缀不冲突）"
+    },
+    "ri_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询（显式元素，避免落入查询增强断言）"
+    },
+    "ri_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "提单列表表头全选（vxe 主表全选被 fixed-left 克隆表头覆盖，x≈310 处 hit-test 永不命中——必须点克隆；:visible 排除隐藏表的克隆）"
+    },
+    "ri_prev_button": {
+     "strategies": {
+      "button": "上一步"
+     },
+     "description": "向导上一步（功能性步骤：下一步→上一步回选择区点 Debit Note）"
+    },
+    "ri_debit_note_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "Debit Note"
+     },
+     "description": "发票类型·Debit Note（选中后汇率/开票形式/票据类型区展开）"
+    },
+    "ri_merge_invoice_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "合并开票"
+     },
+     "description": "开票形式·合并开票"
+    },
+    "ri_bank_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"销售方账户\") input[placeholder=\"请选择\"]"
+     },
+     "description": "销售方账户（收款银行）下拉（step3 时结算对象/费用主体已 v-if 卸载，首个即它；label 锚定更稳）"
+    },
+    "ri_next_button": {
+     "strategies": {
+      "button": "下一步"
+     },
+     "description": "向导下一步"
+    },
+    "ri_submit_button": {
+     "strategies": {
+      "button": "提交"
+     },
+     "description": "向导提交"
+    },
+    "ri_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "提交确认（双形态可见弹层 css，s7 #787 同款）"
+    },
+    "ri_cancel_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"取消\"), .el-dialog__wrapper:visible button:has-text(\"取消\")"
+     },
+     "description": "成功框·取消（创建成功询问框的取消；:visible 弹层限定，与 ri_confirm_button 同款——#929 实证旧 {button:取消} 的 .first 会命中正在关闭的上一个确认框旧取消导致超时）"
+    },
+    "ri_dn_title_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "DEBIT NOTE"
+     },
+     "description": "发票标题·DEBIT NOTE（C屏必填，录制漏录——注入补点；INVOICE 不含该子串无歧义，A屏「Debit Note」大小写不匹配）"
+    }
+   },
+   "radio_picks": {
+    "跨下单客户": "ri_cross_customer_radio",
+    "Debit Note": "ri_debit_note_radio",
+    "合并开票": "ri_merge_invoice_radio"
+   },
+   "nth_select_guesses": {
+    "1": [
+     "recv_settle_object",
+     "ri_settle_object_selector",
+     "按提单开票·应收结算对象（跨下单客户后异步渲染，检索词机电→选项全文做 pick 值）"
+    ],
+    "2": [
+     "recv_fee_entity",
+     "ri_fee_entity_selector",
+     "按提单开票·费用主体（检索词联→选项全文做 pick 值）"
+    ],
+    "0": [
+     "recv_bank_account",
+     "ri_bank_selector",
+     "按提单开票·销售方账户（step3 首个请选择；选项文本是银行+账号长串，pick 包含匹配）"
+    ]
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "ri_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "按提单开票": "ri_by_bl_button",
+    "查询": "ri_query_button",
+    "上一步": "ri_prev_button",
+    "下一步": "ri_next_button",
+    "提交": "ri_submit_button",
+    "确定": "ri_confirm_button",
+    "取消": "ri_cancel_button"
+   },
+   "text_input_rules": [
+    [
+     "lele1030001",
+     "bl_no",
+     "ri_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ],
+    [
+     "lele1030002",
+     "bl_no",
+     "ri_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "_note": "S9=按提单开票向导（整页路由非弹窗，probe_s9d 退出 url 实锤）。探针要点：(1)主表全选被 fixed-left 克隆覆盖必须点克隆(s9d rect[310,523]+fixed vis 实锤)；(2)跨下单客户后结算对象/费用主体异步渲染，页面请选择×5，nth(1)/nth(2)录制命中但用 label css 锚定元素；(3)远程下拉检索词是片段，转换器请选择扫描已扩展吞并检索fill+press，选项全文做 pick 值；(4)上一步是功能步不可当噪音（下一步→上一步回选择区点Debit Note→下一步，Debit Note 在选择区非step2，s9e back_step1_radios 实锤）；(5)step3 结算对象/费用主体已卸载，首个请选择=销售方账户（银行选项 s9e bank_opts）。提交/确定/取消首次跑按普通点击，看 toast 再定看门狗。；(6)#927 步17实证：银行 el-select 的 v-model 是账号，input 回显 802051200000759 而非 label——pick 回读双向包含必假阴性，cell_overrides 把字段值改为账号本身（fill 数字按包含匹配唯一选项，回读精确命中）。(6)#928 step19 真因=发票标题 DEBIT NOTE 必填未点（codegen 漏录），非提交按钮空格——probe_s9f D 屏按钮 ' 提交 ' 首尾空格可归一化匹配；修复=银行 pick 后注入点击 ri_dn_title_radio。(7)#929 step23：提交+确定成功后弹「开票批次创建成功！是否继续创建」框，旧 {button:取消}.first 命中关闭中确认框的旧取消（not stable→not visible 超时）；改 :visible 弹层 css。(8)#930 step23：成功框不自动关、:visible 可解析，但提交接口慢 → 15s click 窗口内按钮不可点；改 button_behaviors tolerant_click 宽容守卫（轮询25s JS点掉+验证消散，路由离开 invoiceBatchBl 即成功）。(9)scope 统一为路由原文 financialManage/receivable/invoiceBatch（与 receivable/reconciliationBatch 同风格；原 receivableInvoiceBatch 为手拼，2026-10-30 全库统一为 scope=路由去 #/development/ 前缀）。",
+   "inject_steps": [
+    {
+     "after_element": "ri_bank_selector",
+     "steps": [
+      {
+       "action": "click",
+       "element_key": "ri_dn_title_radio"
+      },
+      {
+       "action": "wait",
+       "value": 500
+      }
+     ],
+     "_note": "#928 step19 根因：发票标题必填未选 → step18 下一步被拦停 C 屏 → 提交按钮不存在（probe_s9f 红字+toast 实锤，非「提 交」空格形态——D 屏按钮归一化即 提交）。银行 pick 后立即补点，探针同位点验证通过。"
+    }
+   ],
+   "button_behaviors": {
+    "ri_cancel_button": {
+     "role": "tolerant_click",
+     "text": "取消",
+     "timeout_ms": 25000,
+     "route_leave": "invoiceBatchBl",
+     "wait_ms": 300
+    }
+   }
+  },
+  {
+   "key": "s10",
+   "label": "开票审批与收款核销",
+   "scope": "financialManage/receivable/costDetails",
+   "scope_label": "应收费用明细",
+   "start": {
+    "kind": "text",
+    "value": "审批中心"
+   },
+   "elements": {
+    "apc_tag_link": {
+     "strategies": {
+      "css": "#tags-view-container .tags-view-item:has-text(\"审批中心\"), #tags-view-container :text-is(\"审批中心\")"
+     },
+     "description": "页签栏·审批中心 tab（#tags-view-container 限定：侧栏 DOM 序在前，裸 text=.first 会先命中折叠侧栏同名菜单项致死等）"
+    },
+    "apc_first_row_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper .vxe-body--row:first-child .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "审批中心·首行勾选（s6 同款；无头 1920 该表无 fixed 克隆，录制 fixed-left 选择器是录屏宽窗产物，probe v4 实证主表直点可点）"
+    },
+    "apc_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "审批中心·表头全选（主表头直点，probe v4 实证无 fixed-left 克隆表头；点行勾选后表头转 indeterminate，录制 L179 点的即该态图标）"
+    },
+    "apc_batch_audit_button": {
+     "strategies": {
+      "text": "批量审核"
+     },
+     "description": "批量审核（s6 同款；弹层 radio 通过/驳回 + 按钮 取消/确认，probe v4 实证）"
+    },
+    "apc_pass_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "通过"
+     },
+     "description": "审批结论·通过（s6 同款）"
+    },
+    "apc_audit_confirm_button": {
+     "strategies": {
+      "text": "确认"
+     },
+     "description": "审核弹层确认（s6 同款 watchdog_after：点后 JS 自适应点掉成功询问框并断言成功文案）"
+    },
+    "apc_audit_sure_button": {
+     "strategies": {
+      "button": "确定"
+     },
+     "description": "审核成功询问框确定（由前置 watchdog 自点，显式点击 absorb 吸收——s6 已验证形态）"
+    },
+    "rfd_nav_link": {
+     "strategies": {
+      "text": "应收费用明细"
+     },
+     "description": "左侧菜单 应收费用明细（应收管理子菜单，n9 nav_click_texts 已展开延续；此时页签未开不重复，text .first=菜单项）"
+    },
+    "rfd_bl_search_input": {
+     "strategies": {
+      "css": "input[placeholder=\"请输入\"]"
+     },
+     "description": "费用查询框（placeholder 精确等值 请输入；probe 实证页面其余输入框为请输入关键词/提单号批量 前缀互异不冲突）"
+    },
+    "rfd_fee_row_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper.fixed-left--wrapper .vxe-body--row .vxe-cell--checkbox:not(.is--disabled) .vxe-checkbox--unchecked-icon"
+     },
+     "description": "费用行勾选（必须点 fixed-left 克隆体：主表体行 checkbox 被克隆覆盖点不动，probe v4 实证 resolved-but-unclickable / v5 实证克隆体点击后 is--checked ✓）"
+    },
+    "rfd_writeoff_button": {
+     "strategies": {
+      "button": "收款核销"
+     },
+     "description": "收款核销入口（勾选已开票费用后开核销弹层；未开票费用被 toast 拦——probe 实证「请选择费用为已开票的费用」）"
+    },
+    "rfd_submit_writeoff_button": {
+     "strategies": {
+      "button": "提交核销"
+     },
+     "description": "核销弹层提交（watchdog_after：提交后 JS 自适应点掉成功询问框并断言，后续显式确定 absorb）"
+    }
+   },
+   "query": {
+    "text": "查询",
+    "placeholder": "请输入",
+    "wait_ms": 2000,
+    "assert_field": "bl_no"
+   },
+   "radio_picks": {
+    "通过": "apc_pass_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--body-wrapper\\.fixed-left--wrapper.*vxe-body--column\\.col_\\d+.*vxe-checkbox--unchecked-icon",
+     "apc_first_row_checkbox"
+    ],
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-checkbox--indeterminate-icon",
+     "apc_select_all_checkbox"
+    ],
+    [
+     "^\\.vxe-cell > \\.vxe-cell--checkbox > \\.vxe-checkbox--icon\\.vxe-checkbox--unchecked-icon$",
+     "rfd_fee_row_checkbox"
+    ]
+   ],
+   "button_behaviors": {
+    "apc_audit_confirm_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "成功"
+     ]
+    },
+    "apc_audit_sure_button": {
+     "role": "absorb"
+    },
+    "rfd_submit_writeoff_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "成功"
+     ]
+    }
+   },
+   "button_overrides": {
+    "批量审核": "apc_batch_audit_button",
+    "确认": "apc_audit_confirm_button",
+    "确定": "apc_audit_sure_button",
+    "应收费用明细": "rfd_nav_link",
+    "收款核销": "rfd_writeoff_button",
+    "提交核销": "rfd_submit_writeoff_button"
+   },
+   "text_click_rules": {
+    "审批中心": "apc_tag_link"
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "rfd_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "_note": "S10=开票审批+收款核销（record L177-191）。要点：(1)起始=页签栏审批中心 tab（#tags-view-container css 限定，text_click_rules 路由，链尾 get_by_text 胜出 kind=text）；(2)审批表无 fixed 克隆——行勾选/表头全选主表直点（probe v4），录制 L179 的 indeterminate 图标选择器归一到主表头全选；(3)审核腿 s6 移植：确认 watchdog_after(成功)+确定 absorb；(4)费用页行勾选必须点 fixed-left 克隆体（v4/v5 实证）；(5)查询走查询增强分支：click_text+wait 2s+evaluate 断言 bl 出现（费用行含提单号文本，n8 的 SP 号必假坑不适用；断言自身轮询 10s），wait 2s 防未过滤首行抢跑；(6)收款核销只放行已开票费用（未审批次费用 toast 拦截——审核腿是核销腿硬前置，录制顺序即业务依赖）；(7)提交核销 watchdog 自点成功询问框，L191 显式确定 absorb。核销弹层内部形态未探（只读纪律下进不去），L189-191 三连点击按录制忠实迁移，调试轮取证补正。(8)#934/#936/#937 修复：确认 watchdog 见 toast 即返后审核确认框仍在——但清扫器offsetParent 对 position:fixed 的弹层 wrapper 恒 null 两轮扑空（closed:0）；可见性改 getClientRects 后实测可见即关（确定优先=提交意图），2.5s 静默才返回。(10)#938-#944 修复：收款核销弹层「系统自动对应」无流水可匹配（录制会话有存量流水预填，全新环境空）→ 收款核销后注入流水表单自足填写 evaluate；#940 pick 点偏/渐进渲染不落值 → waitEmpty 轮询+回读验证+重试+表头区锚定断言（v13 本地复现实证两组字段混在一个 el-form、添加流水后渐进渲染）；#942 锚在 A 组 USD 预填未落时拍成空串误报点偏→addf 前等 A 组就绪再拍锚全新环境空）→ 提交被未填必填拦；收款核销后注入流水表单自足填写 evaluate（添加流水→CNY→账户802050200721316→金额1.00/0.00→当日→自校验）。；#944 关键修正：A 组（表头区）=核销单自身收款信息块（非匹配条件），其 *流水金额 恒空即校验必挂——B 组添加流水填满也无效；改直填 A（CNY/1.00/802050200721316），不再点添加流水【proven】2026-10-30 exec946 全链 10/10 绿：n10·21步（tag→行选→表头→勾选自愈→批量审核→通过→确认watchdog(toast:审批成功)→延迟询问框清扫(closed:1)→菜单→查询单号断言→克隆行选→收款核销→A组直填(CNY/1.00/802050200721316/当日)→提交核销 watchdog toast:提交核销成功@1613ms）。调试链：#933登录瞬态、#934残留框、#935单行表头toggle清空、#936-7清扫可见性盲区、#938无流水必填拦、#940/942 pick加固、#944 A组定位修正、#945探针后瞬态。",
+   "inject_steps": [
+    {
+     "after_element": "apc_select_all_checkbox",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=10000;const boxes=()=>[...document.querySelectorAll('.vxe-table--body-wrapper .vxe-body--row .vxe-cell--checkbox')];const anyChecked=()=>boxes().some(c=>c.classList.contains('is--checked'));let healed=0;while(Date.now()-t0<dl){if(anyChecked()){return{ok:true,healed:healed,checked:boxes().filter(c=>c.classList.contains('is--checked')).length};}const c=boxes().find(x=>!x.classList.contains('is--disabled'));if(c){c.click();healed++;await new Promise(r=>setTimeout(r,400));continue;}await new Promise(r=>setTimeout(r,300));}throw new Error('10s内无可勾选行或勾选未生效，healed='+healed);})()"
+      }
+     ],
+     "_note": "表头点击后勾选自愈（#935：单行待审时表头 toggle 清空唯一行→批量审核空选无弹窗）"
+    },
+    {
+     "before_element": "rfd_nav_link",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=15000;const vis=el=>!!(el&&el.getClientRects().length);const wraps=()=>[...document.querySelectorAll('.el-message-box__wrapper,.el-dialog__wrapper')].filter(vis);let closed=0,quiet=null;while(Date.now()-t0<dl){const ws=wraps();if(!ws.length){if(quiet===null)quiet=Date.now();if(Date.now()-quiet>=2500){return{ok:true,closed:closed,ms:Date.now()-t0};}await new Promise(r=>setTimeout(r,400));continue;}quiet=null;const w=ws[ws.length-1];const btns=()=>[...w.querySelectorAll('button')].filter(vis);let btn=btns().find(b=>(b.textContent||'').replace(/\\s+/g,'')==='确定'&&!b.disabled)||btns().find(b=>(b.textContent||'').replace(/\\s+/g,'')==='取消'&&!b.disabled)||w.querySelector('.el-message-box__headerbtn,.el-dialog__headerbtn')||btns().find(b=>!b.disabled);if(!btn){throw new Error('可见弹层无可点按钮:'+(w.textContent||'').replace(/\\s+/g,'').slice(0,40));}btn.click();closed++;await new Promise(r=>setTimeout(r,900));}throw new Error('15s内弹层未消散，已点'+closed+'次');})()"
+      }
+     ],
+     "_note": "审核后询问框清扫（#934 拦截/#936 扑空/#937 定因：wrapper 均 position:fixed，offsetParent 恒 null 不可作可见性——改 getClientRects；实测拦截框=审核确认「您确认提交该审批结果吗？」取消/确定无X，确定即提交=录制 L183 意图；2.5s 连续无框才返回，按钮优先 确定>取消>headerbtn）"
+    },
+    {
+     "after_element": "rfd_writeoff_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=15000;const vis=el=>!!(el&&el.getClientRects().length);const dlgs=()=>[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);let w=null;while(Date.now()-t0<dl){const ws=dlgs();if(ws.length){w=ws[ws.length-1];break;}await new Promise(r=>setTimeout(r,300));}if(!w){throw new Error('应收核销弹层未出现');}const fis=()=>[...w.querySelectorAll('.el-form-item')].filter(vis);const lab=f=>{const lb=f.querySelector('.el-form-item__label');return ((lb&&lb.textContent)||'').trim().replace(/[\\uFF0A*:\\s]+$/,'');};const firstOf=async t=>{for(let k=0;k<25;k++){const m=fis().filter(f=>lab(f)===t);const f=m[0];if(f){const i=f.querySelector('input');if(i&&i.getClientRects().length)return f;}await new Promise(r=>setTimeout(r,200));}return null;};const val=async t=>{const f=await firstOf(t);return f?(f.querySelector('input').value||''):null;};const setv=async(t,v)=>{const f=await firstOf(t);if(!f){throw new Error(t+'未定位');}const i=f.querySelector('input');const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;s.call(i,v);i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));};const pick=async(t,exact)=>{for(let a=0;a<3;a++){const f=await firstOf(t);if(!f){throw new Error(t+'未定位');}f.querySelector('input').click();let li=null;for(let k=0;k<10;k++){await new Promise(r=>setTimeout(r,200));const ds=[...document.querySelectorAll('.el-select-dropdown')].filter(vis);if(ds.length){const lis=[...ds[ds.length-1].querySelectorAll('li')].filter(vis);li=lis.find(l=>(l.textContent||'').replace(/\\s+/g,'')===exact)||lis.find(l=>(l.textContent||'').includes(exact));if(li)break;}}if(!li){throw new Error('下拉无选项:'+exact);}li.click();for(let k=0;k<10;k++){await new Promise(r=>setTimeout(r,200));if((await val(t))===exact){return true;}}await new Promise(r=>setTimeout(r,300));}throw new Error(t+'选后未落值:'+exact+'(当前='+(await val(t))+')');};await firstOf('*流水金额');await pick('*流水币制','CNY');await new Promise(r=>setTimeout(r,400));await pick('*收款账户','802050200721316');await new Promise(r=>setTimeout(r,400));await setv('*流水金额','1.00');await new Promise(r=>setTimeout(r,400));if(!(await val('*收款时间'))){await setv('*收款时间',new Date().toISOString().slice(0,10));}if(!(await val('*核销金额(CNY)'))){await setv('*核销金额(CNY)','1.00');}if(!(await val('*核销金额(USD)'))){await setv('*核销金额(USD)','0.00');}await new Promise(r=>setTimeout(r,500));const need={'*流水币制':'CNY','*流水金额':'1.00','*收款账户':'802050200721316'};const chk=[];for(const t of Object.keys(need)){const v=await val(t);chk.push(t+'='+v);if(v!==need[t]){throw new Error('流水填写校验失败:'+chk.join(','));}}const t4=await val('*收款时间');if(!t4){throw new Error('收款时间为空');}chk.push('*收款时间='+t4);const t5=await val('*核销金额(CNY)');if(!t5){throw new Error('核销金额(CNY)为空');}chk.push('*核销金额(CNY)='+t5);return {ok:true,filled:chk};})()"
+      }
+     ],
+     "_note": "收款核销弹层收款信息直填（#944 实证：A 组=核销单自身收款块，其 *流水金额 恒空才是校验拦截点；添加流水 B 组路线废弃）；币制 USD→CNY、流水金额 1.00、账户 802050200721316、时间/核销金额兜底；firstOf 定位+pick 回读验证重试"
+    }
+   ]
+  },
+  {
+   "key": "s11",
+   "label": "供应商垫付申请",
+   "scope": "orderManage/businessOrder",
+   "scope_label": "业务订单",
+   "start": {
+    "kind": "text",
+    "value": "订单 lele1030002"
+   },
+   "elements": {
+    "od_apply_sure_button": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible button:has-text(\"确定\"), .el-message-box__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "垫付申请确认框确定（真点击：提交选择→开审批人弹层；可见弹层 css 限定不参与按钮 crossref——button=确定 策略会抢占他段裸确定行；probe_s11a 实证弹层仅 取消/确定）"
+    },
+    "od_apply_confirm_button": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible button:has-text(\"确认\"), .el-message-box__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "垫付申请最终确认（可见弹层内双形态兜底，s7 np_invoice_confirm_button 同款）"
+    },
+    "od_oplog_tab": {
+     "strategies": {
+      "tab": "tab-recordOperation"
+     },
+     "description": "订单详情·操作记录页签（DOM id 实证 tab-recordOperation，probe_s11b）"
+    },
+    "od_appr_tab": {
+     "strategies": {
+      "tab": "tab-approvalRecord"
+     },
+     "description": "订单详情·审批记录页签（DOM id 实证 tab-approvalRecord，probe_s11b；s8 np_appr_record_tab 同款）"
+    }
+   },
+   "radio_picks": {
+    "张乐UI-": "fee_lock_approver_radio"
+   },
+   "css_click_patterns": [],
+   "button_behaviors": {
+    "od_apply_sure_button": {
+     "role": "click"
+    },
+    "od_apply_confirm_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "成功"
+     ]
+    }
+   },
+   "button_overrides": {
+    "确定": "od_apply_sure_button",
+    "确认": "od_apply_confirm_button",
+    "操作记录": "od_oplog_tab",
+    "审批记录": "od_appr_tab"
+   },
+   "text_click_rules": {},
+   "_note": "元素复用纪律：od_op_selector 删除（s7 order_action_selector 同策略同域）、od_approver_radio 删除（s5 fee_lock_approver_radio 同款）、od_apply_sure_button 用 css 策略（crossref 只扫 text/button/toast，防抢占他段裸确定行）——apply 实测新建元素迭代序在前会抢 crossref。【proven】2026-10-30 exec949 全链 12/12 绿：n11·10步（订单tab→订单操作下拉→供应商垫付申请→确定(#850 css 可见弹层限定)→审批人radio(#759 复用s5)→确认 watchdog toast:提交供应商垫付申请审批流成功@459ms→操作记录/审批记录页签(tab-recordOperation/tab-approvalRecord)。垫付选审批人=张乐UI(登录账号)不自动通过，n12 仍需批量审核——与 s8 未放款开票(申请人=审批人自动通过)行为不同。"
+  },
+  {
+   "key": "s12",
+   "label": "供应商垫付审批",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "text",
+    "value": "审批中心"
+   },
+   "elements": {
+    "apc2_tag_link": {
+     "strategies": {
+      "css": "#tags-view-container .tags-view-item:has-text(\"审批中心\"), #tags-view-container :text-is(\"审批中心\")"
+     },
+     "description": "页签栏·审批中心 tab（#tags-view-container 限定防侧栏同名菜单先命中，s10 apc_tag_link 同款）"
+    },
+    "apc2_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "审批中心·表头全选（主表头直点；L201 自 unchecked 态点击=全选，无前置行选故非 indeterminate，s10 apc_select_all_checkbox 同款主表头归一）"
+    }
+   },
+   "radio_picks": {
+    "通过": "audit_pass_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-checkbox--unchecked-icon",
+     "apc2_select_all_checkbox"
+    ]
+   ],
+   "button_behaviors": {
+    "batch_audit_confirm_button": {
+     "role": "watchdog_after",
+     "wait_ms": 800,
+     "watchdog": [
+      "成功"
+     ]
+    },
+    "audit_sure_button": {
+     "role": "absorb"
+    }
+   },
+   "button_overrides": {
+    "批量审核": "batch_audit_button",
+    "确认": "batch_audit_confirm_button",
+    "确定": "audit_sure_button"
+   },
+   "text_click_rules": {
+    "审批中心": "apc2_tag_link"
+   },
+   "inject_steps": [
+    {
+     "after_element": "apc2_select_all_checkbox",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=10000;const boxes=()=>[...document.querySelectorAll('.vxe-table--body-wrapper .vxe-body--row .vxe-cell--checkbox')];const anyChecked=()=>boxes().some(c=>c.classList.contains('is--checked'));let healed=0;while(Date.now()-t0<dl){if(anyChecked()){return{ok:true,healed:healed,checked:boxes().filter(c=>c.classList.contains('is--checked')).length};}const c=boxes().find(x=>!x.classList.contains('is--disabled'));if(c){c.click();healed++;await new Promise(r=>setTimeout(r,400));continue;}await new Promise(r=>setTimeout(r,300));}throw new Error('10s内无可勾选行或勾选未生效，healed='+healed);})()"
+      }
+     ],
+     "dataset": {},
+     "_note": "勾选自愈守卫（s10 #935 补丁同款 JS 程序化拷贝：单行/表头 toggle 语义翻转时兜底保 ≥1 勾选）"
+    }
+   ],
+   "_note": "四审核元素复用 s6 既有键（batch_audit_button/audit_pass_radio/batch_audit_confirm_button/audit_sure_button），仅新建 apc2_tag_link/apc2_select_all_checkbox（css 策略不参与 crossref）；closer 锚 batch_audit_confirm_button。【排坑】closer 不可锚在带 watchdog_after 行为的元素上：after_element 注入插在元素 click 步之后、增强步（wait/evaluate watchdog）之前——exec#948 实证 closer 先于 watchdog 执行，此时批量审核弹层（按钮仅 取消/确认）尚未随提交关闭，closer 按 确定>取消 优先级 fallback 点了 取消，审核被取消，watchdog 15s events=[] 空等。末节点无需净屏故径删；后续阶段扩展时按 s10 形态锚下一导航元素 before。【proven】2026-10-30 exec949 n12·8步：tag→表头全选(unchecked 态点击=全选)→guard{checked:1}→批量审核→通过→确认 watchdog [2ms click:确认, 3ms click:确定, 805ms toast:审批成功]。元素全复用 s6 键。调试链：#947 n1 登录瞬态(探针后必现,重试即过)、#948 closer 错位(见排坑注)、#949 全绿。"
+  },
+  {
+   "key": "s13",
+   "label": "应付对账",
+   "scope": "financialManage/payable/reconciliationBatch",
+   "scope_label": "应付对账批次管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应付对账批次管理"
+   },
+   "route_field": "s13_route",
+   "route_value": "#/development/financialManage/payable/reconciliationBatch",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "应付对账批次管理"
+   ],
+   "elements": {
+    "rc_by_bl_button": {
+     "strategies": {
+      "button": "按提单对账"
+     },
+     "description": "列表页·按提单对账入口（整页路由跳 #/payable/reconciliationBatch/billOfLading 非弹窗，probe_s12a 实证）"
+    },
+    "rc_cross_customer_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "跨下单客户"
+     },
+     "description": "对账批次类型·跨下单客户（probe 实证 radios=同一下单客户/跨下单客户）"
+    },
+    "rc_bl_search_input": {
+     "strategies": {
+      "css": "input[placeholder=\"请输入提单号\"]"
+     },
+     "description": "提单号检索框（placeholder 精确等值；批量框『已输入0个提单号』前缀不冲突，s9 ri_bl_search_input 同款）"
+    },
+    "rc_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询（显式元素避免落入查询增强断言，s9 同款）"
+    },
+    "rc_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "提单列表表头全选（必须点 fixed-left 克隆表头，主表被克隆覆盖 hit-test 不命中，s9 ri_select_all_checkbox 同款实证）"
+    },
+    "rc_submit_button": {
+     "strategies": {
+      "button": "提 交"
+     },
+     "description": "向导提交（按钮可访问名『提 交』内部空格，substring 匹配不上无空格的『提交』——exec951 n13 步8 15s 超时实证；s2 submit_button 同款保留内空格）"
+    },
+    "rc_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "提交确认（可见弹层双形态 css，s7/s9 同款；css 策略不参与按钮 crossref）"
+    },
+    "rc_recon_now_button": {
+     "strategies": {
+      "button": "立即对账"
+     },
+     "description": "提交后·立即对账（post-submit 形态未探，首跑取证）"
+    },
+    "rc_quick_recon_button": {
+     "strategies": {
+      "button": "快速对账"
+     },
+     "description": "对账方式·快速对账（形态未探，首跑取证）"
+    },
+    "rc_final_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "快速对账最终确认（可见弹层 css）"
+    }
+   },
+   "radio_picks": {
+    "跨下单客户": "rc_cross_customer_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "rc_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "按提单对账": "rc_by_bl_button",
+    "查询": "rc_query_button",
+    "提交": "rc_submit_button",
+    "确定": "rc_confirm_button",
+    "立即对账": "rc_recon_now_button",
+    "快速对账": "rc_quick_recon_button",
+    "确认": "rc_final_confirm_button"
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "rc_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "inject_steps": [
+    {
+     "after_element": "rc_final_confirm_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 500
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now();const sleep=ms=>new Promise(r=>setTimeout(r,ms));let h='';for(let k=0;k<40;k++){h=location.hash.replace(/\\s+/g,'');if(h.indexOf('reconciliationBatch')>=0&&h.indexOf('detail')<0&&h.indexOf('billOfLading')<0){return{ok:true,h}}if(Date.now()-t0>10000){break}await sleep(300)}return{ok:false,h}})()"
+      },
+      {
+       "action": "wait",
+       "value": 400
+      }
+     ],
+     "dataset": {},
+     "_note": "确认后延迟导航吸收：exec958/959/960 三跑实证 确认→~2s 后 app 异步落对账批次列表页(#/development/financialManage/payable/reconciliationBatch)，若不吸收会砸进下一节点的开票向导（exec960 n14 步10 应付结算对象 12s 未现=向导被卸载）。本注入把导航窗口关在本节点内再放行。"
+    }
+   ],
+   "_note": "S12=应付对账（record L206-218）。L206 应付管理菜单点击由 L207 nav_link 标记回溯折叠吃掉（nav_click_texts 含 应付管理）。向导=整页路由（probe_s12a：dlgN=0，url #/payable/reconciliationBatch/billOfLading?batch_type=bl&fieldStatus=add）。跨下单客户后其余下拉不必填（录制只填提单号查询）。L213 表头全选 fixed-left 克隆。L216 立即对账/L217 快速对账/L218 确认 post-submit 形态未探（非破坏纪律进不去），首跑忠实迁移、调试轮取证补正。"
+  },
+  {
+   "key": "s14",
+   "label": "应付开票批次",
+   "scope": "financialManage/payable/invoiceBatch",
+   "scope_label": "应付开票批次管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应付开票批次管理"
+   },
+   "route_field": "s14_route",
+   "route_value": "#/development/financialManage/payable/invoiceBatch",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "应付开票批次管理"
+   ],
+   "elements": {
+    "ib_by_bl_button": {
+     "strategies": {
+      "button": "按提单开票"
+     },
+     "description": "列表页·按提单开票入口（整页路由跳 #/payable/invoiceBatchBl?fieldStatus=add&batch_type=bl，probe_s13a 实证）"
+    },
+    "ib_cross_customer_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "跨下单客户"
+     },
+     "description": "开票范围·跨下单客户（选中后费用主体/应付结算对象远程下拉渲染）"
+    },
+    "ib_fee_entity_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text('费用主体') input[placeholder='请选择']"
+     },
+     "description": "屏1·费用主体远程下拉（label 锚定替代 nth(2)；过滤框在下拉面板内仅开时可见，pick 只读不 fill 靠选项全文点选）"
+    },
+    "ib_pay_object_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text('应付结算对象') input[placeholder='请选择']"
+     },
+     "description": "屏1·应付结算对象远程下拉（label 锚定替代 nth(3) 首现）"
+    },
+    "ib_bl_search_input": {
+     "strategies": {
+      "css": "input[placeholder='请输入提单号']"
+     },
+     "description": "提单号检索框（placeholder 精确等值，s9/s13 同款）"
+    },
+    "ib_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询（显式元素，避免落入查询增强断言）"
+    },
+    "ib_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "提单列表表头全选（必须点 fixed-left 克隆表头，s9/s13 同款实证）"
+    },
+    "ib_next_button": {
+     "strategies": {
+      "button": "下一步"
+     },
+     "description": "向导下一步（屏1→屏2→屏3 共用；屏2 需销售方账户+发票项目齐备才放行）"
+    },
+    "ib_bank_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text('销售方账户') input[placeholder='请选择']"
+     },
+     "description": "屏2·销售方账户本地下拉（label 锚定替代 nth(3) 二现；v-model=纯账号 2344678944541566545 非 label，probe_s13h 实证，pick 值走 cell_overrides=账号）"
+    },
+    "ib_goset_link": {
+     "strategies": {
+      "css": ".el-form-item:has-text('发票项目与税率') a:has-text('去设置'), .el-form-item:has-text('发票项目与税率') span:has-text('去设置')"
+     },
+     "description": "屏2·去设置链接（打开「设置发票项目与税率」弹层；label 发票项目与税率 锚定）"
+    },
+    "ib_row_checkbox": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible tr:has-text('海运费') .el-checkbox"
+     },
+     "description": "弹层·费用行复选框（el-checkbox）。翻案：probe_s14d.json 实锤 check1.was=false且点后验证 dump 全部 SyntaxError 未跑成——「行必须勾选」从未被证实；流程实际靠快捷选择 PICK 走通（去设置(已填写)→s3）。el.click() 在服务上下文对该框5 次点选均不生效（exec969/970 截图终态未勾）。现 inject 只做非致命尽力勾选，真断言=行内值校验（ROWVF：行内 el-select 有项目/税率，必要时行内直设兜底）。绝不为此框单设致命步骤。"
+    },
+    "ib_dlg_fpj_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='发票项目']"
+     },
+     "description": "弹层·快捷选择发票项目（批量应用到勾选行；控件自身恒不回显，pick 回读校验必败——只可 click+popper_pick，probe_s13h 实证）"
+    },
+    "ib_dlg_rate_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='发票税率']"
+     },
+     "description": "弹层·快捷选择发票税率（同上不回显，click+popper_pick）"
+    },
+    "ib_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text('确定'), .el-dialog__wrapper:visible button:has-text('确定')"
+     },
+     "description": "双场景确定：弹层设置确定（L242）+ 提交后确认框确定（L245）；两者不同时存在，s7/s9/s13 同款 css"
+    },
+    "ib_submit_button": {
+     "strategies": {
+      "button": "提 交"
+     },
+     "description": "屏3·向导提交（可访问名『提 交』内部空格，probe_s13h s3 btns 实证 ' 提 交 '；s2/s13 同款保留内空格）"
+    },
+    "ib_cancel_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible:has-text('开票批次创建成功') .el-message-box__btns button:has-text('取消'), .el-dialog__wrapper:visible:has-text('开票批次创建成功') button:has-text('取消')"
+     },
+     "description": "提交后成功询问框·取消（L246）。exec976 call log 定论：nth=-1 css 在 click 起步时解析到上一确认框淡出中的取消被钉死（resolved→not stable×4→not visible×29×500ms），成功框因后端建批慢未及入场；fixture 复刻实证 nth=-1 语法无罪但即使点成也落旧框，:has-text 锚定『开票批次创建成功』可穿过空窗只等成功框。配 before 注入等待步（25s 预算+DOM dump）。"
+    },
+    "ib_fee_filter_input": {
+     "strategies": {
+      "css": "input[placeholder='请输入费用主体']"
+     },
+     "description": "屏1·费用主体下拉面板内过滤框（仅下拉开时可见；远程懒加载列表默认页无目标选项，必须 fill 过滤词——probe_s13i lis_b 实证默认页 12 项均非目标，fill 道 后唯一）"
+    },
+    "ib_pay_filter_input": {
+     "strategies": {
+      "css": "input[placeholder='请输入应付结算对象']"
+     },
+     "description": "屏1·应付结算对象下拉面板内过滤框（同上，fill 旭 后唯一目标）"
+    }
+   },
+   "radio_picks": {
+    "跨下单客户": "ib_cross_customer_radio"
+   },
+   "nth_select_guesses": {
+    "3@1": [
+     "paya_bank_account",
+     "ib_bank_selector",
+     "屏2·销售方账户（nth(3) 二现；本地全量下拉 pick 正常；v-model=账号，值由 cell_overrides=2344678944541566545 兜底，probe_s13h 实证）"
+    ]
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "ib_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "按提单开票": "ib_by_bl_button",
+    "查询": "ib_query_button",
+    "下一步": "ib_next_button",
+    "确定": "ib_confirm_button",
+    "提交": "ib_submit_button",
+    "取消": "ib_cancel_button"
+   },
+   "text_click_rules": {
+    "去设置": "ib_goset_link"
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "ib_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "inject_steps": [
+    {
+     "after_element": "ib_cross_customer_radio",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 800
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=12000;const vis=el=>!!(el&&el.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));let trig=null;while(Date.now()-t0<dl){const fis=[...document.querySelectorAll('.el-form-item')].filter(f=>vis(f)&&((f.textContent||'').replace(/\\s+/g,'').indexOf('费用主体')>=0));trig=fis.flatMap(f=>[...f.querySelectorAll('input')]).find(i=>vis(i)&&((i.placeholder||'')==='请选择'||(i.placeholder||'')==='请输入费用主体'));if(trig)break;await sleep(300);}if(!trig){throw new Error('费用主体下拉触发框12s未出现');}trig.click();let fi=null;for(let k=0;k<30;k++){fi=[...document.querySelectorAll(\"input[placeholder='请输入费用主体']\")].find(vis);if(fi)break;await sleep(200);}if(!fi&&!trig.readOnly){fi=trig;}if(!fi){throw new Error('费用主体过滤框未出现');}const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(fi,'道');fi.dispatchEvent(new Event('input',{bubbles:true}));return{ok:true,fp:fi.placeholder};})()"
+      },
+      {
+       "action": "wait",
+       "value": 900
+      },
+      {
+       "action": "popper_pick",
+       "value": "青岛易航道物流科技有限公司"
+      },
+      {
+       "action": "wait",
+       "value": 600
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=12000;const vis=el=>!!(el&&el.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));let trig=null;while(Date.now()-t0<dl){const fis=[...document.querySelectorAll('.el-form-item')].filter(f=>vis(f)&&((f.textContent||'').replace(/\\s+/g,'').indexOf('应付结算对象')>=0));trig=fis.flatMap(f=>[...f.querySelectorAll('input')]).find(i=>vis(i)&&((i.placeholder||'')==='请选择'||(i.placeholder||'')==='请输入应付结算对象'));if(trig)break;await sleep(300);}if(!trig){throw new Error('应付结算对象下拉触发框12s未出现');}trig.click();let fi=null;for(let k=0;k<30;k++){fi=[...document.querySelectorAll(\"input[placeholder='请输入应付结算对象']\")].find(vis);if(fi)break;await sleep(200);}if(!fi&&!trig.readOnly){fi=trig;}if(!fi){throw new Error('应付结算对象过滤框未出现');}const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(fi,'旭');fi.dispatchEvent(new Event('input',{bubbles:true}));return{ok:true,fp:fi.placeholder};})()"
+      },
+      {
+       "action": "wait",
+       "value": 900
+      },
+      {
+       "action": "popper_pick",
+       "value": "山东旭禾国际贸易有限公司"
+      },
+      {
+       "action": "wait",
+       "value": 600
+      }
+     ],
+     "dataset": {
+      "paya_fee_entity": "青岛易航道物流科技有限公司",
+      "paya_settle_object": "山东旭禾国际贸易有限公司"
+     },
+     "_note": "exec956 n14 步5实证：费用主体/应付结算对象是远程懒加载下拉（默认页 12 项无目标，probe_s13i lis_b），pick 的全量包含匹配+回读在 re-render 竞态下死等（input_value 15s，元素被 re-render detach）——改注入流 click+fill 过滤词+popper_pick（v9 变体 B 全绿：fill 道/旭 后列表唯一目标，精确匹配点选）。L222-229 录制语句无 guess 落 review，孤儿第二击由转换器同文本吞并分支接管。"
+    },
+    {
+     "after_element": "ib_goset_link",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 1200
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>!!(e&&e.getClientRects().length);const find=()=>{const ws=[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);if(!ws.length)return null;const dlg=ws[ws.length-1];const row=dlg.querySelector('tr.el-table__row');if(!row)return null;return row.querySelector('.el-checkbox')||null};const on=cb=>{const inp=cb.querySelector('input');return !!(cb.__vue__&&cb.__vue__.checked)||(inp&&inp.checked)||cb.classList.contains('is-checked')};const variants=[['inner',cb=>{const n=cb.querySelector('.el-checkbox__inner');if(n){n.click();return true}return false}],['input',cb=>{const n=cb.querySelector('input');if(n){n.click();return true}return false}],['root',cb=>{cb.click();return true}]];let tries=0;let last=null;for(let k=0;k<3;k++){const cb=find();if(!cb){await sleep(400);continue}if(on(cb)){return{ok:true,checked:true,tries,via:tries?variants[(tries-1)%3][0]:'pre'}}last=variants[k%3][0];variants[k%3][1](cb);tries++;await sleep(700)}const cbf=find();return{ok:false,checked:!!(cbf&&on(cbf)),tries,last,'note':'非致命：行勾选未证实，交由行内值校验兜底'}})()"
+      },
+      {
+       "action": "wait",
+       "value": 400
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>!!(e&&e.getClientRects().length);const i=[...document.querySelectorAll(\"input[placeholder='发票项目']\")].find(vis);if(!i){throw new Error('快捷选择发票项目输入框未现')}const v=i.closest('.el-select').__vue__;if(v.focus){v.focus()}i.click();const t0=Date.now();while(Date.now()-t0<10000){const dd=v.$children.find(c=>c.$options.name==='ElSelectDropdown');if(dd&&dd.$el){const li=[...dd.$el.querySelectorAll('li')].find(l=>(l.textContent||'').trim()==='国际货物运输代理海运费');if(li&&li.getClientRects().length){li.click();return{ok:true,picked:'国际货物运输代理海运费'}}}await sleep(250)}throw new Error('发票项目下拉 10s 未见目标选项(vm-dd)')})()"
+      },
+      {
+       "action": "wait",
+       "value": 600
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>!!(e&&e.getClientRects().length);const i=[...document.querySelectorAll(\"input[placeholder='发票税率']\")].find(vis);if(!i){throw new Error('快捷选择发票税率输入框未现')}const v=i.closest('.el-select').__vue__;if(v.focus){v.focus()}i.click();const t0=Date.now();while(Date.now()-t0<10000){const dd=v.$children.find(c=>c.$options.name==='ElSelectDropdown');if(dd&&dd.$el){const li=[...dd.$el.querySelectorAll('li')].find(l=>(l.textContent||'').trim()==='9%');if(li&&li.getClientRects().length){li.click();return{ok:true,picked:'9%'}}}await sleep(250)}throw new Error('发票税率下拉 10s 未见目标选项(vm-dd)')})()"
+      },
+      {
+       "action": "wait",
+       "value": 600
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>!!(e&&e.getClientRects().length);const getRow=()=>{const ws=[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);if(!ws.length)return null;const dlg=ws[ws.length-1];return dlg.querySelector('tr.el-table__row')};const rd=()=>{const row=getRow();if(!row)return[];const sels=[...row.querySelectorAll('.el-select')].filter(s=>vis(s));return sels.map(s=>{const v=s.__vue__;return v?String(v.value==null?'':v.value):''})};const has=v=>v.length>=2&&v[0]!==''&&v[1]!=='';let vals=rd();if(has(vals)){return{ok:true,source:'快捷选择',vals}}const targets=['国际货物运输代理海运费','9%'];const setOne=async text=>{const row=getRow();if(!row)return false;const sels=[...row.querySelectorAll('.el-select')].filter(s=>vis(s));for(let ci=0;ci<sels.length;ci++){if((rd()[ci]||'')!==''){continue}const sel=sels[ci];const v=sel.__vue__;const i=sel.querySelector('input');if(v.focus){v.focus()}if(i){i.click()}else{sel.click()}const t0=Date.now();while(Date.now()-t0<8000){const dd=v.$children.find(c=>c.$options.name==='ElSelectDropdown');if(dd&&dd.$el){const li=[...dd.$el.querySelectorAll('li')].find(l=>(l.textContent||'').trim()===text);if(li&&li.getClientRects().length){li.click();return true}}await sleep(250)}}return false};for(let k=0;k<2&&!has(vals);k++){await setOne(targets[0]);await sleep(500);await setOne(targets[1]);await sleep(500);vals=rd()}if(has(vals)){return{ok:true,source:'行内兜底',vals}}throw new Error('行值校验失败：行内发票项目/税率仍为空 vals='+JSON.stringify(vals))})()"
+      },
+      {
+       "action": "wait",
+       "value": 400
+      }
+     ],
+     "dataset": {
+      "s14_invoice_item": "国际货物运输代理海运费",
+      "s14_invoice_rate": "9%"
+     },
+     "_note": "L239 去设置弹层（probe_s13e/f/g + s14b/c/d + exec961/963 实证）：表=el-table 单数据行（tr.el-table__row），行内费用项目/税率两列是选项内联渲染的 el-select；表头 checkbox 与行 checkbox 同步连点互相抵消（s14c 教训）——只点数据行 checkbox 并以 vm.checked 校验（物理点击被吞，probe_s13g）。快捷选择控件恒不回显且全局扫 li 点错层（963 实证 quick value 恒空→确定被拒 toast 请填写所有费用项对应发票项目与税率、弹层不关）：必须 vm 作用域点选（v.focus()+i.click() 开下拉→只在该 select $children 的 ElSelectDropdown.$el 内点 li）。probe_s14d 全链绿：确定关弹层→去设置(已填写)→下一步放行 s3（上传附件/退出/上一步/提交）。"
+    },
+    {
+     "before_element": "ib_cancel_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=25000;const vis=el=>!!(el&&el.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const chain=el=>{const a=[];let p=el;for(let k=0;k<6&&p;k++){a.push(p.tagName+'.'+String(p.className).slice(0,40));p=p.parentElement}return a};const sels=['.el-message-box__wrapper','.el-dialog__wrapper','[class*=message-box]','[class*=dialog]','[class*=Dialog]','[class*=modal]','[class*=Modal]'];while(Date.now()-t0<dl){for(const s of sels){const w=[...document.querySelectorAll(s)].find(x=>vis(x)&&((x.textContent||'').indexOf('开票批次创建成功')>=0));if(w){const btns=[...w.querySelectorAll('button')].map(b=>({t:(b.textContent||'').replace(/\\s+/g,'').slice(0,12),c:String(b.className).slice(0,40),v:vis(b)}));return{ok:true,cls:String(w.className).slice(0,60),chain:chain(w),btns:btns}}}await sleep(300)}const layers=[...document.querySelectorAll('body *')].filter(el=>vis(el)&&((el.textContent||'').indexOf('开票批次创建成功')>=0)).slice(-5).map(el=>({cls:String(el.className).slice(0,60),chain:chain(el)}));throw new Error('成功询问框25s未出现 layers='+JSON.stringify(layers).slice(0,400))})()"
+      }
+     ],
+     "_note": "exec976 实证：取消 click 解析到旧确认框淡出按钮被钉死（not stable→not visible×29），成功框因后端建批慢未及入场——先等成功框可见（25s 预算），顺带 dump 弹层类名/按钮清单进步骤响应（若仍失败可离线定位真实 DOM）"
+    }
+   ],
+   "_note": "S13=应付开票批次（record L219-246）。屏1: 按提单开票→跨下单客户→费用主体(道/青岛易航道)→应付结算对象(旭/山东旭禾)→提单号→查询→fixed-left全选→下一步。L226 游离 fill wu'he（下拉点开前的检索词，pick 自理）。屏2: 销售方账户(nth3二现,账号v-model)→去设置→弹层[JS勾行+快捷选择项目9%]→确定→下一步。L235 请选择.first/L236 listitem 否=UI漂移丢弃（屏2 无 否，probe_s13b/d 全DOM搜实证）；L240 nth(4)/L241 海运费=旧行内编辑路径，已由 inject 快捷选择流替代，无 guess 自动落 review。屏3: 下一步→提 交（内空格）→确定→取消。L246 取消 post-submit 形态未探（非破坏纪律），首跑取证。【exec956 修正】费用主体/应付结算对象改注入流（懒加载 fill 过滤）；exec955 步3 按提单开票 js_click（stability 死等）。",
+   "button_behaviors": {
+    "ib_by_bl_button": {
+     "role": "js_click"
+    },
+    "_note": "exec955 n14 步3：按提单开票按钮 resolved+visible+enabled 全过但 element is not stable 15s 超时（列表骨架屏/加载动画持续重排）——js_click 绕过可点击性校验"
+   }
+  },
+  {
+   "key": "s15",
+   "label": "应付上传发票",
+   "scope": "financialManage/payable/invoiceApply",
+   "scope_label": "应付开票申请管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应付开票申请管理"
+   },
+   "route_field": "s15_route",
+   "route_value": "#/development/financialManage/payable/invoiceApplication",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "应付开票申请管理"
+   ],
+   "elements": {
+    "iba_detail_button": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper button:visible:has-text(\"详情\")"
+     },
+     "description": "列表首行·详情（:visible 放按钮上——首可见 wrapper 占位期含不可见克隆按钮会被 .first 钉死）"
+    },
+    "iba_kaipiao_selector": {
+     "strategies": {
+      "role": "textbox",
+      "role_extra": "开票"
+     },
+     "description": "详情页·开票下拉触发（L249 裸 textbox 点击，元素库 role 名匹配 L810-816）"
+    },
+    "iba_merge_invoice_span": {
+     "strategies": {
+      "css": ".el-select-dropdown:visible .el-select-dropdown__item:has-text('合并开票')"
+     },
+     "description": "详情页·合并开票入口（收紧到可见下拉，probe v2 实证形态）"
+    },
+    "iba_upload_button": {
+     "strategies": {
+      "button": "上传发票"
+     },
+     "description": "详情页·上传发票入口"
+    },
+    "iba_file_input": {
+     "strategies": {
+      "css": "input[name=\"file\"]"
+     },
+     "description": "上传弹层·文件选择 input[name=file]"
+    },
+    "iba_confirm_one_button": {
+     "strategies": {
+      "button": "确认本张"
+     },
+     "description": "上传弹层·确认本张"
+    },
+    "iba_submit_upload_button": {
+     "strategies": {
+      "button": "提交上传"
+     },
+     "description": "上传弹层·提交上传"
+    },
+    "iba_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible .el-message-box__btns button:has-text('确定')"
+     },
+     "description": "可见弹层确定（s7/s9/s13 同款）"
+    },
+    "iba_inv_no_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='请输入内容']:visible >> nth=0"
+     },
+     "description": "上传弹层·发票号输入（请输入内容@0，值=${invoice_no}）"
+    },
+    "iba_amount_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='请输入内容']:visible >> nth=1"
+     },
+     "description": "上传弹层·金额输入（请输入内容@1，录制终值 7）"
+    }
+   },
+   "upload_rules": {
+    "input[name=\"file\"]@0": [
+     "invoice_file",
+     "iba_file_input"
+    ]
+   },
+   "value_overrides": {
+    "invoice_file": "924"
+   },
+   "button_overrides": {
+    "详情": "iba_detail_button",
+    "上传发票": "iba_upload_button",
+    "确认本张": "iba_confirm_one_button",
+    "提交上传": "iba_submit_upload_button",
+    "确定": "iba_confirm_button"
+   },
+   "text_click_rules": {
+    "合并开票": "iba_merge_invoice_span"
+   },
+   "inject_steps": [
+    {
+     "after_element": "iba_file_input",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=60000;const vis=el=>!!(el&&el.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const seen=[];try{new PerformanceObserver(l=>{for(const e of l.getEntries())if(/invoiceOcr|uploadFile|getShortUrl|newhopeleasing/.test(e.name))seen.push([e.name.split('/').slice(3).join('/').slice(0,30),Math.round(e.responseEnd-e.startTime),e.responseStatus])}).observe({entryTypes:['resource']})}catch(_){ }while(Date.now()-t0<dl){const ins=[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).flatMap(d=>[...d.querySelectorAll(\"input[placeholder='请输入内容']\")]).filter(vis);if(ins.length>=4){return{ok:true,n:ins.length,ms:Date.now()-t0,vals:ins.map(i=>i.value.slice(0,14)),seen:seen}}await sleep(500)}\nconst out={seen:seen,toasts:[...document.querySelectorAll('.el-message')].filter(vis).map(m=>(m.textContent||'').trim().slice(0,50))};\nconst fi=document.querySelector('input[name=file]');\nout.inFile=fi&&fi.files&&fi.files[0]?{name:fi.files[0].name,size:fi.files[0].size,type:fi.files[0].type}:null;\nconst cmps=[];try{for(const w of document.querySelectorAll('.el-dialog__wrapper')){for(const el of w.querySelectorAll('*')){const c=el.__vue__;if(c&&c.$data&&('upLoadFilelist' in c.$data)){const u=c.upLoadFilelist&&c.upLoadFilelist[c.numberOfPages];cmps.push({up:u?{att:u.attachment_id,fn:u.file_name,fu:u.file_url}:null,le:c.loadingend,np:c.numberOfPages,flRaw:c.filelist&&c.filelist[0]&&c.filelist[0].raw?c.filelist[0].raw.size:null});break}}}}catch(e){cmps.push(String(e).slice(0,80))}\nout.cmp=cmps;\nlet tok=null;try{for(const k of Object.keys(localStorage)){const v=localStorage.getItem(k)||'';if(v.length>40&&v.length<400&&/^[A-Za-z0-9._-]+$/.test(v)){tok=v;break}}}catch(_){ }\nconst H={};if(tok)H['Authorization']='Bearer '+tok;out.tokLen=tok?tok.length:null;\nif(fi&&fi.files&&fi.files[0]){try{const fd=new FormData();fd.append('page','pay');fd.append('file',fi.files[0]);const r=await fetch('/api/home/common/uploadFile',{method:'POST',headers:H,body:fd});const t=await r.text();out.up={http:r.status,body:t.slice(0,200)};const j=JSON.parse(t);if(j&&j.data&&j.data.file_name){const r2=await fetch('/api/home/common/getShortUrl',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},H),body:JSON.stringify({file_name:[j.data.file_name]})});const t2=await r2.text();out.su={http:r2.status,body:t2.slice(0,200)};const j2=JSON.parse(t2);const short=(j2.data||{})[j.data.file_name];if(short){const r3=await fetch('/api/home/common/invoiceOcr',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},H),body:JSON.stringify({file_url:short,file_name:j.data.file_name})});const t3=await r3.text();out.ocr={http:r3.status,body:t3.slice(0,240)}}}}catch(e){out.replayErr=String(e).slice(0,140)}}\nout.fields=[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).flatMap(d=>[...d.querySelectorAll(\"input[placeholder='请输入内容']\")]).filter(vis).length;\nthrow new Error('字段60s未渲染 forensics='+JSON.stringify(out).slice(0,900))})()"
+      }
+     ],
+     "_note": "取证v3（读码 chunk-commons 后定向）：firstUpload mounted 发 uploadFile→then 写 upLoadFilelist→getShortUrlfun→recogObtain(invoiceOcr)；exec 实证 uploadFile 200/268ms 后 getShortUrl 未发 → then 未跑（axios 拒）或 upLoadFilelist 断。超时取证：组件 Vue 状态 + fetch 重放三环拿真实响应体"
+    },
+    {
+     "before_element": "iba_detail_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=15000;const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=el=>{const r=el.getBoundingClientRect();return el.getClientRects().length&&r.width>0&&r.height>0};while(Date.now()-t0<dl){const btns=[...document.querySelectorAll('.vxe-table--body-wrapper')].flatMap(w=>[...w.querySelectorAll('button')]).filter(b=>(b.textContent||'').indexOf('详情')>=0&&vis(b));if(btns.length){return{ok:true,n:btns.length}}await sleep(400)}const ws=[...document.querySelectorAll('.vxe-table--body-wrapper')].map(w=>({vis:!!w.getClientRects().length,det:[...w.querySelectorAll('button')].filter(b=>(b.textContent||'').indexOf('详情')>=0).length}));throw new Error('可见详情按钮15s未出现 ws='+JSON.stringify(ws))})()"
+      }
+     ],
+     "_note": "exec980 实证：列表 61 行远端慢加载，wait 500ms 后 click 解析到加载期占位按钮（盒空=不可见）not visible×29 超时；probe 等 16s 后按钮全可见（x=6180 横向滚动列，click 自动滚入）。先轮询到首个可见详情按钮再点"
+    },
+    {
+     "after_element": "iba_detail_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=25000;const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=el=>!!(el&&el.getClientRects().length);let tries=0;while(Date.now()-t0<dl){const s=[...document.querySelectorAll('.el-select input')].filter(i=>i.placeholder==='开票')[0];const rm=[...document.querySelectorAll('button')].filter(b=>(b.textContent||'').indexOf('移除提单')>=0&&vis(b));if(s&&vis(s)&&rm.length){await sleep(800);return{ok:true,tries:tries,rows:rm.length,ms:Date.now()-t0}}if(Date.now()-t0>8000){const b=[...document.querySelectorAll('.vxe-table--body-wrapper')].flatMap(w=>[...w.querySelectorAll('button')]).filter(x=>(x.textContent||'').indexOf('详情')>=0&&vis(x));if(b.length){b[0].click();tries++}await sleep(3000);continue}await sleep(500)}const btns=[...document.querySelectorAll('button')].filter(vis).map(b=>(b.textContent||'').replace(/\\s+/g,'').slice(0,8)).slice(0,16);throw new Error('详情浮层25s未挂载 tries='+tries+' hash='+location.hash.slice(0,70)+' btns='+JSON.stringify(btns))})()"
+      }
+     ],
+     "_note": "exec983 实证：n14 刚建批次关联数据后端传播延迟→点详情浮层挂载失败、页面滞留列表（dump 全列表按钮）→12s 水合等待抛错；数分钟后 probe 同批次 3.5s 即开。联合轮询：开票select+移除提单按钮=浮层挂载且数据就绪，8s 未挂载 DOM 重点首行详情（浮层失败时列表仍在当前页），+800ms 水合宽限（exec982 选择被重置教训）"
+    },
+    {
+     "after_element": "iba_merge_invoice_span",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=10000;const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=el=>!!(el&&el.getClientRects().length);while(Date.now()-t0<dl){const s=[...document.querySelectorAll('.el-select input')].filter(i=>i.placeholder==='开票')[0];const up=[...document.querySelectorAll('button')].filter(b=>(b.textContent||'').replace(/\\s+/g,'').indexOf('上传发票')>=0&&vis(b));if(s&&s.value.indexOf('合并开票')>=0&&up.length){return{ok:true,sel:s.value,btns:up.length}}}const s=[...document.querySelectorAll('.el-select input')].filter(i=>i.placeholder==='开票')[0];const btns=[...document.querySelectorAll('button')].filter(vis).map(b=>(b.textContent||'').replace(/\\s+/g,'').slice(0,8)).slice(0,20);throw new Error('合并开票选择未粘住 sel='+JSON.stringify(s?s.value:null)+' btns='+JSON.stringify(btns))})()"
+      }
+     ],
+     "_note": "合并开票粘性 tripwire：10s 内 select 值必须=合并开票 且 上传发票按钮可见，否则带现场抛错（防再次静默重置）"
+    },
+    {
+     "after_element": "iba_submit_upload_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const T0=Date.now();const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const INV='${invoice_no}';const byTitle=t=>[...document.querySelectorAll('.el-dialog__wrapper')].find(x=>vis(x)&&((x.querySelector('.el-dialog__title')||{textContent:''}).textContent||'').trim()===t);const forensics=()=>{const dlgs=[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).map(x=>((x.querySelector('.el-dialog__title')||{textContent:''}).textContent||'').trim().slice(0,12)+':'+tt(x).slice(0,26));const toasts=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>(m.textContent||'').trim().slice(0,70));return JSON.stringify({dlgs,toasts}).slice(0,300)};\n// ① importBatch（「您确认要上传吗」）确定 → invoiceAdd 落池\n{let hit=0;const t=Date.now();while(Date.now()-t<15000){const w=[...document.querySelectorAll('.el-dialog__wrapper')].find(x=>vis(x)&&tt(x).indexOf('您确认要上传吗')>=0);if(w){const b=[...w.querySelectorAll('.dialog-footer button')].filter(vis).find(x=>tt(x)==='确定');if(b){b.click();hit=1;break}}}if(!hit)throw new Error('importBatch确认框15s未出现 '+forensics())}\n// ② 等「确认本张」弹层（弹层2）关闭 = invoiceAdd 完成\n{const t=Date.now();while(Date.now()-t<12000){if(![...document.querySelectorAll('.el-dialog__wrapper')].some(x=>vis(x)&&tt(x).indexOf('确认本张')>=0))break;await sleep(400)}}\n// ③ 弹层1 footer「选择系统发票」\n{let hit=0;const t=Date.now();while(Date.now()-t<10000){const l1=byTitle('发票登记');if(l1){const b=[...l1.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='选择系统发票');if(b){b.click();hit=1;break}}await sleep(300)}if(!hit)throw new Error('选择系统发票按钮10s未找到 '+forensics());await sleep(500)}\n// ④ 等系统发票池弹层出现，按 ${invoice_no} 勾选行内 checkbox\n{let pool=null;const t=Date.now();while(Date.now()-t<15000){pool=byTitle('选择系统发票');if(pool)break;await sleep(300)}if(!pool)throw new Error('系统发票池15s未出现 '+forensics());\nlet hit=0;const t2=Date.now();while(Date.now()-t2<10000){pool=byTitle('选择系统发票');if(pool){const row=[...pool.querySelectorAll('tbody tr,.vxe-body--row')].filter(vis).find(r=>tt(r).indexOf(INV)>=0);if(row){const cb=row.querySelector('.vxe-cell--checkbox,.el-checkbox,[class*=\"checkbox\"]');if(cb){cb.click();hit=1;break}}}await sleep(300)}await sleep(600);if(!hit)throw new Error('池内发票行10s未找到/未勾选 '+INV+' '+forensics())}\n// ⑤ 池 footer「确认」（注意非「确定」）→ 等池关 + 弹层1 表出现 ${invoice_no} 行\n{const pool=byTitle('选择系统发票');if(!pool)throw new Error('池弹层已消失 '+forensics());const b=[...pool.querySelectorAll('.dialog-footer button,.el-dialog__footer button')].filter(vis).find(x=>tt(x)==='确认');if(!b)throw new Error('池确认按钮未找到 '+forensics());b.click();\nconst t=Date.now();while(Date.now()-t<10000){if(!byTitle('选择系统发票'))break;await sleep(300)}\nconst t2=Date.now();while(Date.now()-t2<8000){const l1=byTitle('发票登记');if(l1&&[...l1.querySelectorAll('tbody tr,.vxe-body--row')].filter(vis).some(r=>tt(r).indexOf(INV)>=0))break;await sleep(300)}}\n// ⑥ 弹层1 footer「确定」= confirmInvoice(check)→200 自动 submit\n{let hit=0;const t=Date.now();while(Date.now()-t<10000){const l1=byTitle('发票登记');if(l1){const b=[...l1.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='确定');if(b){b.click();hit=1;break}}await sleep(300)}if(!hit)throw new Error('弹层1确定10s未找到 '+forensics())}\n// ⑦ 等弹层1 关闭=登记完成（allocationInvoiceFee check→submit）；300ms 采集 toast（406 等错误 3s 即逝）\n{const errs=[];const t=Date.now();while(Date.now()-t<30000){const toasts=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>(m.textContent||'').trim().slice(0,80));for(const x of toasts)if(errs.indexOf(x)<0)errs.push(x);if(!byTitle('发票登记')){await sleep(800);return{ok:true,full:true,ms:Date.now()-T0,toasts:errs}}await sleep(300)}throw new Error('发票登记30s未完成 toasts='+JSON.stringify(errs).slice(0,200)+' '+forensics())}})()"
+      }
+     ],
+     "_note": "发票登记全链 v5：①importBatch 确定→invoiceAdd 落池；②弹层2 关闭信号；③弹层1「选择系统发票」——源码实证 confirmSystemInvoice(registrationAmount) 才填 formDate.tableData，仅上传不选必「请选择发票！」（exec996 根因）；④池内按 ${invoice_no} 精确勾选（池含历史多轮 11+ 行不隔离）；⑤池 footer「确认」（非确定）→等弹层1 表出现该行；⑥弹层1「确定」=confirmInvoice(check→submit 自动链)→allocationInvoiceFee；⑦30s 等弹层1 关=登记完成，300ms 采集 toast（406 类错误即逝）。金额 7→1 对齐费用折币（probe_select_register2 实证 406）。"
+    },
+    {
+     "after_element": "iba_confirm_one_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=15000;const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const find=()=>{for(const w of document.querySelectorAll('.el-dialog__wrapper')){for(const el of w.querySelectorAll('*')){const c=el.__vue__;if(c&&c.$data&&('upLoadFilelist' in c.$data))return c}}return null};while(Date.now()-t0<dl){const c=find();if(c&&c.pageStatus&&c.pageStatus[c.numberOfPages]==='view'){return{ok:true,ms:Date.now()-t0}}await sleep(400)}const c=find();const toasts=[...document.querySelectorAll('.el-message')].filter(vis).map(m=>(m.textContent||'').trim().slice(0,80));throw new Error('确认本张15s未生效(invoiceAddCheck未过或未返) pageStatus='+(c?JSON.stringify(c.pageStatus):'null')+' toasts='+JSON.stringify(toasts))})()"
+      }
+     ],
+     "_note": "exec994 race 实证：确认本张 click→提交上传 click 零间隔，invoiceAddCheck 未返回时已读 alreadyLen=0→msgError→importBatch 不弹（步骤17『importBatch确认框15s未出现』带弹层现场）。探针同流程 3s 间隔全链 200。轮询 pageStatus[np]==='view'（check 通过的组件态）后再继续"
+    }
+   ],
+   "text_input_rules": [
+    [
+     "UIINVOICE20261030AALKJALJ",
+     "invoice_no",
+     "iba_inv_no_input",
+     "${generate_invoice_number(prefix='UIINVOICE')}"
+    ]
+   ],
+   "textbox_fills": {
+    "请输入内容@1": [
+     "invoice_amount",
+     "iba_amount_input",
+     "1"
+    ]
+   },
+   "noise_fill_literals": [
+    "UIINVOICE",
+    "UIINVOICE20261030"
+   ],
+   "button_behaviors": {
+    "iba_confirm_button": {
+     "role": "absorb"
+    }
+   }
+  },
+  {
+   "key": "s16",
+   "label": "付款需求",
+   "scope": "financialManage/payable/paymentDemand",
+   "scope_label": "付款需求管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "付款需求管理"
+   },
+   "route_field": "s16_route",
+   "route_value": "#/development/financialManage/payable/paymentDemand",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "付款需求管理"
+   ],
+   "elements": {
+    "pr_by_bl_button": {
+     "strategies": {
+      "button": "按提单付款"
+     },
+     "description": "列表页·按提单付款入口"
+    },
+    "pr_edit_link": {
+     "strategies": {
+      "text": "编辑"
+     },
+     "description": "L275 编辑（get_by_text）"
+    },
+    "pr_bl_textarea": {
+     "strategies": {
+      "css": "textarea[placeholder=\"请输入提单号，每行一个\"]"
+     },
+     "description": "L276-277 提单号批量框"
+    },
+    "pr_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "弹层确定"
+    },
+    "pr_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询"
+    },
+    "pr_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "表头全选（fixed-left 克隆，s9/s13/s14 同款；列 col_2741 归一进 css_click_patterns）"
+    },
+    "pr_next_button": {
+     "strategies": {
+      "button": "下一步"
+     },
+     "description": "向导下一步"
+    },
+    "pr_submit_button": {
+     "strategies": {
+      "button": "提交"
+     },
+     "description": "L282 提交（录制可访问名无内空格，首跑取证）"
+    },
+    "pr_approver_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "张乐UI-"
+     },
+     "description": "审批人单选（张乐UI-；s5 fee_lock_approver_radio 跨 scope 不可复用，本 scope 自建）"
+    },
+    "pr_final_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "L284 确认"
+    },
+    "pr_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "L285 确定"
+    }
+   },
+   "radio_picks": {
+    "张乐UI-": "pr_approver_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "pr_select_all_checkbox"
+    ]
+   ],
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "pr_bl_textarea",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "button_overrides": {
+    "按提单付款": "pr_by_bl_button",
+    "编辑": "pr_edit_link",
+    "确定": "pr_confirm_button",
+    "查询": "pr_query_button",
+    "下一步": "pr_next_button",
+    "提交": "pr_submit_button",
+    "确认": "pr_final_confirm_button"
+   },
+   "inject_steps": [
+    {
+     "after_element": "pr_query_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=90000;const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rowCount=()=>{const trs=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis);return trs.filter(tr=>{const tds=[...tr.querySelectorAll('td')].filter(vis);return tds.length>3&&((tr.textContent||'').replace(/\\s+/g,'').indexOf('暂无数据')<0)}).length};let lastQ=Date.now(),tries=0;while(Date.now()-t0<dl){const n=rowCount();if(n>0){return{ok:true,rows:n,ms:Date.now()-t0,retries:tries}}if(Date.now()-lastQ>6000){const btns=[...document.querySelectorAll('button')].filter(b=>vis(b)&&(b.textContent||'').replace(/\\s+/g,'')==='查询');if(btns.length){btns[0].click();tries++;lastQ=Date.now()}}await sleep(1500)}const rows=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis).map(tr=>(tr.textContent||'').replace(/\\s+/g,'').slice(0,40)).slice(0,4);throw new Error('付款向导90s无数据行 retries='+tries+' rows='+JSON.stringify(rows))})()"
+      }
+     ],
+     "_note": "exec993 实证：n15 后秒查 financePayList 0 行（total:0，数据传播延迟；15 分钟后探针同查询 total:2）。查询只读可安全重试：90s 轮询，空表每 6s 重点查询，有数据行即过；超时抛错带行现场"
+    }
+   ]
+  },
+  {
+   "key": "s16b",
+   "label": "付款需求审批",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "route_field": "s16b_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "nav_click_texts": [
+    "审批中心"
+   ],
+   "elements": {
+    "apc3_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "表头全选（col_2 归一；审批中心表无 fixed-left，通用 header selector）"
+    },
+    "apc3_batch_button": {
+     "strategies": {
+      "button": "批量审核"
+     },
+     "description": "批量审核"
+    },
+    "apc3_approve_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "通过"
+     },
+     "description": "审核结果·通过（s6 apc_approve_radio 同款，scope 内自建）"
+    },
+    "apc3_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "确认"
+    },
+    "apc3_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "radio_picks": {
+    "通过": "apc3_approve_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper.*vxe-header--row.*vxe-cell--checkbox",
+     "apc3_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "批量审核": "apc3_batch_button",
+    "确认": "apc3_confirm_button",
+    "确定": "apc3_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "apc3_select_all_checkbox",
+     "steps": [
+      {
+       "action": "wait",
+       "value": "3000",
+       "_note": "审批队列秒级可见（auditPage API 实测），无需长盲等——3s 缓冲 + 2min 轮询兜底；旧 8min 盲等是把页面晾进冻结的元凶"
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const ready=()=>[...document.querySelectorAll('.vxe-table--header-wrapper .vxe-header--row .vxe-cell--checkbox')].some(c=>vis(c)&&c.className.indexOf('is--disabled')<0);const fresh=()=>{const b=[...document.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='刷新');if(b)b.click()};const onRoute=()=>location.hash.indexOf('approvalCenter')>=0;const fixRoute=()=>{const t=[...document.querySelectorAll('.tags-view-item,[class*=\"tags-view\"] li')].filter(vis).find(x=>tt(x)==='审批中心');if(t)t.click();else location.hash='#/development/workbench/approvalCenter'};if(!onRoute()){fixRoute();await sleep(2500)}const t0=Date.now(),MAX=120000;let n=0;while(Date.now()-t0<MAX){if(!onRoute()){fixRoute();await sleep(2500)}if(ready()){await sleep(1200);if(ready())return{ok:true,waited:Math.round((Date.now()-t0)/1000),refreshes:n}}fresh();n++;await sleep(20000)}throw new Error('待审数据 8 分钟未就绪（可点全选未出现，刷新 ×'+n+'）')})()",
+       "_note": "exec1006 实捕：前节点提交后 ~2s SUT 延迟导航（#/paymentBl）抢走审批中心页——轮询加路由守卫，每轮校验+夺回（点 tags-view 页签或改 hash）"
+      }
+     ],
+     "_note": "审批中心待审 ~15 分钟周期同步：wait 8 分钟（driver 侧）+ evaluate 轮询 8 分钟（每 20s 点刷新，判据=与 click 同义的非 disabled 可见全选；数据早就绪秒回）＝16 分钟总覆盖。exec1002 教训：单 evaluate >10 分钟在平台上无终态挂起，必须拆短"
+    }
+   ]
+  },
+  {
+   "key": "s17",
+   "label": "付款单核销",
+   "scope": "financialManage/payable/paymentOrder",
+   "scope_label": "付款单管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "付款单管理"
+   },
+   "route_field": "s17_route",
+   "route_value": "#/development/financialManage/payable/paymentOrder",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "付款单管理"
+   ],
+   "elements": {
+    "po_row_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper.fixed-left--wrapper:visible .vxe-body--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "行勾选（body fixed-left 克隆；录制 col_2813+row--hover，无 hover 态 css 归一首行）"
+    },
+    "po_writeoff_button": {
+     "strategies": {
+      "button": "付款核销"
+     },
+     "description": "付款核销入口"
+    },
+    "po_submit_button": {
+     "strategies": {
+      "button": "提交核销"
+     },
+     "description": "提交核销"
+    },
+    "po_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "button_overrides": {
+    "付款核销": "po_writeoff_button",
+    "提交核销": "po_submit_button",
+    "确定": "po_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "po_writeoff_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,' ');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const onRoute=()=>location.hash.indexOf('paymentOrder')>=0;const back=()=>{location.hash='#/development/financialManage/payable/paymentOrder'};if(!onRoute()){back();await sleep(2500)}const wrap=sel=>[...document.querySelectorAll(sel)].filter(vis);const mainRows=()=>wrap('.vxe-table--body-wrapper:not(.fixed-left--wrapper):not(.fixed-right--wrapper) .vxe-body--row');const leftRows=()=>wrap('.vxe-table--body-wrapper.fixed-left--wrapper .vxe-body--row');const mC=document.cookie.match(/Admin-Token=([^;]+)/);if(!mC)throw new Error('Admin-Token cookie 不可读');const d0=new Date(new Date().setHours(0,0,0,0)).getTime();const QB={page_no:1,page_size:10,order_no:'',create_time:[d0,d0+86399999],status:['2'],sort_field:'generate_time',sort_order:'desc',params:{},create_time_start:String(Math.floor(d0/1000)),create_time_end:String(Math.floor((d0+86399999)/1000))};const qBtn=()=>[...document.querySelectorAll('button')].filter(vis).find(b=>tt(b).trim()==='查询');const t0=Date.now(),MAX=90000,nowS=t0/1000;let n=0,apiErr='';while(Date.now()-t0<MAX){if(!onRoute()){back();await sleep(2500)}let j=null;try{j=await(await fetch('/api/finance/payForm/formPage',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8','Authorization':decodeURIComponent(mC[1])},body:JSON.stringify(QB)})).json()}catch(e){apiErr=String(e)}const rows=(j&&j.data&&(j.data.data||j.data.list||j.data.rows))||[];const mine=rows.find(r=>String(r.pay_form_no||'').length>8&&String(r.writeoff_status)==='1'&&nowS-Number(r.generate_time||0)<600);const FFD=mine&&mine.pay_form_no;if(FFD){let mi=mainRows().findIndex(r=>tt(r).indexOf(FFD)>=0);if(mi<0){const q=qBtn();if(q)q.click();await sleep(2000);mi=mainRows().findIndex(r=>tt(r).indexOf(FFD)>=0)}if(mi>=0){const findL=()=>leftRows().find(r=>tt(r).indexOf(FFD)>=0);const tC=Date.now();let clicks=0,lastClick=0;while(Date.now()-tC<10000){const lr=findL();if(!lr){await sleep(500);continue}const cb=lr.querySelector('.vxe-cell--checkbox');if(!cb)throw new Error(FFD+' 勾选框缺失 mi='+mi);if(cb.classList.contains('is--checked'))return{ok:true,pay_form_no:FFD,mi:mi,clicks:clicks,ticks:n,waited:Math.round((Date.now()-t0)/1000)+'s',chkWait:Math.round((Date.now()-tC)/1000)+'s'};if(cb.classList.contains('is--disabled'))throw new Error(FFD+' 勾选框禁用 mi='+mi);if(Date.now()-lastClick>=2000){cb.click();clicks++;lastClick=Date.now()}await sleep(400)}throw new Error(FFD+' 勾选10秒未生效(is--checked) mi='+mi+' clicks='+clicks)}}n++;const q=qBtn();if(q)q.click();await sleep(3000)}throw new Error('90 秒未定位到本用例付款单(ticks='+n+' apiErr='+apiErr.slice(0,60)+')')})()",
+       "_note": "exec1011 v3 括号失衡修复（Unexpected token ')'）；FFD 定位方案不变：页内 fetch formPage 最新未核销+10 分钟内生成，按 pay_form_no 定位勾选，90s 快败"
+      }
+     ],
+     "_note": "v5→v6（exec1045 定案）：截图2582 实证抛'勾选未生效'时复选框实际已勾上——vxe class 翻转异步，2次×700ms 提前放弃。v6 内层改 10s 观察循环：fresh 重找行（防重建后 detached），400ms 轮询 is--checked，点击节流 2s/次（防翻转在途补刀取消），disabled 立抛。左列真相模型不变（fixed-left 唯一交互层，is--checked 唯一状态信号）"
+    },
+    {
+     "after_element": "po_writeoff_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const wrap=()=>[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).find(w=>[...w.querySelectorAll('button')].some(b=>tt(b)==='提交核销'));const leftRows=()=>[...document.querySelectorAll('.vxe-table--body-wrapper.fixed-left--wrapper .vxe-body--row')].filter(vis);const mC=document.cookie.match(/Admin-Token=([^;]+)/);if(!mC)throw new Error('Admin-Token cookie 不可读');const d0=new Date(new Date().setHours(0,0,0,0)).getTime();const QB={page_no:1,page_size:10,order_no:'',create_time:[d0,d0+86399999],status:['2'],sort_field:'generate_time',sort_order:'desc',params:{},create_time_start:String(Math.floor(d0/1000)),create_time_end:String(Math.floor((d0+86399999)/1000))};const fresh=async()=>{let j=null;try{j=await(await fetch('/api/finance/payForm/formPage',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8','Authorization':decodeURIComponent(mC[1])},body:JSON.stringify(QB)})).json()}catch(e){}const rows=(j&&j.data&&(j.data.data||j.data.list||j.data.rows))||[];const nowS=Date.now()/1000;const m=rows.find(r=>String(r.pay_form_no||'').length>8&&String(r.writeoff_status)==='1'&&nowS-Number(r.generate_time||0)<900);return(m&&m.pay_form_no)||''};const toolbarBtn=()=>[...document.querySelectorAll('button')].filter(vis).find(b=>tt(b)==='付款核销'&&!b.closest('.el-dialog__wrapper'));const ensureChecked=async FFD=>{const find=()=>leftRows().find(r=>tt(r).indexOf(FFD)>=0);const lr=find();if(!lr)return'no-row';const cb=lr.querySelector('.vxe-cell--checkbox');if(!cb)return'no-cb';if(cb.classList.contains('is--checked'))return'ok';if(cb.classList.contains('is--disabled'))return'disabled';cb.click();await sleep(600);const lr2=find();const cb2=lr2?lr2.querySelector('.vxe-cell--checkbox'):null;return(cb2&&cb2.classList.contains('is--checked'))?'ok':'fail'};const closeDialog=async()=>{const w0=wrap();if(!w0)return'no-dialog';const cancel=[...w0.querySelectorAll('button')].filter(vis).find(b=>tt(b)==='取消');if(cancel){cancel.click();await sleep(1200)}const w1=wrap();if(w1){const x=w1.querySelector('.el-dialog__headerbtn');if(x){x.click();await sleep(1000)}}return wrap()?'still-open':'closed'};const readState=()=>{const w=wrap();if(!w)return null;const inputs=[...w.querySelectorAll('input,textarea')].filter(vis);const vals=inputs.map(i=>i.value||'');const btn=[...w.querySelectorAll('button')].find(b=>tt(b)==='提交核销');return{vals:vals,btnDis:btn?btn.className.indexOf('is-disabled')>=0:null}};const waitReady=async ms=>{const t=Date.now();let last='',stable=0;while(Date.now()-t<ms){const s=readState();if(!s){last='';stable=0;await sleep(600);continue}const snap=JSON.stringify(s.vals);if(snap===last)stable+=400;else{stable=0;last=snap}const filled=s.vals.filter(v=>v!=='').length;if(s.vals.length&&stable>=1200&&filled>0&&s.btnDis===false)return{filled:filled,ms:Math.round(Date.now()-t)};await sleep(400)}return null};const t0=Date.now();const log=[];let lastFFD='';await sleep(1200);let w=wrap();const tA=Date.now();while(!w&&Date.now()-tA<10000){const FFD=await fresh();if(!FFD){log.push('no-ffd')}else{lastFFD=FFD;log.push('chk:'+await ensureChecked(FFD));const b=toolbarBtn();if(b){b.click();log.push('clk')}else log.push('no-btn')}await sleep(2000);w=wrap()}if(!w){throw new Error('付款核销10秒未开弹窗 FFD='+lastFFD+' log='+JSON.stringify(log))}const r=await waitReady(10000);if(r)return{ok:true,mode:'wait',filled:r.filled,FFD:lastFFD,waited:Math.round((Date.now()-t0)/1000)+'s',log:log};log.push('empty');log.push(await closeDialog());const F2=await fresh();if(F2){lastFFD=F2;log.push('chk2:'+await ensureChecked(F2));const b2=toolbarBtn();if(b2){b2.click();log.push('clk2')}}const r2=await waitReady(10000);if(r2)return{ok:true,mode:'recovered',filled:r2.filled,FFD:lastFFD,waited:Math.round((Date.now()-t0)/1000)+'s',log:log};const sf=readState();throw new Error('核销弹窗10秒数据未就绪: '+(sf?('fields='+sf.vals.length+' filled='+sf.vals.filter(v=>v!=='').length+' btnDis='+sf.btnDis):'no-dialog')+' FFD='+lastFFD+' log='+JSON.stringify(log))})()",
+       "_note": "exec1013 截图实锤：步骤4 点击时勾选已被迟到重渲染冲掉→无弹窗。自愈开门：无弹窗→查勾选→重选+背靠背同栈点付款核销（竞速窗口=0），循环25s；弹窗后赋值就绪判定30s"
+      }
+     ],
+     "_note": "v5：ensureChecked 改左列真相模型（同 before 守卫）；其余维持 v4 节奏（用户定案 10s 封顶）：1.2s 自然弹窗→10s 内无弹窗补勾重点→弹窗内 waitReady 10s→仍空关弹窗重开一轮。探针实锤：正确选中后弹窗「应付核销」立开且字段预填（含 802050200686868）"
+    },
+    {
+     "before_element": "po_ok_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const confirmUp=()=>{if([...document.querySelectorAll('.el-message-box__wrapper')].some(vis))return 'message-box';const ds=[...document.querySelectorAll('.el-dialog')].filter(vis).filter(x=>![...x.querySelectorAll('button')].some(b=>tt(b)==='提交核销')).filter(x=>[...x.querySelectorAll('button')].some(b=>tt(b)==='确定'));return ds.length?'dialog':''};const t0=Date.now(),MAX=45000;let tries=0;while(Date.now()-t0<MAX){const c=confirmUp();if(c)return{ok:true,confirm:c,tries,waited:Math.round((Date.now()-t0)/1000)+'s'};if(tries<6&&Date.now()-t0>=2500){const c2=confirmUp();if(c2)return{ok:true,confirm:c2,tries,waited:Math.round((Date.now()-t0)/1000)+'s'};const b=[...document.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='提交核销');if(b){b.click();tries++}}await sleep(1500)}throw new Error('二次确认弹窗 45 秒未出现（重点提交核销 ×'+tries+'）')})()",
+       "_note": "二次确认兜底（用户建议）：提交核销点后 2.5s 无二次确认则重点（≤6 次/45s），覆盖首次点击落在赋值完成边界的情形"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "s18",
+   "label": "联动应收开票·按提单开票（穿透）",
+   "scope": "financialManage/receivable/invoiceBatch",
+   "scope_label": "应收开票批次管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应收开票批次管理"
+   },
+   "route_field": "s18_route",
+   "route_value": "#/development/financialManage/receivable/invoiceBatch",
+   "nav_click_texts": [
+    "财务管理",
+    "应收管理",
+    "应收开票批次管理"
+   ],
+   "elements": {
+    "ri_by_bl_button": {
+     "strategies": {
+      "button": "按提单开票"
+     },
+     "description": "列表页·按提单开票入口（s9 同款复用）"
+    },
+    "ri_cross_customer_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "跨下单客户"
+     },
+     "description": "开票范围·跨下单客户（s9 同款）"
+    },
+    "ri_settle_object_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"应收结算对象\") input[placeholder=\"请选择\"]"
+     },
+     "description": "应收结算对象下拉（s9 同款 label 锚定）"
+    },
+    "ri_fee_entity_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"费用主体\") input[placeholder=\"请选择\"]"
+     },
+     "description": "费用主体下拉（s9 同款）"
+    },
+    "ri_bl_search_input": {
+     "strategies": {
+      "css": "input[placeholder=\"请输入提单号\"]"
+     },
+     "description": "提单号检索框（s9 同款）"
+    },
+    "ri_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询（s9 同款）"
+    },
+    "ri_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "提单列表表头全选（fixed-left 克隆，s9 实证；录制 col_2868 归一）"
+    },
+    "ri_next_button": {
+     "strategies": {
+      "button": "下一步"
+     },
+     "description": "向导下一步"
+    },
+    "ri_goset_button": {
+     "strategies": {
+      "text": "去设置"
+     },
+     "description": "合并开票税类映射未设提示·去设置入口"
+    },
+    "ri_tax_cell_selector": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible td input[placeholder=\"请选择\"]"
+     },
+     "description": "税类映射弹层·税类下拉（首版粗锚定，跑报告后按 dump 校正）"
+    },
+    "ri_tax_item_text": {
+     "strategies": {
+      "css": ".el-select-dropdown:visible .el-select-dropdown__item:has-text(\"国际货物运输代理海运费\")"
+     },
+     "description": "税类选项·海运费（exec1016 改版：仅可见 popper 内选项，绕开隐藏副本）"
+    },
+    "ri2_reg_flag_selector": {
+     "strategies": {
+      "css": ".el-form-item input[placeholder=\"请选择\"]:visible >> nth=0"
+     },
+     "description": "穿透 step2·首下拉（录制 .first→listitem 否；标签未知粗锚定，报告后校正）"
+    },
+    "ri2_merge_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"开票形式\") input[placeholder=\"请选择\"]"
+     },
+     "description": "穿透 step2·开票形式下拉（label 锚定→合并开票）"
+    },
+    "ri2_bank_selector": {
+     "strategies": {
+      "css": ".el-form-item:has-text(\"销售方账户\") input[placeholder=\"请选择\"]"
+     },
+     "description": "穿透 step2·销售方账户下拉（label 锚定；240346763134 已下线→802050200686868）"
+    },
+    "ri_submit_button": {
+     "strategies": {
+      "button": "提交"
+     },
+     "description": "向导提交"
+    },
+    "ri_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "提交确认（s9 同款双形态）"
+    },
+    "ri_cancel_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"取消\"), .el-dialog__wrapper:visible button:has-text(\"取消\")"
+     },
+     "description": "成功框·取消（s9 同款 :visible 限定）"
+    }
+   },
+   "radio_picks": {
+    "跨下单客户": "ri_cross_customer_radio"
+   },
+   "nth_select_guesses": {
+    "1@0": [
+     "recv_fee_entity",
+     "ri_settle_object_selector",
+     "穿透·应收结算对象（检索词联→易汇联全文 pick）"
+    ],
+    "2@0": [
+     "paya_fee_entity",
+     "ri_fee_entity_selector",
+     "穿透·费用主体（检索词道→易航道全文 pick）"
+    ],
+    "3@0": [
+     "p_bank2_account",
+     "ri2_bank_selector",
+     "穿透 step2·银行账号 240346763134（销售方账户）"
+    ],
+    "1@1": [
+     "p_merge_type",
+     "ri2_merge_selector",
+     "穿透 step2·nth(1) 二次出现=合并开票"
+    ]
+   },
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "ri_bl_search_input",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "ri_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "按提单开票": "ri_by_bl_button",
+    "查询": "ri_query_button",
+    "下一步": "ri_next_button",
+    "提交": "ri_submit_button",
+    "确定": "ri_confirm_button",
+    "取消": "ri_cancel_button",
+    "国际货物运输代理海运费": "ri_tax_item_text"
+   },
+   "field_suggestions": {
+    "p_merge_type": "合并开票",
+    "p_bank2_account": "802050200686868"
+   },
+   "inject_steps": [
+    {
+     "after_element": "ri_query_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=90000;const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rowCount=()=>{const trs=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis);return trs.filter(tr=>{const tds=[...tr.querySelectorAll('td')].filter(vis);return tds.length>3&&((tr.textContent||'').replace(/\\s+/g,'').indexOf('暂无数据')<0)}).length};let lastQ=Date.now(),tries=0;while(Date.now()-t0<dl){const n=rowCount();if(n>0){return{ok:true,rows:n,ms:Date.now()-t0,retries:tries}}if(Date.now()-lastQ>6000){const btns=[...document.querySelectorAll('button')].filter(b=>vis(b)&&(b.textContent||'').replace(/\\s+/g,'')==='查询');if(btns.length){btns[0].click();tries++;lastQ=Date.now()}}await sleep(1500)}const rows=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis).map(tr=>(tr.textContent||'').replace(/\\s+/g,'').slice(0,40)).slice(0,4);throw new Error('穿透向导90s无数据行 retries='+tries+' rows='+JSON.stringify(rows))})()"
+      }
+     ],
+     "_note": "穿透费用可开票状态传播（前序核销完成→费用进入可开票）：90s 轮询重点查询，有行即过（s16 同款）"
+    },
+    {
+     "before_element": "ri_tax_item_text",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 300
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const opt=()=>[...document.querySelectorAll('.el-select-dropdown__item')].filter(vis).find(x=>(x.textContent||'').replace(/\\s+/g,'').indexOf('国际货物运输代理海运费')>=0);const t0=Date.now();let opened=0;while(Date.now()-t0<8000){if(opt())return{ok:true,opened:opened};const inp=[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).flatMap(w=>[...w.querySelectorAll('td input[placeholder=\\\"请选择\\\"]')]).filter(vis)[0];if(inp){inp.click();opened++}await sleep(700)}throw new Error('发票项目下拉 8s 未见目标选项 opened='+opened)})()"
+      },
+      {
+       "action": "wait",
+       "value": 200
+      }
+     ],
+     "_note": "exec1016 步骤16 前置：确保发票项目下拉已展开（popper 不保持展开的自愈）"
+    },
+    {
+     "after_element": "ri_tax_item_text",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 500
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const vis=e=>!!(e&&e.getClientRects().length);const getRow=()=>{const ws=[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);if(!ws.length)return null;const dlg=ws[ws.length-1];return dlg.querySelector('tr.el-table__row')};const rd=()=>{const row=getRow();if(!row)return[];const sels=[...row.querySelectorAll('.el-select')].filter(s=>vis(s));return sels.map(s=>{const v=s.__vue__;return v?String(v.value==null?'':v.value):''})};const has=v=>v.length>=2&&v[0]!==''&&v[1]!=='';let vals=rd();if(has(vals))return{ok:true,source:'pre',vals};const targets=['国际货物运输代理海运费','9%'];const setOne=async text=>{const row=getRow();if(!row)return false;const sels=[...row.querySelectorAll('.el-select')].filter(s=>vis(s));for(let ci=0;ci<sels.length;ci++){if((rd()[ci]||'')!=='')continue;const sel=sels[ci];const v=sel.__vue__;const i=sel.querySelector('input');if(v.focus)v.focus();if(i)i.click();else sel.click();const t0=Date.now();while(Date.now()-t0<8000){const dd=v.$children.find(c=>c.$options.name==='ElSelectDropdown');if(dd&&dd.$el){const li=[...dd.$el.querySelectorAll('li')].find(l=>(l.textContent||'').trim()===text);if(li&&li.getClientRects().length){li.click();return true}}await sleep(250)}}return false};for(let k=0;k<2&&!has(vals);k++){await setOne(targets[0]);await sleep(500);await setOne(targets[1]);await sleep(500);vals=rd()}if(has(vals))return{ok:true,source:'row-fill',vals};throw new Error('行内发票项目/税率校验失败 vals='+JSON.stringify(vals))})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "s14 同款行级校验/兜底：发票项目+税率9% vm 读取，空则行内 vm 点选补填"
+    },
+    {
+     "before_element": "ri_submit_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const n=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const t0=Date.now();let seen=0,reclicks=0;const findBtn=t=>[...document.querySelectorAll('button')].filter(vis).find(x=>n(x)===t);const dumpErrs=()=>[...document.querySelectorAll('.el-form-item__error,.el-message')].filter(vis).map(n).filter(Boolean).slice(0,6);while(Date.now()-t0<90000){const b=findBtn('提交');if(b&&!(b.disabled||b.className.indexOf('is-disabled')>=0))return{ok:true,waited:Math.round((Date.now()-t0)/1000)+'s',reclicks,seen};if(b)seen++;if(Date.now()-t0>6000&&reclicks<4){const lbl=[...document.querySelectorAll('.el-form-item__label')].filter(vis).some(x=>n(x).indexOf('开票形式')>=0);const nxt=findBtn('下一步');if(lbl&&nxt&&!(nxt.disabled||nxt.className.indexOf('is-disabled')>=0)){nxt.click();reclicks++;await sleep(1500);continue}}await sleep(700)}const btns=[...document.querySelectorAll('button')].filter(vis).map(n).slice(0,10);throw new Error('批次预览 90s 未见可用提交按钮 seen='+seen+' reclicks='+reclicks+' errs='+JSON.stringify(dumpErrs())+' btns='+JSON.stringify(btns))})()"
+      }
+     ],
+     "_note": "exec1019 步骤25：v1 30s 纯等不够（1017 ~20s 进预览、1019 30s 未进，后端汇总波动）。v2=90s 预算+每8s第二步重点(≤4次,开票形式label守卫)+失败转储校验错误/toast"
+    },
+    {
+     "after_element": "ri2_merge_selector",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 400
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const n=x=>(x.textContent||'').replace(/\\s+/g,'');const fis=()=>[...document.querySelectorAll('.el-form-item')].filter(vis).filter(f=>n(f.querySelector('.el-form-item__label'))==='*发票类型');const cur=()=>{const ms=fis();const f=ms.length?ms[ms.length-1]:null;if(!f)return null;const i=f.querySelector('input');return i?(i.value||''):null};let v=cur();if(v)return{ok:true,source:'pre',val:v};const ms=fis();if(!ms.length)throw new Error('发票类型表单项未定位(精确*发票类型)');const f=ms[ms.length-1];const sel=f.querySelector('.el-select')||f;const vm=sel.__vue__;const i=sel.querySelector('input');if(vm&&vm.focus)vm.focus();if(i)i.click();else sel.click();const t0=Date.now();let via='';while(Date.now()-t0<8000){if(vm){const dd=vm.$children.find(c=>c.$options.name==='ElSelectDropdown');if(dd&&dd.$el){const li=[...dd.$el.querySelectorAll('li')].find(l=>n(l).indexOf('数电普')>=0);if(li&&li.getClientRects().length){li.click();via='vm-dd';break}}}const g=[...document.querySelectorAll('.el-select-dropdown')].filter(vis).flatMap(d=>[...d.querySelectorAll('li')]).filter(vis).find(l=>n(l).indexOf('数电普')>=0);if(g){g.click();via='global-dd';break}await sleep(250)}const t1=Date.now();while(Date.now()-t1<3000){v=cur();if(v)return{ok:true,source:'fill',via,val:v};await sleep(250)}throw new Error('发票类型兜底点选失败 via='+via+' cur='+JSON.stringify(cur()))})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "v4：选项实为 增值税数电普通发票/专用发票（探针实证），数电普 精确匹配不存在→包含匹配；余同 v3"
+    }
+   ],
+   "_note": "穿透=按提单开票向导第二轮（跨下单客户：联→道）。与 s9 同向导异参：结算对象/费用主体互换为recv_fee_entity/paya_fee_entity，step2 三下拉（否/银行/合并开票）+去设置税类映射是 s9 未见的屏——首版按录制粗编，dry-run 报告看 dropped 再迭代。合并开票去设置弹层链（去设置→税类选→确定）在converter 无现成钩子，预计落 inject/手工元素，报告驱动。",
+   "noise_buttons": [],
+   "button_behaviors": {
+    "ri_cancel_button": {
+     "role": "tolerant_click",
+     "text": "取消",
+     "timeout_ms": 25000,
+     "route_leave": "invoiceBatchBl",
+     "wait_ms": 300
+    }
+   },
+   "text_click_rules": {
+    "请选择": "ri_tax_cell_selector"
+   }
+  },
+  {
+   "key": "s19",
+   "label": "开票审批（穿透）",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "route_field": "s19_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "nav_click_texts": [
+    "审批中心"
+   ],
+   "elements": {
+    "apc3_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "表头全选（审批中心表无 fixed-left，通用 header selector；s16b 同款）"
+    },
+    "apc3_batch_button": {
+     "strategies": {
+      "button": "批量审核"
+     },
+     "description": "批量审核"
+    },
+    "apc3_approve_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "通过"
+     },
+     "description": "审核结果·通过"
+    },
+    "apc3_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "确认"
+    },
+    "apc3_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "radio_picks": {
+    "通过": "apc3_approve_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper.*vxe-header--row.*vxe-cell--checkbox",
+     "apc3_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "批量审核": "apc3_batch_button",
+    "确认": "apc3_confirm_button",
+    "确定": "apc3_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "apc3_select_all_checkbox",
+     "steps": [
+      {
+       "action": "wait",
+       "value": "3000",
+       "_note": "审批队列秒级可见（auditPage API 实测），无需长盲等——3s 缓冲 + 2min 轮询兜底；旧 8min 盲等是把页面晾进冻结的元凶"
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const ready=()=>[...document.querySelectorAll('.vxe-table--header-wrapper .vxe-header--row .vxe-cell--checkbox')].some(c=>vis(c)&&c.className.indexOf('is--disabled')<0);const fresh=()=>{const b=[...document.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='刷新');if(b)b.click()};const onRoute=()=>location.hash.indexOf('approvalCenter')>=0;const fixRoute=()=>{const t=[...document.querySelectorAll('.tags-view-item,[class*=\"tags-view\"] li')].filter(vis).find(x=>tt(x)==='审批中心');if(t)t.click();else location.hash='#/development/workbench/approvalCenter'};if(!onRoute()){fixRoute();await sleep(2500)}const t0=Date.now(),MAX=120000;let n=0;while(Date.now()-t0<MAX){if(!onRoute()){fixRoute();await sleep(2500)}if(ready()){await sleep(1200);if(ready())return{ok:true,waited:Math.round((Date.now()-t0)/1000),refreshes:n}}fresh();n++;await sleep(20000)}throw new Error('待审数据 8 分钟未就绪（可点全选未出现，刷新 ×'+n+'）')})()",
+       "_note": "exec1006 实捕：前节点提交后 ~2s SUT 延迟导航（#/paymentBl）抢走审批中心页——轮询加路由守卫，每轮校验+夺回（点 tags-view 页签或改 hash）"
+      }
+     ],
+     "_note": "审批待审 ~15 分钟周期同步：wait 8 分钟（driver 侧）+ evaluate 轮询 8 分钟（每 20s 点刷新，判据=与 click 同义）；单 evaluate >10 分钟在平台挂起，必须拆短"
+    }
+   ],
+   "_note": "穿透开票批次审批：与 s16b 同页面同交互（元素同 scope 复用），等待对同款。"
+  },
+  {
+   "key": "s20",
+   "label": "应收申请·生成应付开票（穿透）",
+   "scope": "financialManage/receivable/invoiceApplication",
+   "scope_label": "应收开票申请管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "应收开票申请管理"
+   },
+   "route_field": "s20_route",
+   "route_value": "#/development/financialManage/receivable/invoiceApplication",
+   "nav_click_texts": [
+    "应收开票批次管理",
+    "应收开票申请管理"
+   ],
+   "elements": {
+    "ra_gen_payable_button": {
+     "strategies": {
+      "button": "生成应付开票批次"
+     },
+     "description": "生成应付开票批次入口"
+    },
+    "ra_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "生成确认·确定"
+    },
+    "ra_detail_link": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper button:visible:has-text(\"详情\")"
+     },
+     "description": "列表行·详情（录制 .first）"
+    },
+    "ra_invoice_mode_selector": {
+     "strategies": {
+      "role": "textbox",
+      "role_extra": "开票"
+     },
+     "description": "开票形式下拉（录制 textbox name=开票，选合并开票）"
+    },
+    "ra_merge_invoice_text": {
+     "strategies": {
+      "css": ".el-select-dropdown:visible .el-select-dropdown__item:has-text('合并开票')"
+     },
+     "description": "开票形式选项·合并开票"
+    },
+    "ra_upload_button": {
+     "strategies": {
+      "button": "上传发票"
+     },
+     "description": "上传发票入口"
+    },
+    "ra_file_input": {
+     "strategies": {
+      "css": "input[name=\"file\"]"
+     },
+     "description": "发票文件 input（set_input_files）"
+    },
+    "ra_inv_no_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='请输入内容']:visible >> nth=0"
+     },
+     "description": "上传弹层·发票号输入（s15 iba_inv_no_input 同款 nth=0）"
+    },
+    "ra_amt_b_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='请输入内容']:visible >> nth=1"
+     },
+     "description": "上传弹层·金额输入（录制 0.9→6.3 终值 6.3）"
+    },
+    "ra_amt_a_input": {
+     "strategies": {
+      "css": ".el-dialog__wrapper:visible input[placeholder='请输入内容']:visible >> nth=3"
+     },
+     "description": "上传弹层·税率/金额输入（0.9）"
+    },
+    "ra_confirm_each_button": {
+     "strategies": {
+      "button": "确认本张"
+     },
+     "description": "确认本张（两次：先确认后主体 radio 再确认）"
+    },
+    "ra_entity_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "主体"
+     },
+     "description": "开票主体 radio"
+    },
+    "ra_submit_upload_button": {
+     "strategies": {
+      "button": "提交上传"
+     },
+     "description": "提交上传"
+    },
+    "ra_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "提交上传确认·确定（弹层内）"
+    },
+    "ra_final_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "最终确定"
+    }
+   },
+   "radio_picks": {
+    "主体": "ra_entity_radio"
+   },
+   "upload_rules": {
+    "input[name=\"file\"]@0": [
+     "p_invoice_file2",
+     "ra_file_input"
+    ]
+   },
+   "textbox_fills": {
+    "请输入内容@0": [
+     "p_invoice_no2",
+     "ra_inv_no_input",
+     "${generate_invoice_number(prefix='UIINVOICE')}"
+    ],
+    "请输入内容@1": [
+     "p_recv_amt_b",
+     "ra_amt_b_input",
+     "6.3"
+    ],
+    "请输入内容@3": [
+     "p_recv_amt_a",
+     "ra_amt_a_input",
+     "0.9"
+    ]
+   },
+   "button_overrides": {
+    "生成应付开票批次": "ra_gen_payable_button",
+    "详情": "ra_detail_link",
+    "上传发票": "ra_upload_button",
+    "确认本张": "ra_confirm_each_button",
+    "提交上传": "ra_submit_upload_button",
+    "确定": "ra_confirm_button"
+   },
+   "field_suggestions": {
+    "p_invoice_file2": "联to道发票.pdf",
+    "p_merge_type2": "合并开票"
+   },
+   "_note": "应收开票申请→生成应付开票批次→详情→上传发票(联to道发票.pdf)+金额三填（0.9 税率/6.3 金额/0.9）→确认本张→主体→确认本张→提交上传→确定→确定。镜像 s15 上传链但 receivable scope；发票文件需先传平台文件中心取 id（invoice_file=924 同法），首版先以文件名占位，跑报告校正。 | exec1025 R06 修复：930 宽泛css→s15实证 role textbox 开票；924/931 对齐 s15 可见作用域（同向导页同流程）",
+   "textbox_popper_picks": {
+    "开票@0": [
+     "p_merge_type2",
+     "ra_invoice_mode_selector"
+    ]
+   },
+   "inject_steps": [
+    {
+     "before_element": "ra_upload_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 400
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const n=x=>(x.textContent||'').replace(/\\s+/g,'');const inp=()=>[...document.querySelectorAll('input')].find(x=>(x.placeholder||'')==='开票'&&vis(x));const cur=()=>{const i=inp();return i?(i.value||''):''};const hasUp=()=>[...document.querySelectorAll('button')].some(b=>vis(b)&&n(b)==='上传发票');const pick=async txt=>{const i=inp();if(!i)throw new Error('开票下拉未定位');const sel=i.closest('.el-select');const vm=sel?sel.__vue__:null;if(vm&&vm.focus)vm.focus();i.click();const t0=Date.now();while(Date.now()-t0<8000){const li=[...document.querySelectorAll('.el-select-dropdown li')].filter(vis).find(l=>n(l)===txt);if(li){li.click();return true}await sleep(250)}return false};let v=cur();let toggled=0;if(v!=='合并开票'){if(!(await pick('合并开票')))throw new Error('合并开票选项未现');const t1=Date.now();while(Date.now()-t1<3000){v=cur();if(v==='合并开票')break;await sleep(250)}}let tw=Date.now();while(Date.now()-tw<3000){if(hasUp())return{ok:true,via:'direct'};await sleep(400)}if(!(await pick('按提单开票')))throw new Error('按提单开票选项未现');await sleep(1500);if(!(await pick('合并开票')))throw new Error('唤醒二选合并开票未现');toggled=1;tw=Date.now();while(Date.now()-tw<8000){if(hasUp())return{ok:true,via:'toggle'};await sleep(400)}const btns=[...document.querySelectorAll('button')].filter(vis).map(n).slice(0,18);throw new Error('上传发票按钮未现 toggled='+toggled+' val='+cur()+' btns='+JSON.stringify(btns))})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "v2：exec1027 值落而区不开（change 处理器在数据未就绪时抛错，console 实锤）。新增切换唤醒：按提单开票→合并开票（probe v9 实证）"
+    },
+    {
+     "before_element": "ra_inv_no_input",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 600
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const n=x=>(x.textContent||'').replace(/\\s+/g,'');const wrap=()=>[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).find(w=>[...w.querySelectorAll('.el-form-item__label')].some(l=>n(l).replace(/^\\*/,'')==='发票币制'));\nlet w=null;const t0=Date.now();while(Date.now()-t0<10000){w=wrap();if(w)break;await sleep(400)}if(!w)throw new Error('币制表单10s未现');\nconst items=()=>[...w.querySelectorAll('.el-form-item')].filter(vis);const lb=f=>n(f.querySelector('.el-form-item__label')).replace(/^\\*/,'');const fi=()=>items().find(f=>lb(f)==='发票币制');const cur=()=>{const f=fi();const i=f?f.querySelector('input'):null;return i?(i.value||''):''};\nlet ocr='';const t1=Date.now();while(Date.now()-t1<12000){const nf=items().find(f=>lb(f)==='发票号码');const ni=nf?nf.querySelector('input'):null;if(ni&&(ni.value||'')){ocr=ni.value;break}await sleep(400)}\nconst pick=async txt=>{const f=fi();if(!f)return false;const sel=f.querySelector('.el-select')||f;const vm=sel.__vue__;if(vm&&vm.focus)vm.focus();f.querySelector('input').click();const t=Date.now();while(Date.now()-t<8000){const li=[...document.querySelectorAll('.el-select-dropdown li')].filter(vis).find(l=>n(l)===txt);if(li){li.click();return true}await sleep(250)}return false};\nlet via='default';if(cur()!=='CNY'){if(!(await pick('CNY')))throw new Error('币制CNY选项未现');via='picked';const t2=Date.now();while(Date.now()-t2<3000){if(cur()==='CNY')break;await sleep(250)}}\nif(cur()!=='CNY')throw new Error('币制非CNY cur='+cur());\nreturn{ok:true,via:via,currency:cur(),ocr:ocr}})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "v8：不再选USD！等币制表单+OCR号后确保币制=CNY（申请RMB0.90）。exec1052病根=USD发票被「发票币制与开票申请币制不一致」toast静默拦在footer确定。probe7实证CNY+金额0.90+不填美金金额→invoiceAdd→allocationInvoiceFee→「发票登记成功！检测到有关联应付开票申请，已同步登记！」"
+    },
+    {
+     "after_element": "ra_submit_upload_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 800
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const T0=Date.now();const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const wraps=()=>[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);const title=x=>((x.querySelector('.el-dialog__title,.el-message-box__title')||{textContent:''}).textContent||'').trim();const btnIn=(w,t)=>[...w.querySelectorAll('button')].filter(vis).find(b=>tt(b)===t);const toasts=()=>[...document.querySelectorAll('.el-message')].filter(vis).map(m=>(m.textContent||'').trim().slice(0,60));const forensics=()=>JSON.stringify({dlgs:wraps().map(x=>title(x).slice(0,10)+':'+tt(x).slice(0,36)),toasts:toasts()}).slice(0,300);const notes=[];const errs=[];const cap=()=>{for(const x of toasts())if(errs.indexOf(x)<0)errs.push(x)};const famOpen=()=>wraps().some(x=>{const s=title(x)+tt(x);return s.indexOf('发票')>=0||s.indexOf('上传')>=0});\nconst isConfirm=w=>{const t=tt(w),ti=title(w);return t.indexOf('您确认')>=0||t.indexOf('上传吗')>=0||w.classList.contains('el-message-box__wrapper')||(!!ti&&ti.indexOf('发票')<0&&ti.indexOf('选择')<0)};\n// ① 二次确认框 → 确定（12s 未现留痕=无此层直接进③）\n{let hit=0;const t=Date.now();while(Date.now()-t<12000){const w=wraps().find(x=>isConfirm(x)&&btnIn(x,'确定'));if(w){btnIn(w,'确定').click();hit=1;notes.push('c1:'+(title(w)||'mb'));break}cap();await sleep(300)}if(!hit)notes.push('no-confirm')}\n// ② 等二次确认层消散，给上传一拍（最多8s）\n{const t=Date.now();while(Date.now()-t<8000){cap();if(!wraps().some(x=>isConfirm(x)))break;await sleep(400)}}\n// ③+④ 完成登记确定：优先发票登记弹层footer确定，退而任何可见确定；8s不闭合重点（≤4次）\n{let tries=0;while(tries<4){const l1=wraps().find(x=>title(x).indexOf('发票登记')>=0);const b=(l1&&btnIn(l1,'确定'))||wraps().map(w=>btnIn(w,'确定')).find(Boolean);if(!b){notes.push('no-ok@'+tries);break}b.click();tries++;notes.push('ok'+tries);\nconst t=Date.now();while(Date.now()-t<8000){cap();if(!famOpen()){await sleep(700);cap();return{ok:true,full:true,notes:notes.join(','),ms:Date.now()-T0,toasts:errs}}await sleep(300)}\nawait sleep(1200)}\nthrow new Error('发票登记未完成 notes='+notes.join(',')+' toasts='+JSON.stringify(errs).slice(0,180)+' '+forensics())}})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "v7 用户口径定案：本页无选择系统发票环节——上传发票→弹窗内改字段→确认本张→提交上传→二次确认(确定)→直接再点确定=完成登记（v6 池链删除：exec1051 实证池空且非本页流程）。①二次确认框(文本您确认/上传吗、MessageBox、标题不含发票族的弹层，12s未现留痕)→确定 ②等该层消散给上传一拍(8s) ③完成登记确定(优先发票登记弹层footer，退而任何可见确定) ④8s闭合断言(发票/上传族弹层全消散)，不闭合重点≤4次(用户口径:多点几次触发)；全程toast采集，throw必带notes+现场。exec1050 病灶=尾巴两确定同秒盲发，第二击落点时上传未就绪。"
+    },
+    {
+     "before_element": "ra_submit_upload_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 300
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const title=x=>((x.querySelector('.el-dialog__title,.el-message-box__title')||{textContent:''}).textContent||'').trim();const selDlg=()=>[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).find(x=>title(x)==='选择发票');const fields=()=>[...document.querySelectorAll('input[placeholder=\"请输入内容\"],textarea[placeholder=\"请输入内容\"]')].filter(vis);\nconst toasts=()=>[...document.querySelectorAll('.el-message')].filter(vis).map(m=>tt(m).slice(0,40));\nconst t0=Date.now();let last='';while(Date.now()-t0<10000){const d=selDlg();const fc=fields().length;last='dlg='+!!d+',fields='+fc;if(d&&fc===0)return{ok:true,wait:Date.now()-t0};await sleep(300)}\nthrow new Error('确认本张未就绪(等输入框转只读) '+last+' dlgs='+[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis).map(x=>title(x)).join('|')+' toasts='+JSON.stringify(toasts()))})()"
+      }
+     ],
+     "_note": "v8 新增：确认本张后等就绪信号再提交上传——选择发票弹层在 & 请输入内容输入框=0（表单转只读预览=已确认视觉态；已确认X张计数只在提交上传二次确认框里出现，页面捕捉不到，用户口径20261031）。probe7实证确认后输入框即刻消失；守卫≤10s，超时throw带现场（用户口径「张数变1再提交」）。"
+    }
+   ],
+   "button_behaviors": {
+    "ra_confirm_button": {
+     "role": "js_click"
+    }
+   }
+  },
+  {
+   "key": "s21",
+   "label": "按提单付款（穿透）",
+   "scope": "financialManage/payable/paymentDemand",
+   "scope_label": "付款需求管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "付款需求管理"
+   },
+   "route_field": "s21_route",
+   "route_value": "#/development/financialManage/payable/paymentDemand",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "付款需求管理"
+   ],
+   "elements": {
+    "pr_by_bl_button": {
+     "strategies": {
+      "button": "按提单付款"
+     },
+     "description": "按提单付款入口（s16 同款复用）"
+    },
+    "pr_edit_link": {
+     "strategies": {
+      "text": "编辑"
+     },
+     "description": "编辑（s16 同款；录制点两次，容错）"
+    },
+    "pr_bl_textarea": {
+     "strategies": {
+      "css": "textarea[placeholder=\"请输入提单号，每行一个\"]"
+     },
+     "description": "提单号批量框（s16 同款）"
+    },
+    "pr_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "弹层确定"
+    },
+    "pr_query_button": {
+     "strategies": {
+      "button": "查询"
+     },
+     "description": "向导内查询"
+    },
+    "pr_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper.fixed-left--wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "表头全选（fixed-left 克隆；录制 col_3311 归一）"
+    },
+    "pr_next_button": {
+     "strategies": {
+      "button": "下一步"
+     },
+     "description": "向导下一步"
+    },
+    "pr_submit_button": {
+     "strategies": {
+      "button": "提交"
+     },
+     "description": "提交"
+    },
+    "pr_approver_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "张乐UI-"
+     },
+     "description": "审批人单选（s16 同款）"
+    },
+    "pr_final_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "确认"
+    },
+    "pr_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "radio_picks": {
+    "张乐UI-": "pr_approver_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper\\.fixed-left--wrapper.*vxe-cell--checkbox",
+     "pr_select_all_checkbox"
+    ]
+   ],
+   "text_input_rules": [
+    [
+     "lele1030002",
+     "bl_no",
+     "pr_bl_textarea",
+     "${generate_bl_no(prefix='lele')}"
+    ]
+   ],
+   "button_overrides": {
+    "按提单付款": "pr_by_bl_button",
+    "编辑": "pr_edit_link",
+    "确定": "pr_confirm_button",
+    "查询": "pr_query_button",
+    "下一步": "pr_next_button",
+    "提交": "pr_submit_button",
+    "确认": "pr_final_confirm_button"
+   },
+   "inject_steps": [
+    {
+     "after_element": "pr_query_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const t0=Date.now(),dl=90000;const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rowCount=()=>{const trs=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis);return trs.filter(tr=>{const tds=[...tr.querySelectorAll('td')].filter(vis);return tds.length>3&&((tr.textContent||'').replace(/\\s+/g,'').indexOf('暂无数据')<0)}).length};let lastQ=Date.now(),tries=0;while(Date.now()-t0<dl){const n=rowCount();if(n>0){return{ok:true,rows:n,ms:Date.now()-t0,retries:tries}}if(Date.now()-lastQ>6000){const btns=[...document.querySelectorAll('button')].filter(b=>vis(b)&&(b.textContent||'').replace(/\\s+/g,'')==='查询');if(btns.length){btns[0].click();tries++;lastQ=Date.now()}}await sleep(1500)}const rows=[...document.querySelectorAll('.vxe-table--body-wrapper tr')].filter(vis).map(tr=>(tr.textContent||'').replace(/\\s+/g,'').slice(0,40)).slice(0,4);throw new Error('穿透向导90s无数据行 retries='+tries+' rows='+JSON.stringify(rows))})()"
+      }
+     ],
+     "_note": "穿透付款向导数据传播等待（s16 同款 90s 轮询）"
+    },
+    {
+     "before_element": "pr_edit_link",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 500
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const n=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const findEdit=()=>[...document.querySelectorAll('.search-text')].filter(vis).find(d=>n(d)==='编辑');const findBtn=t=>[...document.querySelectorAll('button')].filter(vis).find(b=>n(b)===t);const onBl=()=>location.hash.indexOf('#/paymentBl')===0;const wrappers=()=>[...document.querySelectorAll('.el-message-box__wrapper,.el-dialog__wrapper')].filter(vis);const modals=()=>[...document.querySelectorAll('.v-modal')].filter(vis);const clearMsg=async()=>{for(const w of document.querySelectorAll('.el-message-box__wrapper')){if(!vis(w))continue;const bs=[...w.querySelectorAll('button')].filter(vis);const btn=bs.find(b=>n(b)==='确定')||bs.find(b=>n(b)==='取消');if(btn){btn.click();await sleep(800);return'mb'}}return''};const closeDlg=async()=>{for(const w of document.querySelectorAll('.el-dialog__wrapper')){if(!vis(w))continue;const bs=[...w.querySelectorAll('button')].filter(vis);const c=bs.find(b=>n(b)==='取消');const x=w.querySelector('.el-dialog__headerbtn');if(c||x){(c||x).click();await sleep(800);return'dlg'}}return''};const killOrphan=()=>{if(modals().length&&!wrappers().length){let k=0;for(const v of document.querySelectorAll('.v-modal')){v.remove();k++}document.body.classList.remove('el-popup-parent--hidden');document.body.style.removeProperty('overflow');return'vm'+k}return''};const state=()=>{const btns=[];for(const b of document.querySelectorAll('button')){if(vis(b)){const t=n(b);if(t&&btns.length<12)btns.push(t)}}return{edit:!!findEdit(),prev:btns.includes('上一步'),sub:btns.includes('提交'),btns:btns,hash:location.hash.slice(0,44),vm:modals().length,wrap:wrappers().length}};const t0=Date.now();let prevTried=0,exitTried=0;const log=[];while(Date.now()-t0<10000){if(!onBl()){await sleep(300);continue}const c=await clearMsg();if(c)log.push(c);const s=state();if(s.edit){const d=await closeDlg();if(d)log.push(d);const k=killOrphan();if(k)log.push(k);const s2=state();if(s2.edit&&!s2.vm)return{ok:1,mode:(prevTried||exitTried)?'recovered':'step1',btns:s2.btns,vm:s2.vm,wrap:s2.wrap,log:log};if(!s2.edit)continue}if(s.prev&&s.sub){if(prevTried<2){prevTried++;log.push('prev#'+prevTried);findBtn('上一步').click();await sleep(2000);const m=await clearMsg();if(m)log.push(m);const k=killOrphan();if(k)log.push(k);continue}if(exitTried<1){exitTried++;log.push('exit#'+exitTried);findBtn('退出').click();await sleep(1000);const m=await clearMsg();if(m)log.push(m);const bl=findBtn('按提单付款');if(bl){bl.click();log.push('re-enter')}else log.push('no-bybl');await sleep(2500);continue}log.push('stuck');await sleep(600);continue}await sleep(300)}const s=state();throw new Error('paymentBl向导10秒未获可点编辑入口: '+JSON.stringify({hash:s.hash,edit:s.edit,vm:s.vm,wrap:s.wrap,btns:s.btns,log:log}));})()"
+      },
+      {
+       "action": "wait",
+       "value": 300
+      }
+     ],
+     "_note": "exec1039 定案：按提单付款后向导两落法（step1 编辑入口 / 付款需求预览直落），ENSURE 主动规范化：预览态点上一步回 step1。exec1044 定案补丁 v3：prev 过渡留孤儿 .v-modal 背板（截图2564 无弹窗整页灰，vis 不查遮挡 → v2 直接 return ok，下一步编辑点击被拦 15s 超时）→ 返回 ok 前清障：clearMsg(MessageBox 确定/取消)→closeDlg(取消/headerbtn)→killOrphan(无可见 wrapper 时删 .v-modal+恢复 body overflow)，复核 edit 仍可见且 vm==0 才 ok；预算 55s→10s（用户定案），exit 重试 2→1"
+    },
+    {
+     "after_element": "pr_confirm_button",
+     "steps": [
+      {
+       "action": "wait",
+       "value": 600
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const sleep=ms=>new Promise(r=>setTimeout(r,ms));const imp=()=>[...document.querySelectorAll('.el-dialog__wrapper.importEl')].filter(vis);const wraps=()=>[...document.querySelectorAll('.el-dialog__wrapper,.el-message-box__wrapper')].filter(vis);const modals=()=>[...document.querySelectorAll('.v-modal')].filter(vis);const killVm=()=>{let vm=0;if(modals().length&&!wraps().length){for(const v of document.querySelectorAll('.v-modal')){v.remove();vm++}document.body.classList.remove('el-popup-parent--hidden');document.body.style.removeProperty('overflow')}return vm};const t0=Date.now();let mode='fade',removed=0;while(Date.now()-t0<5000){if(!imp().length)break;await sleep(500)}if(imp().length){mode='swept';for(const w of imp()){w.remove();removed++}await sleep(400)}const vm=killVm();await sleep(200);const left=imp().length,vmLeft=modals().length;const q=[...document.querySelectorAll('button')].filter(vis).filter(b=>(b.textContent||'').replace(/\\s+/g,'').indexOf('查询')>=0);if(left||vmLeft||!q.length)throw new Error('importEl/v-modal清障失败: wrapper='+left+' vm='+vmLeft+' 查询btn='+(q.length?'有':'无'));return{ok:1,mode:mode,removed:removed,vm:vm,ms:Math.round(Date.now()-t0)}})()"
+      }
+     ],
+     "_note": "exec1048/1049 定案链：确定真关 importEl 并触发查询，但该 SUT 过渡类脱落不可靠——wrapper 卡 leave-active（1048）/enter-active（1046），v-modal 背板同病（1049，v1 自然消散路径漏查）。v2：wrapper 处理完（自然褪或手术切）后一律 killVm（无可见弹窗时删 v-modal+恢复 body），终态断言=无 wrapper+无 v-modal+查询按钮在"
+    }
+   ],
+   "_note": "穿透付款=按提单付款向导第二轮，与 s16 同 scope 同向导（pr_* 复用）；录制编辑点两次、textarea 先空 fill 再填——converter 归一处理，首跑报告核对。 | dedup_clicks=[pr_edit_link]（exec1047：录制「编辑」连点两次，第二击重置 importEl 弹窗致 fill 落旧节点→确定空校验不过→后续全被拦；n16 同向导单击版本四轮全绿为对照）",
+   "button_behaviors": {
+    "pr_by_bl_button": {
+     "role": "js_click"
+    },
+    "_note": "exec1035 n22 步3：按提单付款按钮 not stable（骨架屏重排，exec955 n14 同款）——js_click 绕过可点击性校验；exec1046 n22 步8：录制「编辑」连点两次（element 898），第二次 click 被步7 开出的 importEl 弹窗 wrapper 拦截 15s（截图2604 页面无遮——壳零尺寸仍拦截）。js_click 绕过校验，冗余重击=弹窗重开重置，其后的 fill 才真正填值。pr_by_bl_button 同款（exec955/1035 先例）",
+    "pr_edit_link": {
+     "role": "js_click"
+    }
+   },
+   "dedup_clicks": [
+    "pr_edit_link"
+   ]
+  },
+  {
+   "key": "s22",
+   "label": "付款审批（穿透）",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "route_field": "s22_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "nav_click_texts": [
+    "审批中心"
+   ],
+   "elements": {
+    "apc3_select_all_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--header-wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "表头全选（审批中心表无 fixed-left，通用 header selector；s16b 同款）"
+    },
+    "apc3_batch_button": {
+     "strategies": {
+      "button": "批量审核"
+     },
+     "description": "批量审核"
+    },
+    "apc3_approve_radio": {
+     "strategies": {
+      "role": "radio",
+      "role_extra": "通过"
+     },
+     "description": "审核结果·通过"
+    },
+    "apc3_confirm_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"
+     },
+     "description": "确认"
+    },
+    "apc3_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "radio_picks": {
+    "通过": "apc3_approve_radio"
+   },
+   "css_click_patterns": [
+    [
+     "vxe-table--header-wrapper.*vxe-header--row.*vxe-cell--checkbox",
+     "apc3_select_all_checkbox"
+    ]
+   ],
+   "button_overrides": {
+    "批量审核": "apc3_batch_button",
+    "确认": "apc3_confirm_button",
+    "确定": "apc3_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "apc3_select_all_checkbox",
+     "steps": [
+      {
+       "action": "wait",
+       "value": "3000",
+       "_note": "审批队列秒级可见（auditPage API 实测），无需长盲等——3s 缓冲 + 2min 轮询兜底；旧 8min 盲等是把页面晾进冻结的元凶"
+      },
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const ready=()=>[...document.querySelectorAll('.vxe-table--header-wrapper .vxe-header--row .vxe-cell--checkbox')].some(c=>vis(c)&&c.className.indexOf('is--disabled')<0);const fresh=()=>{const b=[...document.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='刷新');if(b)b.click()};const onRoute=()=>location.hash.indexOf('approvalCenter')>=0;const fixRoute=()=>{const t=[...document.querySelectorAll('.tags-view-item,[class*=\"tags-view\"] li')].filter(vis).find(x=>tt(x)==='审批中心');if(t)t.click();else location.hash='#/development/workbench/approvalCenter'};if(!onRoute()){fixRoute();await sleep(2500)}const t0=Date.now(),MAX=120000;let n=0;while(Date.now()-t0<MAX){if(!onRoute()){fixRoute();await sleep(2500)}if(ready()){await sleep(1200);if(ready())return{ok:true,waited:Math.round((Date.now()-t0)/1000),refreshes:n}}fresh();n++;await sleep(20000)}throw new Error('待审数据 8 分钟未就绪（可点全选未出现，刷新 ×'+n+'）')})()",
+       "_note": "exec1006 实捕：前节点提交后 ~2s SUT 延迟导航（#/paymentBl）抢走审批中心页——轮询加路由守卫，每轮校验+夺回（点 tags-view 页签或改 hash）"
+      }
+     ],
+     "_note": "审批待审 ~15 分钟周期同步：wait 8 分钟（driver 侧）+ evaluate 轮询 8 分钟（每 20s 点刷新，判据=与 click 同义）；单 evaluate >10 分钟在平台挂起，必须拆短"
+    }
+   ],
+   "_note": "穿透付款需求审批：s16b 同款。"
+  },
+  {
+   "key": "s23",
+   "label": "付款单核销（穿透）",
+   "scope": "financialManage/payable/paymentOrder",
+   "scope_label": "付款单管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "付款单管理"
+   },
+   "route_field": "s23_route",
+   "route_value": "#/development/financialManage/payable/paymentOrder",
+   "nav_click_texts": [
+    "财务管理",
+    "应付管理",
+    "付款单管理"
+   ],
+   "elements": {
+    "po_row_checkbox": {
+     "strategies": {
+      "css": ".vxe-table--body-wrapper.fixed-left--wrapper:visible .vxe-body--row .vxe-cell--checkbox:not(.is--disabled)"
+     },
+     "description": "行勾选（body fixed-left 克隆；录制 col_2813+row--hover 归一，s17 同款）"
+    },
+    "po_writeoff_button": {
+     "strategies": {
+      "button": "付款核销"
+     },
+     "description": "付款核销入口"
+    },
+    "po_submit_button": {
+     "strategies": {
+      "button": "提交核销"
+     },
+     "description": "提交核销"
+    },
+    "po_ok_button": {
+     "strategies": {
+      "css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"
+     },
+     "description": "确定"
+    }
+   },
+   "button_overrides": {
+    "付款核销": "po_writeoff_button",
+    "提交核销": "po_submit_button",
+    "确定": "po_ok_button"
+   },
+   "inject_steps": [
+    {
+     "before_element": "po_writeoff_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,' ');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const onRoute=()=>location.hash.indexOf('paymentOrder')>=0;const back=()=>{location.hash='#/development/financialManage/payable/paymentOrder'};if(!onRoute()){back();await sleep(2500)}const wrap=sel=>[...document.querySelectorAll(sel)].filter(vis);const mainRows=()=>wrap('.vxe-table--body-wrapper:not(.fixed-left--wrapper):not(.fixed-right--wrapper) .vxe-body--row');const leftRows=()=>wrap('.vxe-table--body-wrapper.fixed-left--wrapper .vxe-body--row');const mC=document.cookie.match(/Admin-Token=([^;]+)/);if(!mC)throw new Error('Admin-Token cookie 不可读');const d0=new Date(new Date().setHours(0,0,0,0)).getTime();const QB={page_no:1,page_size:10,order_no:'',create_time:[d0,d0+86399999],status:['2'],sort_field:'generate_time',sort_order:'desc',params:{},create_time_start:String(Math.floor(d0/1000)),create_time_end:String(Math.floor((d0+86399999)/1000))};const qBtn=()=>[...document.querySelectorAll('button')].filter(vis).find(b=>tt(b).trim()==='查询');const t0=Date.now(),MAX=90000,nowS=t0/1000;let n=0,apiErr='';while(Date.now()-t0<MAX){if(!onRoute()){back();await sleep(2500)}let j=null;try{j=await(await fetch('/api/finance/payForm/formPage',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8','Authorization':decodeURIComponent(mC[1])},body:JSON.stringify(QB)})).json()}catch(e){apiErr=String(e)}const rows=(j&&j.data&&(j.data.data||j.data.list||j.data.rows))||[];const mine=rows.find(r=>String(r.pay_form_no||'').length>8&&String(r.writeoff_status)==='1'&&nowS-Number(r.generate_time||0)<600);const FFD=mine&&mine.pay_form_no;if(FFD){let mi=mainRows().findIndex(r=>tt(r).indexOf(FFD)>=0);if(mi<0){const q=qBtn();if(q)q.click();await sleep(2000);mi=mainRows().findIndex(r=>tt(r).indexOf(FFD)>=0)}if(mi>=0){const findL=()=>leftRows().find(r=>tt(r).indexOf(FFD)>=0);const tC=Date.now();let clicks=0,lastClick=0;while(Date.now()-tC<10000){const lr=findL();if(!lr){await sleep(500);continue}const cb=lr.querySelector('.vxe-cell--checkbox');if(!cb)throw new Error(FFD+' 勾选框缺失 mi='+mi);if(cb.classList.contains('is--checked'))return{ok:true,pay_form_no:FFD,mi:mi,clicks:clicks,ticks:n,waited:Math.round((Date.now()-t0)/1000)+'s',chkWait:Math.round((Date.now()-tC)/1000)+'s'};if(cb.classList.contains('is--disabled'))throw new Error(FFD+' 勾选框禁用 mi='+mi);if(Date.now()-lastClick>=2000){cb.click();clicks++;lastClick=Date.now()}await sleep(400)}throw new Error(FFD+' 勾选10秒未生效(is--checked) mi='+mi+' clicks='+clicks)}}n++;const q=qBtn();if(q)q.click();await sleep(3000)}throw new Error('90 秒未定位到本用例付款单(ticks='+n+' apiErr='+apiErr.slice(0,60)+')')})()",
+       "_note": "exec1011 v3 括号失衡修复（Unexpected token ')'）；FFD 定位方案不变：页内 fetch formPage 最新未核销+10 分钟内生成，按 pay_form_no 定位勾选，90s 快败"
+      }
+     ],
+     "_note": "v5→v6（exec1045 定案）：截图2582 实证抛'勾选未生效'时复选框实际已勾上——vxe class 翻转异步，2次×700ms 提前放弃。v6 内层改 10s 观察循环：fresh 重找行（防重建后 detached），400ms 轮询 is--checked，点击节流 2s/次（防翻转在途补刀取消），disabled 立抛。左列真相模型不变（fixed-left 唯一交互层，is--checked 唯一状态信号）"
+    },
+    {
+     "after_element": "po_writeoff_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const wrap=()=>[...document.querySelectorAll('.el-dialog__wrapper')].filter(vis).find(w=>[...w.querySelectorAll('button')].some(b=>tt(b)==='提交核销'));const leftRows=()=>[...document.querySelectorAll('.vxe-table--body-wrapper.fixed-left--wrapper .vxe-body--row')].filter(vis);const mC=document.cookie.match(/Admin-Token=([^;]+)/);if(!mC)throw new Error('Admin-Token cookie 不可读');const d0=new Date(new Date().setHours(0,0,0,0)).getTime();const QB={page_no:1,page_size:10,order_no:'',create_time:[d0,d0+86399999],status:['2'],sort_field:'generate_time',sort_order:'desc',params:{},create_time_start:String(Math.floor(d0/1000)),create_time_end:String(Math.floor((d0+86399999)/1000))};const fresh=async()=>{let j=null;try{j=await(await fetch('/api/finance/payForm/formPage',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8','Authorization':decodeURIComponent(mC[1])},body:JSON.stringify(QB)})).json()}catch(e){}const rows=(j&&j.data&&(j.data.data||j.data.list||j.data.rows))||[];const nowS=Date.now()/1000;const m=rows.find(r=>String(r.pay_form_no||'').length>8&&String(r.writeoff_status)==='1'&&nowS-Number(r.generate_time||0)<900);return(m&&m.pay_form_no)||''};const toolbarBtn=()=>[...document.querySelectorAll('button')].filter(vis).find(b=>tt(b)==='付款核销'&&!b.closest('.el-dialog__wrapper'));const ensureChecked=async FFD=>{const find=()=>leftRows().find(r=>tt(r).indexOf(FFD)>=0);const lr=find();if(!lr)return'no-row';const cb=lr.querySelector('.vxe-cell--checkbox');if(!cb)return'no-cb';if(cb.classList.contains('is--checked'))return'ok';if(cb.classList.contains('is--disabled'))return'disabled';cb.click();await sleep(600);const lr2=find();const cb2=lr2?lr2.querySelector('.vxe-cell--checkbox'):null;return(cb2&&cb2.classList.contains('is--checked'))?'ok':'fail'};const closeDialog=async()=>{const w0=wrap();if(!w0)return'no-dialog';const cancel=[...w0.querySelectorAll('button')].filter(vis).find(b=>tt(b)==='取消');if(cancel){cancel.click();await sleep(1200)}const w1=wrap();if(w1){const x=w1.querySelector('.el-dialog__headerbtn');if(x){x.click();await sleep(1000)}}return wrap()?'still-open':'closed'};const readState=()=>{const w=wrap();if(!w)return null;const inputs=[...w.querySelectorAll('input,textarea')].filter(vis);const vals=inputs.map(i=>i.value||'');const btn=[...w.querySelectorAll('button')].find(b=>tt(b)==='提交核销');return{vals:vals,btnDis:btn?btn.className.indexOf('is-disabled')>=0:null}};const waitReady=async ms=>{const t=Date.now();let last='',stable=0;while(Date.now()-t<ms){const s=readState();if(!s){last='';stable=0;await sleep(600);continue}const snap=JSON.stringify(s.vals);if(snap===last)stable+=400;else{stable=0;last=snap}const filled=s.vals.filter(v=>v!=='').length;if(s.vals.length&&stable>=1200&&filled>0&&s.btnDis===false)return{filled:filled,ms:Math.round(Date.now()-t)};await sleep(400)}return null};const t0=Date.now();const log=[];let lastFFD='';await sleep(1200);let w=wrap();const tA=Date.now();while(!w&&Date.now()-tA<10000){const FFD=await fresh();if(!FFD){log.push('no-ffd')}else{lastFFD=FFD;log.push('chk:'+await ensureChecked(FFD));const b=toolbarBtn();if(b){b.click();log.push('clk')}else log.push('no-btn')}await sleep(2000);w=wrap()}if(!w){throw new Error('付款核销10秒未开弹窗 FFD='+lastFFD+' log='+JSON.stringify(log))}const r=await waitReady(10000);if(r)return{ok:true,mode:'wait',filled:r.filled,FFD:lastFFD,waited:Math.round((Date.now()-t0)/1000)+'s',log:log};log.push('empty');log.push(await closeDialog());const F2=await fresh();if(F2){lastFFD=F2;log.push('chk2:'+await ensureChecked(F2));const b2=toolbarBtn();if(b2){b2.click();log.push('clk2')}}const r2=await waitReady(10000);if(r2)return{ok:true,mode:'recovered',filled:r2.filled,FFD:lastFFD,waited:Math.round((Date.now()-t0)/1000)+'s',log:log};const sf=readState();throw new Error('核销弹窗10秒数据未就绪: '+(sf?('fields='+sf.vals.length+' filled='+sf.vals.filter(v=>v!=='').length+' btnDis='+sf.btnDis):'no-dialog')+' FFD='+lastFFD+' log='+JSON.stringify(log))})()",
+       "_note": "exec1013 截图实锤：步骤4 点击时勾选已被迟到重渲染冲掉→无弹窗。自愈开门：无弹窗→查勾选→重选+背靠背同栈点付款核销（竞速窗口=0），循环25s；弹窗后赋值就绪判定30s"
+      }
+     ],
+     "_note": "v5：ensureChecked 改左列真相模型（同 before 守卫）；其余维持 v4 节奏（用户定案 10s 封顶）：1.2s 自然弹窗→10s 内无弹窗补勾重点→弹窗内 waitReady 10s→仍空关弹窗重开一轮。探针实锤：正确选中后弹窗「应付核销」立开且字段预填（含 802050200686868）"
+    },
+    {
+     "before_element": "po_ok_button",
+     "steps": [
+      {
+       "action": "evaluate",
+       "value": "(async()=>{const vis=e=>!!(e&&e.getClientRects().length);const tt=x=>(x.textContent||'').replace(/\\s+/g,'');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const confirmUp=()=>{if([...document.querySelectorAll('.el-message-box__wrapper')].some(vis))return 'message-box';const ds=[...document.querySelectorAll('.el-dialog')].filter(vis).filter(x=>![...x.querySelectorAll('button')].some(b=>tt(b)==='提交核销')).filter(x=>[...x.querySelectorAll('button')].some(b=>tt(b)==='确定'));return ds.length?'dialog':''};const t0=Date.now(),MAX=45000;let tries=0;while(Date.now()-t0<MAX){const c=confirmUp();if(c)return{ok:true,confirm:c,tries,waited:Math.round((Date.now()-t0)/1000)+'s'};if(tries<6&&Date.now()-t0>=2500){const c2=confirmUp();if(c2)return{ok:true,confirm:c2,tries,waited:Math.round((Date.now()-t0)/1000)+'s'};const b=[...document.querySelectorAll('button')].filter(vis).find(x=>tt(x)==='提交核销');if(b){b.click();tries++}}await sleep(1500)}throw new Error('二次确认弹窗 45 秒未出现（重点提交核销 ×'+tries+'）')})()",
+       "_note": "二次确认兜底（用户建议）：提交核销点后 2.5s 无二次确认则重点（≤6 次/45s），覆盖首次点击落在赋值完成边界的情形"
+      }
+     ]
+    }
+   ],
+   "_note": "穿透链终章：第二次付款单核销=用户定义的穿透核销完成点。"
+  }
+ ],
+ "variants": [
+  {
+   "name": "全链路·建单到收款核销（codegen 导入）",
+   "stop_after": "s10",
+   "description": "codegen 链式导入：委托建单→…→开票审批+收款核销（截止：收款核销）"
+  },
+  {
+   "name": "全链路·建单到付款核销（codegen 导入）",
+   "stop_after": "s17",
+   "description": "codegen 链式导入：…→付款需求+审批→付款单核销（截止：付款核销）"
+  },
+  {
+   "name": "全链路·建单到穿透核销（codegen 导入）",
+   "stop_after": null,
+   "description": "codegen 链式导入最全：…→付款单核销→联动应收开票→开票审批→生成应付开票+上传发票→按提单付款→审批→付款单核销·穿透（截止：穿透核销）"
+  }
+ ]
+}

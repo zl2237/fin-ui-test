@@ -1,0 +1,235 @@
+{
+ "form_id": "entrusted_order",
+ "proven": "case#288 run899 2026-10-30 线上全绿（新建->保存->查询->编辑->分发）；case#314 run909 2026-10-29 本地全绿",
+ "detect": {
+  "nav_link_texts": [
+   "委托订单列表"
+  ],
+  "route_contains": "orderManage/entrustedOrder"
+ },
+ "case": {
+  "name": "分发委托订单·统济机电（codegen 导入）",
+  "description": "codegen 录制导入：新建委托订单（统济机电）→ 保存 → 查询 → 编辑 → 分发",
+  "group_id": 59,
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "page": {
+  "scope": "orderManage/entrustedOrder",
+  "scope_label": "委托订单",
+  "route_field": "entrusted_order_route",
+  "route_value": "#/development/orderManage/entrustedOrder",
+  "node_labels": [
+   "进入建单页",
+   "建单并分发"
+  ],
+  "n1_assert": {
+   "url_contains": "entrustedOrder",
+   "message": "应到达委托订单页（列表 orderManage/entrustedOrder 或建单 entrustedOrderAdd，点新建后路由跳转存在竞态，取公共子串）"
+  }
+ },
+ "nav_click_texts": [
+  "订单管理",
+  "委托订单列表"
+ ],
+ "elements": {
+  "bl_no_input": {
+   "strategies": {
+    "for": "bl_no",
+    "label": "*提单号",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[2]/div[1]/div/div[2]/div/div/div/input"
+   },
+   "description": "提单号"
+  },
+  "booking_space_supplier_selector": {
+   "strategies": {
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[2]/div[2]/div[2]/div/div[3]/div/div/div/div/div/div[1]/input"
+   },
+   "description": "订舱供应商"
+  },
+  "booking_space_supplier_user_selector": {
+   "strategies": {
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div[1]/input"
+   },
+   "description": "订舱服务人员"
+  },
+  "create_order_button": {
+   "strategies": {
+    "text": "新建订单",
+    "button": "新建订单",
+    "full_xpath": "/html/body/div[1]/div/div[2]/section/div/div[1]/div/div[2]/div[1]/div[1]/button"
+   },
+   "description": "新建订单"
+  },
+  "customer_id_selector": {
+   "strategies": {
+    "for": "customer_id",
+    "label": "*下单客户名称 ",
+    "full_xpath": "/html/body/div[1]/div/div[2]/section/div/form/div[1]/div/div[1]/div/div/div[1]/div[1]/div/div[2]/div[2]/div[1]/input"
+   },
+   "description": "下单客户名称"
+  },
+  "edit_button": {
+   "strategies": {
+    "button": "编辑"
+   },
+   "description": "编辑按钮"
+  },
+  "entrust_button": {
+   "strategies": {
+    "text": "分 发",
+    "button": "分 发",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[8]/button[3]"
+   },
+   "description": "分发按钮"
+  },
+  "operator_id_selector": {
+   "strategies": {
+    "for": "operator_id",
+    "label": "*结算操作 ",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[1]/div/div/div[6]/div/div/div[2]/div[2]/div/input"
+   },
+   "description": "结算操作"
+  },
+  "policy_id_selector": {
+   "strategies": {
+    "for": "policy_id",
+    "label": "*服务策略名称 ",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[1]/div/div/div[8]/div/div/div[2]/div[2]/div/input"
+   },
+   "description": "服务策略名称"
+  },
+  "policy_type_selector": {
+   "strategies": {
+    "for": "policy_type",
+    "label": "*政策类型 ",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[1]/div/div[1]/div/div/div[7]/div/div/div[2]/div[2]/div[1]/input"
+   },
+   "description": "政策类型"
+  },
+  "save_button": {
+   "strategies": {
+    "text": "保 存",
+    "button": "保 存",
+    "full_xpath": "//*[@id='app']/div/div[2]/section/div/form/div[8]/button[2]"
+   },
+   "description": "保存按钮"
+  },
+  "sure_button": {
+   "strategies": {
+    "text": "确定",
+    "button": "确定",
+    "full_xpath": "/html/body/div[9]/div/div[3]/button[2]"
+   },
+   "description": "确定按钮"
+  }
+ },
+ "nth_select_guesses": {
+  "0": [
+   "customer_id",
+   "customer_id_selector",
+   "高：检索词「机电」与选项文本互含"
+  ],
+  "2": [
+   "operator_id",
+   "operator_id_selector",
+   "中：录制无检索词点首项，值取建议「张乐API」"
+  ],
+  "3": [
+   "policy_type",
+   "policy_type_selector",
+   "高：选项「结算业务」与既有数据一致"
+  ],
+  "4": [
+   "policy_id",
+   "policy_id_selector",
+   "中：选项「API易汇联对客双主体」形态即服务策略名"
+  ],
+  "5": [
+   "supplier_id",
+   "booking_space_supplier_selector",
+   "高：实测=服务项目(订舱)供应商下拉，选项含「山东旭禾国际贸易有限公司」；保存不校验、分发必填"
+  ]
+ },
+ "field_suggestions": {
+  "operator_id": "张乐API",
+  "supplier_id": "山东旭禾国际贸易有限公司",
+  "service_operator": "张乐API"
+ },
+ "text_input_rules": [
+  [
+   "lele1029001",
+   "bl_no",
+   "bl_no_input",
+   "${generate_bl_no(prefix='lele')}"
+  ]
+ ],
+ "css_picks": {
+  ".el-select.el-tooltip.item > .el-input > .el-input__inner": [
+   "service_operator",
+   "booking_space_supplier_user_selector",
+   "张乐API"
+  ]
+ },
+ "query": {
+  "text": "查询",
+  "placeholder": "请输入",
+  "wait_ms": 500,
+  "assert_field": "bl_no"
+ },
+ "button_behaviors": {
+  "create_order_button": {
+   "role": "node_split"
+  },
+  "save_button": {
+   "role": "confirm_watchdog",
+   "wait_ms": 800,
+   "watchdog": [
+    "保存成功",
+    "暂存成功"
+   ]
+  },
+  "entrust_button": {
+   "role": "confirm_watchdog",
+   "wait_ms": 800,
+   "watchdog": [
+    "分发成功"
+   ]
+  },
+  "sure_button": {
+   "role": "absorb"
+  },
+  "submit_continue_button": {
+   "role": "absorb"
+  },
+  "edit_button": {
+   "role": "row_button",
+   "value": "编辑",
+   "row_field": "bl_no"
+  }
+ },
+ "probe": {
+  "add_button": "新建订单",
+  "settle_ms": 1200,
+  "prefill_picks": [
+   [
+    "下单客户名称",
+    "青岛统济机电制造有限公司"
+   ],
+   [
+    "结算操作",
+    "张乐API"
+   ],
+   [
+    "政策类型",
+    "结算业务"
+   ],
+   [
+    "服务策略名称",
+    "API易汇联对客双主体"
+   ]
+  ]
+ }
+}
