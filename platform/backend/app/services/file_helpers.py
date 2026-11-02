@@ -14,6 +14,8 @@ IMAGE_TYPES = {
     "image/webp", "image/svg+xml", "image/bmp",
 }
 PDF_TYPE = "application/pdf"
+# 执行录屏（Playwright webm，Chromium/Edge/Firefox 原生可播；报告页 <video> 回放）
+VIDEO_TYPES = {"video/webm", "video/mp4"}
 
 
 def get_backend_dir() -> Path:
@@ -42,5 +44,5 @@ def resolve_physical_path(storage_path: str) -> Path:
 
 
 def is_previewable(content_type: str) -> bool:
-    """判断 MIME 类型是否支持浏览器内嵌预览（图片/PDF）"""
-    return content_type in IMAGE_TYPES or content_type == PDF_TYPE
+    """判断 MIME 类型是否支持浏览器内嵌预览（图片/PDF/视频）"""
+    return content_type in IMAGE_TYPES or content_type == PDF_TYPE or content_type in VIDEO_TYPES

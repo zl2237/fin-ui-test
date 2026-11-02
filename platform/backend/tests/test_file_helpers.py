@@ -46,11 +46,15 @@ class TestIsPreviewable:
     def test_pdf_previewable(self):
         assert is_previewable(PDF_TYPE) is True
 
+    def test_video_types_previewable(self):
+        # 执行录屏回放（Playwright webm）
+        assert is_previewable("video/webm") is True
+        assert is_previewable("video/mp4") is True
+
     def test_other_types_not_previewable(self):
         assert is_previewable("application/zip") is False
         assert is_previewable("application/octet-stream") is False
         assert is_previewable("text/plain") is False
-        assert is_previewable("video/mp4") is False
 
     def test_empty_type_not_previewable(self):
         assert is_previewable("") is False

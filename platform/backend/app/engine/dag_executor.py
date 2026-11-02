@@ -266,24 +266,32 @@ class DagExecutor:
                     "leftover": leftover,
                 }
             if self._contract_gaps:
-                record.summary["contract_gaps"] = self._contract_gaps
+                record.summary = {**record.summary, "contract_gaps": self._contract_gaps}
         except Exception as e:
             error_msg = str(e)
             record.status = "failed"
             record.summary = {"total": total_passed + total_failed, "passed": total_passed, "failed": total_failed, "error": error_msg}
             if self._contract_gaps:
-                record.summary["contract_gaps"] = self._contract_gaps
+                record.summary = {**record.summary, "contract_gaps": self._contract_gaps}
         finally:
-            record.ended_at = datetime.now()
-            self.db.commit()
-            # 用例列表「最近执行」回写（统计列，失败静默不影响收尾）
-            touch_case_last_exec(self.db, record)
-            # UI 运行时收尾：关浏览器/停 playwright/释放并发闸门（未启动则幂等跳过）
+            # UI 运行时收尾先行：关浏览器并把录屏收进文件中心（video 开启时），
+            # video_file_id 并入 summary 随本次 commit 一并落库（报告页据此出回放入口）
             if self._ui_runtime is not None:
                 try:
                     self._ui_runtime.close()
                 except Exception as e:
                     print(f"[资源清理] UI runtime 关闭失败（忽略）: {e}")
+                video_file_id = getattr(self._ui_runtime, "video_file_id", None)
+                if video_file_id:
+                    # 必须「拷贝新 dict 再整体赋值」：record.summary 取出的就是映射
+                    # 属性里的原 dict，原地加键后赋回同一对象，SQLAlchemy identity
+                    # 比较判定属性未变 → summary 列不进 UPDATE，video_file_id 静默
+                    # 丢失（exec1069：webm 已落库 2984，summary 却没有回放入口）
+                    record.summary = {**(record.summary or {}), "video_file_id": video_file_id}
+            record.ended_at = datetime.now()
+            self.db.commit()
+            # 用例列表「最近执行」回写（统计列，失败静默不影响收尾）
+            touch_case_last_exec(self.db, record)
             if self.db_client:
                 try:
                     self.db_client.close()
@@ -612,6 +620,9 @@ class DagExecutor:
             self._ui_runtime = UiRuntime(db=self.db, env=self.env, context=self.context,
                                          project_id=self.case.project_id, db_client=self.db_client,
                                          execution_id=getattr(self, "_record_id", None))
+            # 录屏归档的执行人（与截图同一取数口径）
+            self._ui_runtime.video_user_id = getattr(
+                getattr(self, "_precreated_record", None), "created_by", None)
 
         facts: dict = {}
         error: str | None = None

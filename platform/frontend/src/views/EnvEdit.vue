@@ -201,6 +201,49 @@
           </template>
         </div>
 
+        <!-- UI 浏览器配置（UI 用例执行；未涉及的键如 inject_token_cookie/launch_args 保存时原样保留） -->
+        <div class="card-section">
+          <div class="section-head">
+            <span class="title">UI 浏览器配置</span>
+            <span class="sub">UI 用例的浏览器运行参数（无 UI 用例可忽略）</span>
+          </div>
+          <div class="form-grid">
+            <el-form-item>
+              <template #label>
+                执行录屏
+                <el-tooltip content="浏览器全程录屏（webm），执行结束后可在测试报告页回放；关闭则不录制" placement="top"><el-icon class="lbl-help"><QuestionFilled /></el-icon></el-tooltip>
+              </template>
+              <el-switch v-model="browserCfg.video" />
+            </el-form-item>
+            <el-form-item>
+              <template #label>
+                有头模式
+                <el-tooltip content="开启后浏览器窗口可见（适合本机调试观看）；仅本机/有图形服务的机器可用" placement="top"><el-icon class="lbl-help"><QuestionFilled /></el-icon></el-tooltip>
+              </template>
+              <el-switch v-model="browserCfg.headed" :disabled="!headedSupported" />
+              <div v-if="!headedSupported" class="cap-blocked">{{ headedReason }}</div>
+            </el-form-item>
+            <el-form-item>
+              <template #label>
+                截图策略
+                <el-tooltip content="on_failure=仅失败截图（默认）；always=每 UI 节点都截图；off=不截图" placement="top"><el-icon class="lbl-help"><QuestionFilled /></el-icon></el-tooltip>
+              </template>
+              <el-select v-model="browserCfg.screenshot" style="width: 100%">
+                <el-option label="失败时截图（on_failure）" value="on_failure" />
+                <el-option label="总是截图（always）" value="always" />
+                <el-option label="不截图（off）" value="off" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <template #label>
+                慢放（毫秒/动作）
+                <el-tooltip content="有头观看时放慢操作节奏；0=不限" placement="top"><el-icon class="lbl-help"><QuestionFilled /></el-icon></el-tooltip>
+              </template>
+              <el-input-number v-model="browserCfg.slow_mo_ms" :min="0" :max="3000" :step="50" controls-position="right" />
+            </el-form-item>
+          </div>
+        </div>
+
         <!-- 通知配置 -->
         <div class="card-section">
           <div class="section-head"><span class="title">通知配置</span></div>
@@ -343,6 +386,27 @@ const formRules: FormRules = {
 
 watch(formData, () => { dirty.value = true }, { deep: true })
 
+// UI 浏览器配置：表单态（headless 以「有头」取反展示）+ 原始 JSON
+// 保留界面未覆盖的键（inject_token_cookie / launch_args / viewport 等）
+const rawBrowserConfig = ref<Record<string, any>>({})
+const browserCfg = reactive({
+  video: false,
+  headed: false,
+  screenshot: 'on_failure',
+  slow_mo_ms: 0,
+})
+
+// 有头模式可用性：线上 Linux 无图形服务（DISPLAY/WAYLAND_DISPLAY 缺失）时
+// Chromium 有头启动必挂 → 开关禁用 + 原因展示；保存强制无头（双保险在后端）
+const headedSupported = ref(true)
+const headedReason = ref('')
+envApi.browserCapabilities().then((cap) => {
+  headedSupported.value = cap.headed_supported
+  headedReason.value = cap.reason
+  if (!cap.headed_supported) browserCfg.headed = false
+}).catch(() => { /* 探测失败不阻塞表单 */ })
+watch(browserCfg, () => { dirty.value = true }, { deep: true })
+
 // 验证码识别开关：开启时三字段展示且必填；关闭即清空地址/字段名
 // （后端以「图片地址与字段名均非空」判定启用，清空即真正关闭，无需后端改动）
 const captchaEnabled = ref(false)
@@ -399,6 +463,13 @@ async function loadEnv() {
     enable_on_success: nc.enable_on_success ?? false,
   }
   formData.common_headers = env.common_headers || { 'Content-Type': 'application/json' }
+  // UI 浏览器配置（历史环境无此字段时给默认态）
+  const bc: Record<string, any> = (env as any).browser_config || {}
+  rawBrowserConfig.value = { ...bc }
+  browserCfg.video = !!bc.video
+  browserCfg.headed = bc.headless === false && headedSupported.value
+  browserCfg.screenshot = bc.screenshot || 'on_failure'
+  browserCfg.slow_mo_ms = bc.slow_mo_ms || 0
   // watch(formData) 是异步触发的，会在下一个 tick 把 dirty 设为 true；
   // 这里用 nextTick 等待 watch 触发后再重置，避免误判"有未保存改动"
   await nextTick()
@@ -456,6 +527,14 @@ async function onSave() {
         login_config: formData.login_config,
         notify_config: formData.notify_config,
         common_headers: formData.common_headers,
+        browser_config: {
+          ...rawBrowserConfig.value,
+          video: browserCfg.video,
+          // 有头不受支持时强制无头落库（开关已禁用，此处兜底历史脏配置）
+          headless: !(browserCfg.headed && headedSupported.value),
+          screenshot: browserCfg.screenshot,
+          slow_mo_ms: browserCfg.slow_mo_ms,
+        },
       }
       if (isEdit.value) {
         await envApi.update(formData.id!, payload)
@@ -621,6 +700,15 @@ function onKeydown(e: KeyboardEvent) {
   cursor: help;
   margin-left: 2px;
   vertical-align: -1px;
+}
+
+/* 有头模式被禁用时的原因说明（线上无图形服务） */
+.cap-blocked {
+  font-size: 12px;
+  color: var(--el-color-warning);
+  line-height: 1.5;
+  margin-top: 2px;
+  flex-basis: 100%;
 }
 /* 卡内分组条 */
 .group-title {
