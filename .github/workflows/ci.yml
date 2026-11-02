@@ -34,8 +34,10 @@ jobs:
           cache: pip
           cache-dependency-path: platform/backend/requirements.txt
       - run: pip install -r requirements.txt pytest pytest-cov
-      # fake-db 单测不依赖真实 MySQL；环境变量仅为通过模块导入校验
-      # 覆盖率口径见 platform/backend/.coveragerc（仅统计 app 包）
+      # UI 平台单测含浏览器相关用例：与内网 CI 同姿势装 chromium 后跑全量
+      # （驱动版本随 requirements.txt 锁定；fake-db 单测不依赖真实 MySQL，
+      #   环境变量仅为通过模块导入校验；覆盖率口径见 .coveragerc 仅统计 app 包）
+      - run: python -m playwright install --with-deps chromium
       - run: python -m pytest tests -q --cov=app --cov-report=term
         env:
           DB_PASSWORD: ci-dummy
@@ -55,7 +57,7 @@ jobs:
           cache: pip
           cache-dependency-path: platform/backend/requirements.txt
       - run: pip install -r requirements.txt mypy
-      # blocking：0 错误基线（2026-10-10 起），回归即卡点
+      # blocking：0 错误基线（2026-10-29 起），回归即卡点
       - run: mypy app
 
   frontend-check:
