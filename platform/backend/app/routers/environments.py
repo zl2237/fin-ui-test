@@ -23,6 +23,26 @@ def list_all(project_id: int | None = None, created_by: int | None = None, updat
     return objs
 
 
+@router.get("/browser-capabilities")
+def browser_capabilities(user: models.User = Depends(get_current_user)):
+    """「UI 浏览器配置·有头模式」开关的可用性探测。
+
+    必须注册在 /{env_id} 之前（字面路由优先匹配）。线上部署为无图形环境的
+    Linux（无 DISPLAY/WAYLAND_DISPLAY），Chromium 有头启动必挂——前端据此
+    禁用有头开关并展示原因；运行时另有强制回退兜底。
+    """
+    from ..services.ui_runtime import headed_browser_supported
+    supported = headed_browser_supported()
+    return {
+        "headed_supported": supported,
+        "reason": "" if supported else (
+            "当前服务器是无图形环境的 Linux（未检测到 DISPLAY / WAYLAND_DISPLAY），"
+            "Chromium 有头模式无法启动，已禁用切换。需要观看执行过程请使用无头模式 + "
+            "执行录屏回放（报告页「录屏回放」按钮）"
+        ),
+    }
+
+
 @router.get("/{env_id}", response_model=schemas.EnvironmentOut)
 def get_one(env_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     obj = crud.get_environment(db, env_id)

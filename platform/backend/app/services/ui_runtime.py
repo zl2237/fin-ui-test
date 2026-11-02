@@ -158,6 +158,21 @@ class UiActionError(Exception):
         self.partial = partial
 
 
+def headed_browser_supported() -> bool:
+    """本机是否支持有头（可见窗口）浏览器。
+
+    Windows/macOS 恒支持；Linux 需要 X11/Wayland 图形服务（DISPLAY /
+    WAYLAND_DISPLAY）。线上部署是无图形环境的 Linux 服务器/容器——Chromium
+    有头启动会直接报「Missing X server or $DISPLAY」，整个执行挂掉，因此
+    环境配置页对线上禁用有头开关，运行时亦强制回退无头（双保险）。
+    """
+    # 注：用 os.name/startswith 而非 `sys.platform in (...)` —— mypy 在 win32
+    # 下会把后者折叠为恒真，误报后续语句 unreachable
+    if os.name == "nt" or sys.platform.startswith("darw"):
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def build_locator(page, strategies: dict):
     """按优先级链把 strategies 字典解析为 Playwright locator；无可用策略时抛错。
 
@@ -228,25 +243,31 @@ def _resolve_element_spec(page, element: Any):
     raise UiActionError("element 需要 {strategy, value} 或 {strategies: {...}}")
 
 
-def save_screenshot_file(db, project_id: int | None, png_bytes: bytes, name: str,
-                         user_id: int | None = None, category_id: int | None = None) -> int | None:
-    """截图字节流落文件中心（sha256 去重 + ref_count 引用计数），返回 test_files.id。
+def _persist_media_file(db, project_id: int | None, data: bytes, name: str,
+                        content_type: str, default_category: str,
+                        user_id: int | None = None,
+                        category_id: int | None = None) -> int | None:
+    """字节流落文件中心（sha256 去重 + ref_count 引用计数），返回 test_files.id。
 
-    - user_id：执行人，落 created_by（文件中心「上传人」列）；命中同内容旧记录时回填空值
-    - category_id：归档分类；None 时自动落到项目级「UI执行截图」分类（不存在则建）
     与 routers/files.py 的上传逻辑同一套存储约定（失败安全：落库失败返回 None，
-    不影响执行主流程）。
+    不影响执行主流程）。截图/录屏共用。
     """
-    if not png_bytes or project_id is None:
+    if not data:
+        print("[UI文件] 跳过保存：字节流为空")
+        return None
+    if project_id is None:
+        # 无项目归属 → 文件中心无处安放；打印而非静默（2026-11-02 exec1069
+        # 录屏无 id 排查时此分支曾静默吞掉冒烟结果）
+        print("[UI文件] 跳过保存：project_id 为空，文件中心无处归属")
         return None
     try:
         from .. import crud  # models 仅类型层面使用，勿引入避免循环
         from .file_helpers import build_storage_path, resolve_physical_path
 
         if category_id is None:
-            category_id = crud.ensure_file_category_by_name(db, project_id, "UI执行截图", user_id).id
+            category_id = crud.ensure_file_category_by_name(db, project_id, default_category, user_id).id
 
-        sha256 = hashlib.sha256(png_bytes).hexdigest()
+        sha256 = hashlib.sha256(data).hexdigest()
         existing = crud.get_file_by_sha256(db, project_id, sha256)
         if existing:
             existing.ref_count += 1
@@ -263,23 +284,40 @@ def save_screenshot_file(db, project_id: int | None, png_bytes: bytes, name: str
         physical = resolve_physical_path(storage_path)
         physical.parent.mkdir(parents=True, exist_ok=True)
         if not physical.exists():
-            physical.write_bytes(png_bytes)
+            physical.write_bytes(data)
         obj = crud.create_file_record(
             db,
             project_id=project_id,
             name=name,
             original_name=name,
-            content_type="image/png",
-            size=len(png_bytes),
+            content_type=content_type,
+            size=len(data),
             sha256=sha256,
             storage_path=storage_path,
             category_id=category_id,
             user_id=user_id,
         )
         return obj.id
-    except Exception as e:  # noqa: BLE001 截图是附加产物，失败不阻断执行
-        print(f"[UI截图] 保存失败（忽略）: {e}")
+    except Exception as e:  # noqa: BLE001 截图/录屏是附加产物，失败不阻断执行
+        print(f"[UI文件] 保存失败（忽略）: {e}")
         return None
+
+
+def save_screenshot_file(db, project_id: int | None, png_bytes: bytes, name: str,
+                         user_id: int | None = None, category_id: int | None = None) -> int | None:
+    """截图字节流落文件中心；category_id 为 None 时归项目级「UI执行截图」分类。
+
+    - user_id：执行人，落 created_by（文件中心「上传人」列）；命中同内容旧记录时回填空值
+    """
+    return _persist_media_file(db, project_id, png_bytes, name, "image/png",
+                               "UI执行截图", user_id=user_id, category_id=category_id)
+
+
+def save_video_file(db, project_id: int | None, video_bytes: bytes, name: str,
+                    user_id: int | None = None, category_id: int | None = None) -> int | None:
+    """执行录屏（webm）落文件中心；category_id 为 None 时归「UI执行录屏」分类。"""
+    return _persist_media_file(db, project_id, video_bytes, name, "video/webm",
+                               "UI执行录屏", user_id=user_id, category_id=category_id)
 
 
 class UiRuntime:
@@ -302,6 +340,13 @@ class UiRuntime:
         self._browser: "Browser | None" = None
         self._context: "BrowserContext | None" = None
         self._page: "Page | None" = None
+        # 执行录屏（browser_config.video 开启时）：临时目录 + page.video 句柄 +
+        # close() 落库后的 test_files.id（dag_executor 写进 execution summary）
+        self._video_dir: str | None = None
+        self._video: Any = None
+        self.video_file_id: int | None = None
+        # 录屏归档的执行人（execution_record.created_by，由 dag_executor 注入）
+        self.video_user_id: int | None = None
         self._login_check_done = False
 
     # ---------- 浏览器生命周期 ----------
@@ -357,15 +402,37 @@ class UiRuntime:
             # 约定键值对使用，cast 只做静态收口不改运行时行为
             viewport = cast("ViewportSize", self.config.get("viewport") or {"width": 1920, "height": 1080})
             launch_args = list(self.config.get("launch_args") or _DEFAULT_LAUNCH_ARGS)
+            headless = bool(self.config.get("headless", True))
+            if not headless and not headed_browser_supported():
+                # 环境配置页已禁用有头开关，这里是兜底：历史配置/直接改库可能
+                # 仍带 headless:false，无图形服务的机器上强开必挂，静默回退无头
+                print("[UI浏览器] 本机无图形服务（DISPLAY/WAYLAND_DISPLAY 缺失），"
+                      "有头模式不可用，已强制回退无头执行")
+                headless = True
             self._browser = self._playwright.chromium.launch(
-                headless=bool(self.config.get("headless", True)),
+                headless=headless,
                 slow_mo=int(self.config.get("slow_mo_ms", 0)),
                 args=launch_args,
             )
-            browser_context = self._browser.new_context(viewport=viewport)
+            context_kwargs: dict = {"viewport": viewport}
+            if self.config.get("video"):
+                # 执行录屏：webm 落临时目录，close() 时收进文件中心。
+                # record_video_size 限幅（默认 720p）——1920x1080 原生 7 分钟
+                # 可达 80MB+，降采样后 20-40MB，报告页 blob 拉取可承受
+                import tempfile
+                self._video_dir = tempfile.mkdtemp(prefix="uivideo_")
+                size = self.config.get("video_size") or {"width": 1280, "height": 720}
+                context_kwargs["record_video_dir"] = self._video_dir
+                context_kwargs["record_video_size"] = {
+                    "width": int(size.get("width", 1280)),
+                    "height": int(size.get("height", 720)),
+                }
+            browser_context = self._browser.new_context(**context_kwargs)
             self._context = browser_context
             self._inject_session_cookies(browser_context)
             self._page = browser_context.new_page()
+            if self._video_dir is not None:
+                self._video = getattr(self._page, "video", None)
             return self._page
         except UiActionError:
             self._release()
@@ -415,13 +482,38 @@ class UiRuntime:
             return None
 
     def close(self):
-        """收尾：关浏览器 + 停 playwright + 释放并发闸门（幂等，失败安全）。"""
-        for target in (self._page, self._browser):
+        """收尾：关浏览器 + 收录屏 + 停 playwright + 释放并发闸门（幂等，失败安全）。"""
+        video = self._video
+        for target in (self._page, self._context, self._browser):
             if target is not None:
                 try:
                     target.close()
                 except Exception as e:  # noqa: BLE001
                     print(f"[UI清理] 关闭失败（忽略）: {e}")
+        # 录屏收尾：context 关闭后 webm 才落盘（sync path() 阻塞等待完成），
+        # 必须在 playwright.stop() 之前取路径；收不进文件中心也不阻断收尾
+        if video is not None:
+            try:
+                path = video.path()
+                if path and os.path.exists(path):
+                    with open(path, "rb") as fh:
+                        data = fh.read()
+                    if data:
+                        name = f"exec_{self.execution_id or 'ui'}.webm"
+                        self.video_file_id = save_video_file(
+                            self.db, self.project_id, data, name,
+                            user_id=self.video_user_id)
+            except Exception as e:  # noqa: BLE001 录屏是附加产物，失败不阻断收尾
+                print(f"[UI录屏] 收集失败（忽略）: {e}")
+            finally:
+                if self._video_dir:
+                    try:
+                        import shutil
+                        shutil.rmtree(self._video_dir, ignore_errors=True)
+                    except Exception:  # pragma: no cover
+                        pass
+                self._video_dir = None
+                self._video = None
         if self._playwright is not None:
             try:
                 self._playwright.stop()
