@@ -19,9 +19,12 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /workspace
 COPY platform/backend/requirements.txt ./platform/backend/requirements.txt
 RUN pip install --no-cache-dir -r platform/backend/requirements.txt
+# Chromium 浏览器二进制 + 系统依赖（UI 节点执行需要真浏览器）：
+# 版本必须与 requirements.txt 锁定的 playwright==1.64.1 对应，
+# 驱动与浏览器 build 错配会「浏览器起动即死」（exec978 事故），升级须同步改
+RUN python -m playwright install --with-deps chromium
 COPY platform/backend/ ./platform/backend/
-# 平台后端复用的仓库根工具包（expression/request_sender/runtime_service/dag_executor 引 utils；
-# runtime_service 与环境测试连接延迟 import db.db_client，需一并打包）
+# 平台后端复用的仓库根工具包（engine/services 引 utils；环境 DB 断言引 db.db_client）
 COPY utils/ ./utils/
 COPY db/ ./db/
 COPY --from=frontend /build/dist ./platform/frontend/dist
