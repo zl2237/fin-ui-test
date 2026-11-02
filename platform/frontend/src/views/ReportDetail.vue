@@ -101,10 +101,36 @@
           </el-button>
           <el-button size="small" @click="exportCsv" :disabled="!steps.length">导出 CSV</el-button>
           <el-button size="small" @click="exportHtml" :disabled="!steps.length">导出 HTML</el-button>
+          <!-- 执行录屏回放：环境开了录屏（browser_config.video）时 summary 带 video_file_id -->
+          <el-button
+            v-if="videoFileId"
+            size="small"
+            type="primary"
+            plain
+            :loading="videoLoading"
+            @click="openVideo"
+          >
+            <el-icon style="margin-right: 4px"><VideoPlay /></el-icon>录屏回放
+          </el-button>
           <el-button text @click="router.back()">返回</el-button>
         </div>
       </div>
     </el-card>
+
+    <!-- 录屏回放弹窗：blob 拉流（preview 端点带鉴权），关闭即释放 -->
+    <el-dialog
+      v-model="videoVisible"
+      title="执行录屏回放"
+      width="72%"
+      top="4vh"
+      destroy-on-close
+      @closed="closeVideo"
+    >
+      <div v-loading="videoLoading" class="video-wrap">
+        <video v-if="videoUrl" :src="videoUrl" controls autoplay class="exec-video" />
+        <div v-else-if="!videoLoading" class="video-empty">录屏加载失败，可到文件中心「UI执行录屏」分类下载原文件</div>
+      </div>
+    </el-dialog>
 
     <!-- 失败摘要卡：与导出 HTML 报告同构（仅失败时渲染，点击跳转对应步骤） -->
     <el-card v-if="failedSteps.length" shadow="never" class="fail-summary">
@@ -443,7 +469,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Search, CircleCloseFilled, WarningFilled } from '@element-plus/icons-vue'
+import { Loading, Search, CircleCloseFilled, WarningFilled, VideoPlay } from '@element-plus/icons-vue'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
 import EmptyState from '@/components/EmptyState.vue'
@@ -594,6 +620,36 @@ watch(
   { immediate: true },
 )
 onUnmounted(revokeScreenshot)
+
+// ===== 执行录屏回放（summary.video_file_id → 文件中心 webm，blob 流播放）=====
+const videoFileId = computed<number | null>(() =>
+  (record.value?.summary as any)?.video_file_id ?? null)
+const videoVisible = ref(false)
+const videoUrl = ref('')
+const videoLoading = ref(false)
+async function openVideo() {
+  if (!videoFileId.value || videoLoading.value) return
+  videoVisible.value = true
+  if (videoUrl.value) return
+  videoLoading.value = true
+  try {
+    const { url } = await fileApi.fetchBlob(videoFileId.value, true)
+    videoUrl.value = url
+  } catch (e: any) {
+    ElMessage.error(e?.message || '录屏加载失败')
+    videoVisible.value = false
+  } finally {
+    videoLoading.value = false
+  }
+}
+function closeVideo() {
+  // 释放 blob（文件几十 MB，不常驻内存）；再次打开重新拉取
+  if (videoUrl.value) {
+    URL.revokeObjectURL(videoUrl.value)
+    videoUrl.value = ''
+  }
+}
+onUnmounted(closeVideo)
 
 // UI/API 步骤切换时详情 tab 联动：页面详情 ↔ 请求，避免停留在已隐藏的 tab 上
 watch(currentStep, (s) => {
@@ -1365,6 +1421,23 @@ onUnmounted(stopPolling)
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius-sm);
   background: var(--app-hover);
+}
+/* 执行录屏回放：弹窗内视频占满宽度，限高适配视口 */
+.video-wrap {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.exec-video {
+  width: 100%;
+  max-height: 76vh;
+  background: #000;
+  border-radius: var(--app-radius-sm);
+}
+.video-empty {
+  color: var(--app-text-2nd, #909399);
+  font-size: 13px;
 }
 /* UI 动作 tag：与 DAG UI 节点同源的紫罗兰语义 */
 .ui-action-tag {

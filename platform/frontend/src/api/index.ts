@@ -141,6 +141,7 @@ export interface Environment {
   is_default: boolean; sort_order?: number; created_at?: string
   created_by?: number | null; updated_by?: number | null
   created_by_name?: string | null; updated_by_name?: string | null
+  browser_config?: Record<string, any>  // UI 用例浏览器运行参数（headless/video/screenshot/slow_mo_ms/inject_token_cookie/launch_args）
 }
 export type CaseGroup = components['schemas']['CaseGroupOut']
 // ============ 四来源参数模型（2026-09-30 定案：节点入参取值单选四来源） ============
@@ -430,6 +431,8 @@ export const envApi = {
   testLogin: (id: number) => http.post<{ ok: boolean; message: string; auth_header_name?: string; auth_header_preview?: string; base_url?: string }>(`/environments/${id}/test-login`).then((r) => r.data),
   reorder: (items: { id: number; sort_order: number }[]) =>
     http.post<{ message: string; updated: number }>('/environments/reorder', { items }).then((r) => r.data),
+  browserCapabilities: () =>
+    http.get<{ headed_supported: boolean; reason: string }>('/environments/browser-capabilities').then((r) => r.data),
 }
 
 // ============ CaseGroup ============

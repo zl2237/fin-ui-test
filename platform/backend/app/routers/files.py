@@ -141,7 +141,7 @@ def preview_file(
     db: Session = Depends(get_db),
     _user: models.User = Depends(get_current_user),
 ):
-    """预览文件：图片/PDF 内嵌展示，其他类型返回 415 不支持"""
+    """预览文件：图片/PDF/视频内嵌展示，其他类型返回 415 不支持"""
     obj = crud.get_file(db, file_id)
     if not obj:
         raise HTTPException(404, "文件不存在")
