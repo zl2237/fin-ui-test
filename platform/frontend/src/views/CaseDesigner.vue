@@ -6,11 +6,12 @@
       <el-button size="small" @click="initialLoad">重试</el-button>
     </div>
     <template v-else>
-    <!-- 左侧组件面板：页面域树（编排改造——画布节点即页面域，动作在节点内编排） -->
+    <!-- 左侧组件面板：页面域树（编排改造——画布节点即页面域，动作在节点内编排；
+         2026-11-04 与元素库左侧同款：page_scope 按 / 分层 + 展开记忆 + 元素行仅显示 key） -->
     <div class="api-panel">
       <div class="panel-title">
         <span class="title-text">页面域</span>
-        <span class="panel-count">{{ scopeTree.length }} 域 · {{ uiElements.length }} 元素</span>
+        <span class="panel-count">{{ scopeCount }} 域 · {{ uiElements.length }} 元素</span>
       </div>
       <div class="panel-search">
         <el-input v-model="scopeFilter" size="small" clearable placeholder="搜索页面域 / 元素">
@@ -18,29 +19,41 @@
         </el-input>
       </div>
       <div class="api-list">
-        <div v-for="g in scopeTree" :key="g.scope" class="group-block">
-          <div class="scope-row" :class="{ 'is-open': expandedScopes.has(g.scope) }">
-            <button type="button" class="group-header" @click="toggleScope(g.scope)">
-              <el-icon class="expand-icon" :class="{ expanded: expandedScopes.has(g.scope) }"><ArrowRight /></el-icon>
-              <span class="group-name" :title="g.scope">{{ g.label }}</span>
-              <span class="group-count">{{ g.elements.length }}</span>
-            </button>
-            <button type="button" class="scope-add" :title="`添加「${g.label}」页面域节点到画布`" @click="onAddUiNode(g)">＋</button>
-          </div>
-          <div v-if="expandedScopes.has(g.scope)" class="scope-elements">
-            <div
-              v-for="el in g.elements"
-              :key="el.id"
-              class="api-item element-row"
-              :title="`${el.element_key}${el.description ? `（${el.description}）` : '（无描述）'}`"
-            >
-              <span class="api-item-name">{{ el.description || el.element_key }}</span>
-              <span class="api-item-path">{{ el.element_key }}</span>
-            </div>
-            <p v-if="!g.elements.length" class="scope-empty">该域暂无元素（在「元素库」页维护）</p>
-          </div>
-        </div>
-        <p v-if="!scopeTree.length" class="scope-empty">元素库为空或无匹配：先在「元素库」页导入</p>
+        <!-- v-if 数据就绪后挂载：default-expanded-keys 才能在建树时生效（与元素库页同法） -->
+        <el-tree
+          v-if="scopeTree.length"
+          ref="scopeTreeRef"
+          :data="scopeTree"
+          node-key="path"
+          :props="{ label: 'label', children: 'children' }"
+          :default-expanded-keys="expandedScopePaths"
+          :filter-node-method="filterScopeNode"
+          :expand-on-click-node="false"
+          @node-expand="onScopeNodeExpand"
+          @node-collapse="onScopeNodeCollapse"
+        >
+          <template #default="{ data }">
+            <span v-if="data.kind === 'scope'" class="tree-scope">
+              <!-- 有中文只显中文（悬浮看英文全路径），无中文拿段名兜底，不再中英拼接 -->
+              <span class="scope-name" :title="data.zh ? `${data.zh}（${data.scope}）` : data.scope">{{ data.zh || data.label }}</span>
+              <span v-if="data.count" class="scope-count">{{ data.count }}</span>
+              <button
+                v-if="data.count"
+                type="button"
+                class="scope-add"
+                :title="`添加「${data.zh || data.scope}」页面域节点到画布`"
+                @click.stop="onAddUiNode(data)"
+              >＋</button>
+            </span>
+            <!-- 元素行：仅显示 key（描述曾致面板高度膨胀），hover title 按需查看 -->
+            <span
+              v-else
+              class="tree-element"
+              :title="data.el.description ? `${data.el.element_key}（${data.el.description}）` : data.el.element_key"
+            >{{ data.el.element_key }}</span>
+          </template>
+        </el-tree>
+        <p v-else class="scope-empty">元素库为空：先在「元素库」页导入</p>
         <p class="ui-panel-tip">点 ＋ 将页面域添加为画布节点；节点内编排多个动作，动作只能操作本域元素。</p>
       </div>
     </div>
@@ -184,10 +197,11 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search } from '@element-plus/icons-vue'
 import DagCanvas from '@/components/DagCanvas.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
+import { expandStorageKey } from '@/composables/useGroupTree'
 import { caseApi, elementApi, scopeLabelApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type UiElement, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
@@ -231,15 +245,15 @@ const loading = ref(false)
 // 页面级加载失败（接口/用例编排数据拉取失败）：内联错误块 + 重试，不让画布静默空壳
 const loadError = ref('')
 
-// ===== 左侧页面域树（编排改造：节点=页面域；域下元素仅信息展示） =====
+// ===== 左侧页面域树（编排改造：节点=页面域；与元素库左侧同款 / 分层树 + 展开记忆） =====
 const uiElements = ref<UiElement[]>([])
 const scopeLabels = ref<Record<string, string>>({})
 const scopeFilter = ref('')
-const expandedScopes = ref<Set<string>>(new Set())
-let scopePanelLoaded = false
+/** 已加载面板的项目号（幂等守卫）：同项目不重拉；冷加载竞速/切项目由 watch 补拉 */
+let scopePanelProject: number | null = null
 
 async function loadScopePanel() {
-  if (scopePanelLoaded || !store.currentProjectId) return
+  if (!store.currentProjectId || scopePanelProject === store.currentProjectId) return
   try {
     const [els, labels] = await Promise.all([
       elementApi.list(store.currentProjectId),
@@ -247,43 +261,124 @@ async function loadScopePanel() {
     ])
     uiElements.value = els
     scopeLabels.value = labels
-    scopePanelLoaded = true
+    scopePanelProject = store.currentProjectId
   } catch (e: any) {
     ElMessage.warning(`元素库加载失败：${e?.message || '请稍后重试'}（无法添加页面域节点）`)
   }
 }
 
-/** 域树数据：元素按 page_scope 分组（关键词过滤域中文名/scope 编码/元素名；
- *  域名命中时整组保留，元素未命中也显示空组） */
-const scopeTree = computed<{ scope: string; label: string; elements: UiElement[] }[]>(() => {
-  const kw = scopeFilter.value.trim().toLowerCase()
-  const groups: { scope: string; label: string; elements: UiElement[] }[] = []
-  for (const scope of [...new Set(uiElements.value.map((e) => e.page_scope))].sort()) {
-    const label = scopeLabels.value[scope] || scope
-    const scopeHit = !kw || label.toLowerCase().includes(kw) || scope.toLowerCase().includes(kw)
-    if (!scopeHit && !kw) {
-      groups.push({ scope, label, elements: uiElements.value.filter((e) => e.page_scope === scope) })
-      continue
-    }
-    if (scopeHit) {
-      groups.push({ scope, label, elements: uiElements.value.filter((e) => e.page_scope === scope) })
-      continue
-    }
-    const elements = uiElements.value.filter(
-      (e) => e.page_scope === scope
-        && (e.element_key.toLowerCase().includes(kw) || (e.description || '').toLowerCase().includes(kw)),
-    )
-    if (elements.length) groups.push({ scope, label, elements })
+// 冷加载竞速兜底：直接刷新编排页时 MainLayout 的 loadProjects 未完成、
+// currentProjectId 仍空，onMounted 首调静默早退——项目号到位后补拉；
+// 会话中切项目同样重拉（元素按项目隔离）
+watch(() => store.currentProjectId, () => { loadScopePanel() })
+
+/** 面板树节点：scope=按 / 分层的域节点（count=本域直属元素数），element=域下元素行（仅展示 key） */
+interface ScopePanelNode {
+  kind: 'scope' | 'element'
+  path: string
+  label: string
+  scope?: string
+  zh?: string
+  count?: number
+  el?: UiElement
+  children?: ScopePanelNode[]
+}
+
+const scopeCount = computed(() => new Set(uiElements.value.map((e) => e.page_scope)).size)
+
+/** 域树数据：元素按 page_scope 分组后按 / 段分层（同元素库页）；元素行挂在所属域下 */
+const scopeTree = computed<ScopePanelNode[]>(() => {
+  const byScope = new Map<string, UiElement[]>()
+  for (const e of uiElements.value) {
+    const arr = byScope.get(e.page_scope) || []
+    arr.push(e)
+    byScope.set(e.page_scope, arr)
   }
-  return groups
+  const root: ScopePanelNode[] = []
+  for (const scope of [...byScope.keys()].sort()) {
+    const els = byScope.get(scope)!
+    const segs = scope.split('/').filter(Boolean)
+    let level = root
+    let path = ''
+    segs.forEach((seg, i) => {
+      path = path ? `${path}/${seg}` : seg
+      let node = level.find((n) => n.kind === 'scope' && n.path === path)
+      if (!node) {
+        node = { kind: 'scope', path, label: seg, scope: path, zh: scopeLabels.value[path], count: 0, children: [] }
+        level.push(node)
+      }
+      if (i === segs.length - 1) {
+        node.count = els.length
+        node.children!.push(...els.map((el) => ({ kind: 'element' as const, path: `el-${el.id}`, label: el.element_key, el })))
+      } else {
+        level = node.children!
+      }
+    })
+  }
+  // 层内排序：域节点在前（按名），元素行按 key
+  const sortRec = (ns: ScopePanelNode[]) => {
+    ns.sort((a, b) => (a.kind === b.kind
+      ? a.label.localeCompare(b.label)
+      : a.kind === 'scope' ? -1 : 1))
+    for (const n of ns) if (n.children?.length) sortRec(n.children)
+  }
+  sortRec(root)
+  return root
 })
 
-function toggleScope(scope: string) {
-  const next = new Set(expandedScopes.value)
-  if (next.has(scope)) next.delete(scope)
-  else next.add(scope)
-  expandedScopes.value = next
+// 树过滤：域节点按 中文名/scope 路径，元素行按 key/描述（祖先含命中子孙自动保留）
+const scopeTreeRef = ref<any>(null)
+function filterScopeNode(value: string, data: any): boolean {
+  const kw = String(value || '').trim().toLowerCase()
+  if (!kw) return true
+  if (data.kind === 'scope') {
+    return `${data.zh || ''} ${data.scope || ''}`.toLowerCase().includes(kw)
+  }
+  return `${data.el?.element_key || ''} ${data.el?.description || ''}`.toLowerCase().includes(kw)
 }
+watch(scopeFilter, (v) => scopeTreeRef.value?.filter?.(v))
+
+// 展开记忆：与元素库页同约定（fin_group_expand_{scope}_{projectId}）；无记忆默认全收起
+const SCOPE_EXPAND_SCOPE = 'caseDesigner'
+const expandedScopePaths = ref<string[]>([])
+
+function loadScopeExpandMemory() {
+  try {
+    const saved = localStorage.getItem(expandStorageKey(SCOPE_EXPAND_SCOPE, store.currentProjectId))
+    expandedScopePaths.value = saved ? JSON.parse(saved) : []
+  } catch {
+    expandedScopePaths.value = []
+  }
+}
+
+function persistScopeExpand() {
+  if (!store.currentProjectId) return
+  try {
+    localStorage.setItem(
+      expandStorageKey(SCOPE_EXPAND_SCOPE, store.currentProjectId),
+      JSON.stringify(expandedScopePaths.value),
+    )
+  } catch {
+    // 忽略写入失败
+  }
+}
+
+function onScopeNodeExpand(data: ScopePanelNode) {
+  if (!expandedScopePaths.value.includes(data.path)) {
+    expandedScopePaths.value.push(data.path)
+    persistScopeExpand()
+  }
+}
+
+function onScopeNodeCollapse(data: ScopePanelNode) {
+  const i = expandedScopePaths.value.indexOf(data.path)
+  if (i >= 0) {
+    expandedScopePaths.value.splice(i, 1)
+    persistScopeExpand()
+  }
+}
+
+watch(() => store.currentProjectId, loadScopeExpandMemory, { immediate: true })
 
 async function initialLoad() {
   const id = Number(route.params.id)
@@ -474,15 +569,18 @@ const onBeforeUnload = (e: BeforeUnloadEvent) => {
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
-/** 添加页面域节点：画布节点即页面域（首步 goto 进域页面，节点内再编排动作） */
-function onAddUiNode(g: { scope: string; label: string }) {
+/** 添加页面域节点：画布节点即页面域（首步 goto 进域页面，节点内再编排动作）。
+ *  画布名 = 域中文语义优先，无语义用完整 scope 编码 */
+function onAddUiNode(g: { scope?: string; zh?: string; label?: string }) {
+  if (!g.scope) return
+  const displayName = g.zh || g.scope
   const id = `node_${Date.now()}`
   const position = canvasRef.value?.findFreePosition?.() ?? { x: 80, y: 60 }
   const node = {
     id,
     position,
-    data: { label: g.label, step_type: 'ui', scope: g.scope, ui_action: 'steps', ui_steps_len: 1 },
-    label: g.label,
+    data: { label: displayName, step_type: 'ui', scope: g.scope, ui_action: 'steps', ui_steps_len: 1 },
+    label: displayName,
   }
   nodes.value.push(node)
   canvasRef.value?.addNode(node)
@@ -689,126 +787,53 @@ function onKeydown(e: KeyboardEvent) {
 .api-list {
   flex: 1;
   overflow: auto;
-  padding: 8px;
+  padding: 4px 6px;
 }
-.group-block {
-  margin-bottom: 4px;
-}
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
-  cursor: pointer;
-  user-select: none;
-  border-radius: var(--app-radius-sm);
-  transition: background 0.15s;
-  /* 语义化 button：清除浏览器默认外观 */
-  appearance: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border: none;
-}
-.group-header:hover {
-  background: var(--app-hover);
-}
-.group-header:focus-visible {
-  outline: 2px solid var(--app-primary);
-  outline-offset: -2px;
-}
-/* 折叠箭头 .expand-icon/.expanded/.expand-spacer 已收敛至全局 style.css */
-.group-name {
-  font-size: 13px;
-  color: var(--app-text);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.group-count {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--app-text-faint);
-  flex-shrink: 0;
-}
-.api-item {
-  display: block;
-  width: 100%;
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  border-left: 2px solid transparent;
-  /* 语义化 button：清除浏览器默认外观 */
-  appearance: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border-top: none;
-  border-right: none;
-  border-bottom: none;
-}
-.api-item:hover {
-  background: var(--app-chip-bg);
-  border-left-color: var(--app-primary);
-}
-.api-item:focus-visible {
-  outline: 2px solid var(--app-primary);
-  outline-offset: -2px;
-}
-.api-item-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-.api-item-path {
-  font-size: 11px;
-  color: var(--app-text-muted);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* UI 动作英文 key 徽标（中文名右侧 mono 小字） */
-.ui-action-key {
-  margin-left: 6px;
-  font-family: var(--app-font-mono);
-  font-size: 10px;
-  color: var(--app-text-faint);
-}
-/* ===== 页面域树 ===== */
+/* ===== 页面域树（与元素库左侧同款） ===== */
 .panel-count {
   font-size: 11px;
   font-weight: 400;
   color: var(--app-text-faint);
   flex-shrink: 0;
 }
-/* 域行：折叠头 + 加号按钮同行 */
-.scope-row {
+.api-panel :deep(.el-tree) {
+  --el-tree-node-content-height: 32px;
+  background: transparent;
+  --el-tree-expand-icon-color: var(--app-text-muted);
+}
+.api-panel :deep(.el-tree-node__content) {
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.api-panel :deep(.el-tree-node__content:hover) {
+  background: var(--app-hover);
+}
+/* 域节点行：中文名主显（无中文拿段名兜底，悬浮看英文全路径）+ 元素数 + 加号 */
+.tree-scope {
   display: flex;
   align-items: center;
-  gap: 2px;
-}
-/* 展开组吸顶：滚动元素列表时域名钉在面板可视区顶部不消失
-   （仅展开组 sticky——收起态列表滚动不受粘滞干扰） */
-.scope-row.is-open {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--app-card);
-  border-bottom: 1px solid var(--app-border);
-}
-.scope-row .group-header {
+  gap: 6px;
   flex: 1;
   min-width: 0;
+  font-size: 13px;
+}
+.scope-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-faint);
+  flex-shrink: 0;
 }
 .scope-add {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -816,7 +841,7 @@ function onKeydown(e: KeyboardEvent) {
   border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--app-text-muted);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -828,17 +853,17 @@ function onKeydown(e: KeyboardEvent) {
   outline: 2px solid var(--app-primary);
   outline-offset: -2px;
 }
-/* 域下元素列表（信息展示，不可点） */
-.scope-elements {
-  border-left: 1px solid var(--app-border);
-  margin-left: 14px;
-}
-.element-row {
+/* 元素行：仅 key（mono 单行省略；描述 hover title 按需查看，曾致面板高度膨胀） */
+.tree-element {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--app-font-mono);
+  font-size: 12px;
+  color: var(--app-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: default;
-}
-.element-row:hover {
-  background: var(--app-hover);
-  border-left-color: transparent;
 }
 .scope-empty {
   padding: 8px 12px;

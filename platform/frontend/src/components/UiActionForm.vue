@@ -29,7 +29,7 @@
       <el-form-item label="页面 URL" required>
         <div class="ds-menu-row">
           <el-input v-model="st.url" placeholder="https://… 或 /相对路径（自动拼环境 base_url），支持 ${变量}" @focus="urlIns.onSqlFocus" />
-          <DatasetVarMenu :sheets="dsSheets" @insert="urlIns.onSqlInsert" />
+          <DatasetVarMenu v-bind="dvmProps" @insert="urlIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
         </div>
       </el-form-item>
       <el-form-item label="加载条件">
@@ -62,7 +62,10 @@
         </el-form-item>
         <el-form-item label="选择元素" :required="elementRequired">
           <el-select v-model="st.element!.element_id" filterable clearable :placeholder="props.nodeScope ? `仅限本节点页面域「${scopeDisplay(props.nodeScope)}」下的元素` : '先选页面域，再选元素'" style="width: 100%" :disabled="!elementScope">
-            <el-option v-for="el in scopeElements" :key="el.id" :label="elementLabel(el)" :value="el.id" />
+            <el-option v-for="el in scopeElements" :key="el.id" :label="el.element_key" :value="el.id">
+              <!-- 仅显示 key（描述过宽曾致下拉无限膨胀）；hover title 按需查看描述 -->
+              <span class="element-opt" :title="el.description ? `${el.element_key}（${el.description}）` : el.element_key">{{ el.element_key }}</span>
+            </el-option>
           </el-select>
           <p v-if="crossScopeElement" class="tip action-tip dangling-tip">
             当前引用的元素「{{ crossScopeElement }}」不属于节点页面域 {{ scopeDisplay(props.nodeScope!) }}，请重选本域元素
@@ -91,20 +94,20 @@
     <el-form-item v-if="st.action === 'fill'" label="输入内容" required>
       <div class="ds-menu-row">
         <el-input v-model="st.value" placeholder="填入文本，支持 ${变量}" @focus="valIns.onSqlFocus" />
-        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
     </el-form-item>
     <el-form-item v-else-if="TEXT_VALUE_ACTIONS.has(st.action)" label="文本值" required>
       <div class="ds-menu-row">
         <el-input v-model="st.value" :placeholder="textValuePlaceholder" @focus="valIns.onSqlFocus" />
-        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
       <p class="tip action-tip">{{ textValueTip }}</p>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'save'" label="期望提示">
       <div class="ds-menu-row">
         <el-input v-model="st.value" placeholder="默认「保存成功」；也可填其他成功提示文本，支持 ${变量}" @focus="valIns.onSqlFocus" />
-        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
       <p class="tip action-tip">留空时按文本「保 存」定位保存按钮，成功以该提示出现为准</p>
     </el-form-item>
@@ -113,7 +116,7 @@
         <el-input v-model="st.value"
                   :placeholder="st.action === 'pick' ? '选项文本，如 海运费，支持 ${变量}' : (st.action === 'date' ? '如 2026-09-11 10:00:00' : '逐字输入的内容，支持 ${变量}')"
                   @focus="valIns.onSqlFocus" />
-        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'press'" label="按键" required>
@@ -127,7 +130,7 @@
     <el-form-item v-else-if="st.action === 'evaluate'" label="JS 表达式" required>
       <div class="ds-menu-row">
         <el-input v-model="st.value" type="textarea" :rows="3" placeholder="如 document.title；支持 ${变量} 注入" @focus="valIns.onSqlFocus" />
-        <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+        <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'select_option'" label="选项值" required>
@@ -146,7 +149,7 @@
       <el-form-item label="传参 args">
         <div class="ds-menu-row">
           <el-input v-model="st.value" placeholder="传给脚本的参数（脚本内以 args 访问），支持 ${变量}" @focus="valIns.onSqlFocus" />
-          <DatasetVarMenu :sheets="dsSheets" @insert="valIns.onSqlInsert" />
+          <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
         </div>
       </el-form-item>
     </template>
@@ -226,11 +229,22 @@ const props = defineProps<{
   actionDocs?: UiActionDoc[]
   /** 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；空=不渲染插入按钮） */
   dsSheets?: DsVarSheet[]
+  /** 归属用例 + 绑定数据集 id（插入器「临时新增一行」落点，透传 DatasetVarMenu） */
+  caseId?: number
+  boundDatasetId?: number | null
   /** 页面域 scope → 中文名（元素库页维护）：下拉/回显显示中文而非裸编码 */
   scopeLabels?: Record<string, string>
   /** 节点页面域（编排改造：节点=页面域）：固定元素可选范围，不传则步骤内自选域 */
   nodeScope?: string
 }>()
+const emit = defineEmits<{ (e: 'rows-changed'): void }>()
+
+/** DatasetVarMenu 公共绑定（7 处插入器同一数据源/落点，仅 insert 通道不同） */
+const dvmProps = computed(() => ({
+  sheets: props.dsSheets,
+  caseId: props.caseId,
+  boundDatasetId: props.boundDatasetId,
+}))
 
 // 光标处插入 ${sheet.字段}：value 与 url 各一条通道（复用 SQL 引用插入器，
 // 记录最后聚焦控件，插入后回焦定位到插入串之后）
@@ -294,10 +308,6 @@ const timeoutMs = computed<number>({
   get: () => st.value.timeout_ms ?? 15000,
   set: (v: number) => { st.value.timeout_ms = v },
 })
-
-function elementLabel(el: UiElement): string {
-  return el.description ? `${el.element_key}（${el.description}）` : el.element_key
-}
 
 /** 页面域下拉显示值：有中文名时「中文（编码）」，否则裸编码 */
 function scopeDisplay(s: string): string {
@@ -504,6 +514,15 @@ defineExpose({ collect })
   font-family: var(--app-font-mono);
   font-size: 11px;
   color: var(--app-text-faint);
+}
+/* 元素下拉项：仅 key（mono 单行，溢出省略），描述走 hover title */
+.element-opt {
+  display: block;
+  font-family: var(--app-font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tip {
   margin-top: 4px;
