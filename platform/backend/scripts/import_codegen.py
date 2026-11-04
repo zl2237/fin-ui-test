@@ -37,7 +37,8 @@ import urllib.request
 RULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codegen_rules")
 
 # 看门狗成功文案按钮集（与模板串一体，勿改格式）
-NOISE_PRESS_KEYS = {"CapsLock", "Tab", "ControlOrMeta+a", "ControlOrMeta+A"}  # 录制过程键，无业务语义（fill 前全选冗余：fill 本身整值替换）
+NOISE_PRESS_KEYS = {"CapsLock", "Tab", "ControlOrMeta+a", "ControlOrMeta+A",
+                    "ControlOrMeta+v", "ControlOrMeta+V"}  # 录制过程键，无业务语义（fill 前全选/粘贴冗余：fill 本身整值替换）
 QUERY_DEFAULT = {"text": "查询", "placeholder": "请输入", "wait_ms": 500, "assert_field": "bl_no"}
 
 
@@ -175,7 +176,13 @@ def _locator_of(chain):
         elif m in ("get_by_label", "get_by_placeholder", "get_by_test_id"):
             loc.update(kind=m.split("_", 2)[-1], value=pos[0] if pos else "")
         elif m == "locator":
-            loc.update(kind="css", value=pos[0] if pos else "")
+            # filter(has_text=X).locator("span") 选项点击链（el-select 下拉
+            # get_by_role("listitem").filter(has_text=...).locator("span")）：
+            # 尾挂纯标签 span 不覆盖 filtered_text——否则过滤文本丢失，选项
+            # 退化为无名 css 点击（客户管理·批量添加操作 实证）
+            _css = pos[0] if pos else ""
+            if not (_css == "span" and loc.get("kind") == "filtered_text"):
+                loc.update(kind="css", value=_css)
         elif m == "filter":
             # locator('div').filter(has_text=re.compile('^财务管理$')) → 菜单组点击：
             # 按 has_text 正则文本识别（裸 css 'div' 直接点击会误中首个 div）
@@ -365,6 +372,9 @@ class Platform:
     def environments(self, project_id):
         return self.req("GET", f"/environments?project_id={project_id}")
 
+    def scope_labels(self, project_id):
+        return self.req("GET", f"/page-scope-labels/map?project_id={project_id}")
+
     def create_element(self, project_id, scope, key, spec):
         return self.req("POST", "/ui-elements", {
             "project_id": project_id, "page_scope": scope, "element_key": key,
@@ -468,6 +478,18 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
             i += 1
             continue
 
+        # --- 导航折叠残影：登录段折叠产生的 goto ${route} 直达路由，
+        #     紧随其后的菜单组/链接点击（nav_click_texts 命中）是同一导航
+        #     的录制残影——剔除（客户管理实证：客商管理组点击折叠为 goto
+        #     后，link 客户管理 再点击属重复导航） ---
+        if m == "click" and login_done and cur and isinstance(cur[-1], dict) \
+                and cur[-1].get("action") == "goto" \
+                and str(cur[-1].get("url") or "").startswith("${") \
+                and label and label in {norm_text(t) for t in rule["nav_click_texts"]}:
+            dropped.append((line, s["raw"], "导航折叠：goto 已直达路由，菜单点击剔除"))
+            i += 1
+            continue
+
         # --- 阶段显式噪音按钮（上一步回退 / 取消关窗 等） ---
         if m == "click" and label and label in {norm_text(t) for t in rule.get("noise_buttons") or []}:
             dropped.append((line, s["raw"], f"阶段噪音按钮剔除：{label}（规则 noise_buttons 登记）"))
@@ -537,8 +559,16 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
                 if t["method"] == "fill":
                     j += 1
                     continue
+                if t["method"] == "press":
+                    # 录制过程键（CapsLock 等）穿插在 检索词 fill 与选项点击之间
+                    # （用户大写锁定习惯分段输入）——跳过不判终止（请选择分支同款容错）
+                    j += 1
+                    continue
                 if t["method"] == "click":
                     if tl.get("kind") == "text" and tl.get("value"):
+                        return tl["value"], j + 1
+                    if tl.get("kind") == "filtered_text" and tl.get("value"):
+                        # filter(has_text=X).locator("span") 选项链：X 即选项文本
                         return tl["value"], j + 1
                     if tl.get("kind") == "role" and tl.get("value") in ("listitem", "list"):
                         return "__first_option__", j + 1
@@ -839,7 +869,13 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
         if m == "click" and loc.get("kind") == "role" and loc.get("value") == "textbox":
             # 仅当后随同位 fill 才并入（聚焦语义）；裸 textbox click 是下拉触发
             # （如详情页「订单操作」），按元素库 role=textbox 名匹配生成 click
-            nxt = stmts[i + 1] if i + 1 < len(stmts) else None
+            # 同位 fill 判定容错中间的录制噪音键（粘贴前 ControlOrMeta+V 等，
+            # 客户管理检索框实证：click → Ctrl+V → fill 被判裸 click 出待复核）
+            _k = i + 1
+            while _k < len(stmts) and stmts[_k]["method"] == "press" \
+                    and str(stmts[_k]["args"][0] if stmts[_k]["args"] else "") in NOISE_PRESS_KEYS:
+                _k += 1
+            nxt = stmts[_k] if _k < len(stmts) else None
             same_fill = bool(nxt and nxt["method"] == "fill"
                              and nxt["locator"].get("kind") == "role"
                              and nxt["locator"].get("value") == "textbox"
@@ -895,8 +931,13 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
         # --- 按钮点击 → 元素库 crossref + 行为分发 ---
         if m == "click":
             # 规则显式指定（button_overrides）：crossref 字母序命中的库键未必是运行时
-            # 可用的（如 button="提交" 实际可访问名 "提 交"），规则可强制指元素
-            _ov = next((k for k in (rule.get("button_overrides") or {}) if norm_text(k) == label), None)
+            # 可用的（如 button="提交" 实际可访问名 "提 交"），规则可强制指元素。
+            # 原文精确命中优先于归一化匹配：「确 认」与「确认」归一后同为「确认」，
+            # 但同链路是两个不同弹窗的按钮（变更弹窗 footer vs 审批人弹窗 footer），
+            # 只有原文能区分（客商关系·变更特殊账期截转规则实证）
+            _raw = str(loc.get("name") or loc.get("value") or "")
+            _ov = next((k for k in (rule.get("button_overrides") or {}) if k == _raw), None) \
+                or next((k for k in (rule.get("button_overrides") or {}) if norm_text(k) == label), None)
             ekey = rule["button_overrides"][_ov] if _ov else _crossref_button(elements, scope, label)
             # 文本/过滤文本点击 → 规则显式指定元素（如「订单费用」tab、「合并开票」span）
             if not ekey and loc.get("kind") in ("text", "filtered_text") and (rule.get("text_click_rules") or {}):
@@ -1368,6 +1409,7 @@ def main():
             return
         group_id = resolve_group(pf, args.project_id, rule)
         env_id = resolve_env(pf, args.project_id, rule, args.env_id)
+        _sync_scope_labels(pf, args.project_id, rule)
         stage_keys = [s["key"] for s in rule["stages"]]
         for v in variants:
             stop = v.get("stop_after")
@@ -1417,8 +1459,37 @@ def main():
 
     group_id = resolve_group(pf, args.project_id, rule)
     env_id = resolve_env(pf, args.project_id, rule, args.env_id)
+    _sync_scope_labels(pf, args.project_id, rule)
     _apply_case(pf, args.project_id, group_id, env_id, rule, dag, configs, dataset)
     print(f"复核入口：画布 /cases/designer（待复核 {len(review)} 项见清单）")
+
+
+def _sync_scope_labels(pf, project_id, rule):
+    """规则携带的页面域中文语义写入 page_scope_labels（仅 --apply 路径调用，dry-run 绝不写）。
+
+    来源：全局 rule["scope_labels"]（中间段映射，如 merchantManage→客商管理）
+    + 链式各 stage / 单表单 rule["page"] 的 (scope, scope_label)。
+    与线上 map 比对，只提交新增或不同的项（规则为准——同 ensure_elements 语义；
+    语义表本就不校验叶子，中间段路径可直接写，两处页面域树按累加路径即时显示）。"""
+    cand = dict(rule.get("scope_labels") or {})
+    stages = rule.get("stages")
+    if stages:
+        for st in stages:
+            if st.get("scope") and st.get("scope_label"):
+                cand[st["scope"]] = st["scope_label"]
+    elif (rule.get("page") or {}).get("scope") and (rule["page"].get("scope_label")):
+        cand[rule["page"]["scope"]] = rule["page"]["scope_label"]
+    if not cand:
+        return
+    have = pf.scope_labels(project_id)
+    items = [{"page_scope": s, "label": str(l)} for s, l in cand.items()
+             if str(have.get(s) or "") != str(l)]
+    if not items:
+        return
+    res = pf.req("POST", "/page-scope-labels/batch", {"project_id": project_id, "items": items})
+    for it in items:
+        print(f"[语义] {it['page_scope']} → {it['label']}")
+    print(f"[语义] 页面域语义写入 {res.get('count', len(items))} 条")
 
 
 def _apply_case(pf, project_id, group_id, env_id, rule, dag, configs, dataset, ds_desc=None):
