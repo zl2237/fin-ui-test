@@ -1,0 +1,76 @@
+{
+ "form_id": "policy_assign",
+ "proven": "2026-11-04 只读探针定案：服务策略分配列表路由 #/development/merchantManage/serviceStrategy（入口=落地→客商管理菜单组→link 服务策略分配）；分配服务策略=整页路由 #/merchantManage/serviceAdd?fieldStatus=add&customTitle=分配服务策略（非弹窗），底栏 取 消/提 交。表单（serviceAdd 组件）：*客户名称=placeholder 请输入关键词 的远程检索框（el-select-dropdown__item 全量 943 项，点开转可编辑，选中后回显公司名），选中后自动拉 getCustomerPolicy 回显 客户ID/公司简称/统一社会信用代码/已分配服务策略；新增=addAss 加行（上限10行，行内=服务策略下拉+查看/删除）；服务策略下拉=home/Policy/policyList 全量（【易航道对客】…【SPV对客】… 等长名，录制检索 API 选 API易汇联对客双主体）。Vue serviceAdd.submitForm/doSave 源码实证提交链与费用管理同构：提 交→doSave 客户端校验（无行/未选策略即 error）→policyAdd(action=check)→showConfirm(您确认要提交该信息吗？)二次确认→确定→policyAdd(action=submit)→toast「添加成功」→goLastRouter() 回列表——确认按钮挂 confirm_watchdog，尾随弹窗「确定」由 confirm 回声吸收。",
+ "detect": {
+  "nav_link_texts": ["服务策略分配"]
+ },
+ "case": {
+  "name": "客商管理·分配服务策略（codegen 导入）",
+  "description": "codegen 录制导入：服务策略分配 → 分配服务策略 → 检索客户（统济机电）→ 新增策略行 → 选服务策略（API易汇联对客双主体）→ 提交。注：分配对象是既有客户+既有策略（无生成规则可去重），重复执行=对同一客户再分配同策略，若服务端拒绝重复分配会 fail-loud 红",
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "page": {
+  "scope": "merchantManage/serviceStrategy",
+  "scope_label": "服务策略分配",
+  "route_field": "policy_assign_route",
+  "route_value": "#/development/merchantManage/serviceStrategy"
+ },
+ "nav_click_texts": ["服务策略分配"],
+ "elements": {
+  "assign_policy_button": {
+   "strategies": {"button": "分配服务策略"},
+   "description": "服务策略分配列表·分配服务策略按钮（整页跳 serviceAdd?fieldStatus=add&customTitle=分配服务策略）"
+  },
+  "customer_search_input": {
+   "strategies": {"placeholder": "请输入关键词"},
+   "description": "serviceAdd·客户名称检索框（远程全量下拉，点开可填，选中后回显公司名）"
+  },
+  "add_policy_row_button": {
+   "strategies": {"button": "新增"},
+   "description": "新增服务策略行（addAssigned，上限 10 行）"
+  },
+  "policy_select": {
+   "strategies": {"label": "*选择服务策略"},
+   "description": "新增行·服务策略下拉（policyList 全量）"
+  },
+  "submit_button": {
+   "strategies": {"button": "提 交"},
+   "description": "serviceAdd 底栏提交（doSave→policyAdd check→$confirm 二次确认→toast 添加成功→回列表）"
+  }
+ },
+ "textbox_picks": {
+  "请输入关键词@0": ["customer", "customer_search_input"]
+ },
+ "nth_select_guesses": {
+  "0": [
+   "policy_name",
+   "policy_select",
+   "高：policyList 服务策略下拉（录制检索 API 选 API易汇联对客双主体）；录制无 .first/.nth 即 nth=0，客户选中前后页面请选择框仅此一个"
+  ]
+ },
+ "query": {
+  "text": "查询",
+  "placeholder": "请输入",
+  "wait_ms": 500,
+  "assert_field": "customer"
+ },
+ "button_behaviors": {
+  "assign_policy_button": {
+   "role": "click",
+   "wait_after_ms": 1500
+  },
+  "add_policy_row_button": {
+   "role": "click",
+   "wait_after_ms": 500
+  },
+  "submit_button": {
+   "role": "confirm_watchdog",
+   "value": "提 交",
+   "watchdog": ["添加成功"],
+   "wait_ms": 800
+  }
+ }
+}
