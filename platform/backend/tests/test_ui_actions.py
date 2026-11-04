@@ -615,7 +615,7 @@ class _FakePage:
         self.url = "http://test.local/#/fake"
 
     def evaluate(self, js, *args):
-        if "offsetParent" in js and "some(" in js:  # still_open 探测
+        if "some(" in js and "getClientRects" in js:  # still_open 探测
             return self._popper_open
         item = self._script.pop(0)
         if isinstance(item, Exception):
