@@ -1083,7 +1083,10 @@ class UiRuntime:
         # 去重后按元素语义排序：真 <button> > <a> > 裸 span（同名噪声多时优先
         # 真按钮——run#699 实证「保 存」38 候选中首个是无效 span）。
         # 可见性用 rect 判定：offsetParent 对 position:fixed（固定底栏的 提交/保存）
-        # 恒为 null 会漏杀（业务订单编辑页实证）
+        # 恒为 null 会漏杀（业务订单编辑页实证）。
+        # 弹窗内候选优先：$confirm/message-box 开着时同名「确定」两颗（页面底栏
+        # +弹窗），按文档序会点到遮罩底下的页面按钮——真实用户被 modal 挡着根本
+        # 点不到它（exec1092 实证 clicked:2 点中底栏、弹窗到死无人答、步骤还绿）
         js = ("([t,i])=>{const v=(e)=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
               "const n=(x)=>(x.textContent||'').replace(/\\s+/g,'');"
               "t=String(t).replace(/\\s+/g,'');"  # 目标文本归一化（「保 存」「编 辑」）。不能走 n()：字符串无 textContent 会被清成空串——=== '' 永假、全页按钮失配
@@ -1095,6 +1098,9 @@ class UiRuntime:
               "const seen=new Set();const uniq=[];"
               "for(const e of all){const tgt=e.closest('button,a')||e;"
               "if(!seen.has(tgt)){seen.add(tgt);uniq.push(tgt)}}"
+              "const mbw=document.querySelector('.el-message-box__wrapper');"
+              "if(mbw&&v(mbw)){const im=uniq.filter(e=>mbw.contains(e));"
+              "if(im.length){uniq.length=0;uniq.push(...im)}}"
               "const rank=e=>e.tagName==='BUTTON'?0:(e.tagName==='A'?1:2);"
               "uniq.sort((a,b)=>rank(a)-rank(b));"
               "const s=uniq[i];"
