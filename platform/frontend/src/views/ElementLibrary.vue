@@ -169,23 +169,8 @@
       </template>
     </el-drawer>
 
-    <!-- 页面域语义配置（英文域 → 中文，侧栏树展示） -->
-    <el-dialog v-model="labelDialogVisible" title="页面域语义" width="min(560px, 92vw)">
-      <el-alert type="info" :closable="false" style="margin-bottom: 10px">
-        为英文页面域配中文语义，保存后左侧树按中文展示；清空即删除
-      </el-alert>
-      <div class="label-rows">
-        <div v-for="d in labelDrafts" :key="d.page_scope" class="label-row">
-          <span class="label-scope mono" :title="d.page_scope">{{ d.page_scope }}</span>
-          <el-input v-model="d.label" size="small" placeholder="中文语义，如 新建委托订单" clearable />
-        </div>
-      </div>
-      <EmptyState v-if="!labelDrafts.length" description="暂无页面域，先新增或导入元素" :image-size="60" />
-      <template #footer>
-        <el-button @click="labelDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="labelSaving" @click="onSaveScopeLabels">保存</el-button>
-      </template>
-    </el-dialog>
+    <!-- 页面域语义配置（树状全层级：英文域 → 中文，元素库/编排界面共用） -->
+    <ScopeLabelDialog v-model:visible="labelDialogVisible" @saved="loadScopeLabels" />
 
     <!-- HTML 解析导入：粘贴 outerHTML → 预览勾选/改名/补含义 → 覆盖式入库 -->
     <ImportHtmlDialog v-model:visible="htmlImportVisible" :default-scope="htmlImportScope" @imported="onHtmlImported" />
@@ -204,6 +189,7 @@ import { useClientSort } from '@/composables/useClientSort'
 import { expandStorageKey } from '@/composables/useGroupTree'
 import EmptyState from '@/components/EmptyState.vue'
 import ImportHtmlDialog from '@/components/ImportHtmlDialog.vue'
+import ScopeLabelDialog from '@/components/ScopeLabelDialog.vue'
 
 const store = useAppStore()
 
@@ -351,11 +337,9 @@ async function loadScopes() {
   }
 }
 
-// ===== 页面域字典（英文域 → 中文语义，侧栏树展示） =====
+// ===== 页面域字典（英文域 → 中文语义，侧栏树展示；编辑在共享 ScopeLabelDialog） =====
 const scopeLabels = ref<Record<string, string>>({})
 const labelDialogVisible = ref(false)
-const labelSaving = ref(false)
-const labelDrafts = ref<{ page_scope: string; label: string }[]>([])
 
 async function loadScopeLabels() {
   if (!store.currentProjectId) return
@@ -366,36 +350,8 @@ async function loadScopeLabels() {
   }
 }
 
-/** 打开语义配置：行 = 当前全部叶子域，预填已配置语义 */
 function openScopeLabels() {
-  labelDrafts.value = scopes.value.map(s => ({
-    page_scope: s.page_scope,
-    label: scopeLabels.value[s.page_scope] || '',
-  }))
   labelDialogVisible.value = true
-}
-
-async function onSaveScopeLabels() {
-  if (!store.currentProjectId) return
-  // 只提交有变化的行（含清空 → 删除语义），避免无谓写库
-  const items = labelDrafts.value
-    .filter(d => (scopeLabels.value[d.page_scope] || '') !== d.label.trim())
-    .map(d => ({ page_scope: d.page_scope, label: d.label.trim() }))
-  if (!items.length) {
-    labelDialogVisible.value = false
-    return
-  }
-  labelSaving.value = true
-  try {
-    const res = await scopeLabelApi.batch(store.currentProjectId, items)
-    ElMessage.success(res.message)
-    labelDialogVisible.value = false
-    await loadScopeLabels()
-  } catch (e: any) {
-    ElMessage.error(e.message || '保存失败')
-  } finally {
-    labelSaving.value = false
-  }
 }
 
 async function load() {
@@ -693,31 +649,6 @@ watch(() => store.currentProjectId, (n, old) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 1;
-}
-/* 页面域语义配置弹窗行 */
-.label-rows {
-  max-height: 50vh;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.label-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.label-scope {
-  width: 250px;
-  flex-shrink: 0;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--app-text-muted);
-}
-@media (max-width: 760px) {
-  .label-scope { width: 140px; }
 }
 /* 页面域树：节点行与平铺项同视觉，宽度撑满可点击 */
 .scope-panel :deep(.el-tree) {

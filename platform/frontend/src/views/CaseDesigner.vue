@@ -11,6 +11,10 @@
     <div class="api-panel">
       <div class="panel-title">
         <span class="title-text">页面域</span>
+        <!-- 语义配置入口：与元素库页同一弹窗（树状全层级可设中文） -->
+        <button type="button" class="panel-title-btn" title="配置页面域中文语义" @click="scopeLabelDialogVisible = true">
+          <el-icon><EditPen /></el-icon>
+        </button>
         <span class="panel-count">{{ scopeCount }} 域 · {{ uiElements.length }} 元素</span>
       </div>
       <div class="panel-search">
@@ -144,6 +148,9 @@
       @save="onConfigSave"
     />
 
+    <!-- 页面域语义配置（与元素库页共用：树状全层级可设中文） -->
+    <ScopeLabelDialog v-model:visible="scopeLabelDialogVisible" @saved="reloadScopeLabels" />
+
     <!-- 拆分确认弹窗：选中节点抽离 + 跨界变量清单 -->
     <el-dialog v-model="splitVisible" title="拆分用例" width="min(580px, 92vw)" align-center :close-on-click-modal="false">
       <div class="split-tip">
@@ -197,10 +204,11 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search, EditPen } from '@element-plus/icons-vue'
 import DagCanvas from '@/components/DagCanvas.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
+import ScopeLabelDialog from '@/components/ScopeLabelDialog.vue'
 import { expandStorageKey } from '@/composables/useGroupTree'
 import { caseApi, elementApi, scopeLabelApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type UiElement, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
@@ -271,6 +279,17 @@ async function loadScopePanel() {
 // currentProjectId 仍空，onMounted 首调静默早退——项目号到位后补拉；
 // 会话中切项目同样重拉（元素按项目隔离）
 watch(() => store.currentProjectId, () => { loadScopePanel() })
+
+// ===== 页面域语义编辑（共享弹窗；保存后只刷语义 map，左树 computed 自动重算） =====
+const scopeLabelDialogVisible = ref(false)
+async function reloadScopeLabels() {
+  if (!store.currentProjectId) return
+  try {
+    scopeLabels.value = await scopeLabelApi.getMap(store.currentProjectId)
+  } catch {
+    // 语义刷新失败不影响编排（树回退英文段名展示）
+  }
+}
 
 /** 面板树节点：scope=按 / 分层的域节点（count=本域直属元素数），element=域下元素行（仅展示 key） */
 interface ScopePanelNode {
@@ -795,6 +814,26 @@ function onKeydown(e: KeyboardEvent) {
   font-weight: 400;
   color: var(--app-text-faint);
   flex-shrink: 0;
+}
+/* 标题行语义配置按钮：与树内 ＋ 同款图标按钮视觉 */
+.panel-title-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--app-radius-sm);
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.panel-title-btn:hover {
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+  color: var(--app-primary);
 }
 .api-panel :deep(.el-tree) {
   --el-tree-node-content-height: 32px;
