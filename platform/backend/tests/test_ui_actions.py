@@ -277,6 +277,34 @@ class TestMisc:
         with pytest.raises(UiActionError, match="浮层选项"):
             rt.run_action({"action": "popper_pick", "value": "保险"})
 
+    def test_popper_pick_substring_unique(self, rt):
+        """exec1075 实证形态：值是录制 filter(has_text=) 的子串（张乐UI），
+        实选项带后缀（张乐UI-）——唯一子串兜底应命中并点选"""
+        _load(rt, BASE_DOM)
+        rt._page.evaluate(
+            "document.getElementById('popper-host').innerHTML="
+            "'<ul><li>王五</li><li>张乐UI-</li><li>赵六</li></ul>';"
+            "document.getElementById('popper-host').style.display='block';"
+            "document.getElementById('popper-host').className='el-select-dropdown__popper';"
+            "document.querySelectorAll('#popper-host li').forEach(l=>"
+            "l.addEventListener('click',()=>l.dataset.hit=1))")
+        facts = rt.run_action({"action": "popper_pick", "value": "张乐UI"})
+        assert facts["result"] == "picked"
+        assert rt._page.evaluate(
+            "[...document.querySelectorAll('#popper-host li')]"
+            ".filter(l=>l.dataset.hit).map(l=>l.textContent)[0]") == "张乐UI-"
+
+    def test_popper_pick_substring_multi_raises_with_candidates(self, rt):
+        """子串多命中：防误点同名前缀——报错须携带候选清单"""
+        _load(rt, BASE_DOM)
+        rt._page.evaluate(
+            "document.getElementById('popper-host').innerHTML="
+            "'<ul><li>张乐UI-</li><li>张乐UI-2</li></ul>';"
+            "document.getElementById('popper-host').style.display='block';"
+            "document.getElementById('popper-host').className='el-select-dropdown__popper';")
+        with pytest.raises(UiActionError, match="多个匹配.*张乐UI-"):
+            rt.run_action({"action": "popper_pick", "value": "张乐UI"})
+
     def test_scroll_bottom(self, rt):
         _load(rt, BASE_DOM)
         facts = rt.run_action({"action": "scroll_bottom"})
