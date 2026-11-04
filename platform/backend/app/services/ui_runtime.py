@@ -1266,7 +1266,17 @@ class UiRuntime:
 
     def _do_popper_pick(self, page, params, timeout_ms):
         """浮层选项点选（如「编辑费用」下拉里的服务项）：轮询可见 popper
-        中精确文本匹配的 li 并点击（下拉渲染有动画时序，一次性查找会落空）。
+        中的 li 并点击（下拉渲染有动画时序，一次性查找会落空）。
+
+        三层匹配（execution 1075 实证升级：客商·批量添加操作 选项实名
+        「张乐UI-」而录制 filter(has_text=) 只留子串「张乐UI」，纯精确匹配
+        8s 空转；且 filterable 长列表目标项常不在可视区——JS click 本不需要
+        可视区，但配检索兜底更稳）：
+        1) 精确文本 === value（旧语义，编辑费用等零回归）
+        2) 唯一子串包含（录制 filter(has_text=X) 的子串语义还原）；
+           多命中 → 报错携带候选清单（防误点同名前缀）
+        3) 向聚焦的 select input 注入 value 检索词触发 filterable 过滤
+           （只注一次，后续轮询继续找）
 
         业务系统偶发整页 reload 会把 8s 轮询 evaluate 撕毁（execution 868 实证：
         li.click 已发出但结果随上下文丢失）。容错：等新文档就绪后重试一轮；
@@ -1275,12 +1285,24 @@ class UiRuntime:
         val = self._evaluate(params.get("value"))
         if not val:
             raise UiActionError("popper_pick 需要 value（选项文本）")
-        js = ("v=>new Promise(res=>{const t0=Date.now();const iv=setInterval(()=>{"
-              "const pprs=[...document.querySelectorAll('[class*=popper]')]"
+        js = ("v=>new Promise(res=>{const t0=Date.now();let filtered=false;"
+              "const pprs=()=>[...document.querySelectorAll('[class*=popper]')]"
               ".filter(x=>x.offsetParent);"
-              "for(const pp of pprs){const li=[...pp.querySelectorAll('li')]"
-              ".find(l=>l.textContent.trim()===v);"
-              "if(li){li.click();clearInterval(iv);res('picked')}}"
+              "const lis=()=>{const a=[];for(const pp of pprs()){"
+              "for(const li of pp.querySelectorAll('li')){a.push(li)}}return a};"
+              "const iv=setInterval(()=>{"
+              "let li=lis().find(l=>l.textContent.trim()===v)||null;"
+              "if(!li){const h=lis().filter(l=>l.textContent.trim().includes(v));"
+              "if(h.length>1){clearInterval(iv);"
+              "res('multi: '+h.slice(0,6).map(x=>x.textContent.trim()).join(' | '));return}"
+              "li=h.length===1?h[0]:null}"
+              "if(!li&&!filtered){const ae=document.activeElement;"
+              "if(ae&&ae.tagName==='INPUT'&&ae.offsetParent){"
+              "try{const set=Object.getOwnPropertyDescriptor("
+              "window.HTMLInputElement.prototype,'value').set;"
+              "set.call(ae,v);ae.dispatchEvent(new Event('input',{bubbles:true}))"
+              "}catch(e){}filtered=true}}"
+              "if(li){clearInterval(iv);li.click();res('picked');return}"
               "if(Date.now()-t0>8000){clearInterval(iv);res('no-li')}},300)})")
         try:
             result = page.evaluate(js, str(val))
@@ -1305,8 +1327,13 @@ class UiRuntime:
                     ".some(x => x.offsetParent)")
                 if not still_open:
                     return {"value": val, "result": "picked(popper-closed)"}
+        if str(result).startswith("multi:"):
+            raise UiActionError(
+                f"浮层选项含多个匹配 {val!r}：{result[6:]} —— 数据值请用精确选项文本")
         if result != "picked":
-            raise UiActionError(f"8s 内未见浮层选项 {val!r}（下拉未打开或选项不存在）")
+            raise UiActionError(
+                f"8s 内未见浮层选项 {val!r}（下拉未打开或选项不存在；"
+                "精确/唯一子串均未命中且检索兜底无效）")
         return {"value": val, "result": result}
 
     def _do_toast_watch(self, page, params, timeout_ms):
