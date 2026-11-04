@@ -490,6 +490,14 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
             dropped.append((line, s["raw"], f"录制噪音剔除：press({arg0}) 为录制过程键，无业务语义"))
             i += 1
             continue
+        if m == "press" and arg0 == "Escape" and cur and isinstance(cur[-1], dict) \
+                and cur[-1].get("action") in ("pick", "popper_pick"):
+            # pick 收尾 Esc：pick 运行时自带 Esc 收起（费用管理·关联客商/供应商
+            # 录制形态：点选后按 Esc 关浮层）——裸 press 步骤多余且无浮层时
+            # Esc 冒泡有关上层弹层风险
+            dropped.append((line, s["raw"], "pick 收尾 Esc 剔除（pick 运行时自带 Esc 收起）"))
+            i += 1
+            continue
         if m in ("close",):
             dropped.append((line, s["raw"], "收尾剔除：browser/context/page.close 非业务步骤"))
             i += 1
@@ -714,8 +722,14 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
         #     尾随 fill 的聚焦 click 并入 fill；未命中单独待复核，不再整段吞并） ---
         if loc.get("kind") == "css" and m in ("click", "fill", "press"):
             css_val = loc.get("value") or ""
+            # css_picks 已登记该选择器 → 本 click 是 pick 触发头，不能并入紧随的
+            # 同位检索词 fill（费用管理·关联客商/供应商：click + fill「机电」+
+            # 点选项——fill 是过滤片段非真值，pick 点选一体完成）
+            css_pick_hit = _css_lookup(rule.get("css_picks") or {}, nth_key,
+                                       css_val, loc.get("nth", 0), plain=True) \
+                if m == "click" else None
             # 聚焦点击 + 同位 fill → 只留 fill
-            if m == "click":
+            if m == "click" and css_pick_hit is None:
                 nxt = stmts[i + 1] if i + 1 < len(stmts) else None
                 if nxt and nxt["method"] == "fill" and nxt["locator"].get("kind") == "css" \
                         and nxt["locator"].get("value") == css_val \
@@ -749,7 +763,11 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
                     continue
                 if t["method"] == "fill" and tl.get("kind") == "css" and (
                         ".el-select-dropdown" in (tl.get("value") or "")
-                        or "is-focus" in (tl.get("value") or "")):
+                        or "is-focus" in (tl.get("value") or "")
+                        or (tl.get("value") == css_val
+                            and tl.get("nth", 0) == loc.get("nth", 0))):
+                    # 同位检索词 fill 是过滤片段（「机电」「芜湖」），真值取
+                    # 选项点击/规则登记值（与 role 请选择分支的远程搜索容错同款）
                     j += 1
                     continue
                 if t["method"] == "click":
@@ -802,6 +820,11 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
             if loc.get("kind") == "role" and loc.get("value") == "textbox":
                 hit = (rule.get("textbox_fills") or {}).get(nth_key)
             hit = hit or _match_text_rule(rule, arg0)
+            # 误录字面值优先于字段命中：同字段连填两遍（CapsLock 分段录入
+            # 「测试新费用20261104」→「…ABCD」）时片段值虽也命中 textbox_fills，
+            # 仍是误录——登记进 noise_fill_literals 即剔除，终值 fill 生成步骤
+            if hit and str(arg0) in (rule.get("noise_fill_literals") or []):
+                hit = None
             if hit:
                 fname, ekey, cell = hit
                 dataset[fname] = cell

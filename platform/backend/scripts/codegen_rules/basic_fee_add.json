@@ -1,0 +1,110 @@
+{
+ "form_id": "basic_fee_add",
+ "proven": "2026-11-04 只读探针定案：费用管理列表路由 #/development/flow/costList（入口=落地→后台管理(布局切换)→基本信息配置→link 费用管理）；添加费用=整页路由 #/flow/costEdit?fieldStatus=add（非弹窗），底栏 取 消/确 认。表单：*费用名称/费用名称（英文)（placeholder 均=请输入内容）、费用类型 radio 通用费用|客商定制费用、关联客户+关联供应商（el-select tags 多选，customerList/supplierList 全量拉取+客户端过滤）、计价单位（dict price_unit：票/箱型/计费吨）、币制（dict sys_currency：RMB/USD…）。Vue costEdit.submitForm 源码实证提交链：确 认→addCost(action=check)→showConfirm(您确认要提交该信息吗？)二次确认→确定→addCost(action=submit)→toast「添加成功」→goLastRouter() 回列表——与用户编辑同构，确认按钮挂 confirm_watchdog（确认框竞速三层修复见 system_user_pwd），尾随弹窗「确定」由 confirm 回声吸收。录制里请选择 .first/.nth(1) 能对上计价单位/币制，是因为客户/供应商已选 tag 后其占位 input 消失——运行期元素一律 label 定位不依赖占位 nth。费用代码创建时无输入框（保存后生成）。导入器配套：css click+同位检索词 fill+点选项 形态由 css_picks 触发头接管（本轮扩展，否则被聚焦合并劫持成 fill）。",
+ "detect": {
+  "nav_link_texts": ["费用管理"]
+ },
+ "case": {
+  "name": "基本信息配置·添加客商定制费用（codegen 导入）",
+  "description": "codegen 录制导入：费用管理 → 添加费用 → 费用名称/英文名 → 客商定制费用 → 关联客户（统济机电）/关联供应商（芜湖长信）→ 计价单位（票）/币制（USD）→ 确认提交。费用名称/英文名走 generate_bl_no 生成规则，每次执行不重名（重名会被服务端拒绝）",
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "page": {
+  "scope": "flow/costList",
+  "scope_label": "费用管理",
+  "route_field": "fee_mgmt_route",
+  "route_value": "#/development/flow/costList"
+ },
+ "nav_click_texts": ["费用管理"],
+ "elements": {
+  "fee_add_button": {
+   "strategies": {"button": "添加费用"},
+   "description": "费用列表·添加费用按钮（整页跳转 costEdit?fieldStatus=add）"
+  },
+  "fee_name_input": {
+   "strategies": {"label": "*费用名称"},
+   "description": "费用名称（必填，placeholder=请输入内容）"
+  },
+  "fee_name_en_input": {
+   "strategies": {"label": "费用名称（英文)"},
+   "description": "费用名称（英文），placeholder=请输入内容"
+  },
+  "fee_type_custom_radio": {
+   "strategies": {"text": "客商定制费用"},
+   "description": "费用类型·客商定制费用 单选（el-radio label 文本点击即选中）"
+  },
+  "fee_customer_select": {
+   "strategies": {"label": "关联客户"},
+   "description": "关联客户 下拉（el-select tags 多选，customerList 全量）"
+  },
+  "fee_supplier_select": {
+   "strategies": {"label": "关联供应商"},
+   "description": "关联供应商 下拉（el-select tags 多选，supplierList 全量）"
+  },
+  "fee_price_unit_select": {
+   "strategies": {"label": "计价单位"},
+   "description": "计价单位 下拉（dict price_unit：票/箱型/计费吨）"
+  },
+  "fee_currency_select": {
+   "strategies": {"label": "币制"},
+   "description": "币制 下拉（dict sys_currency：RMB/USD…）"
+  },
+  "fee_submit_button": {
+   "strategies": {"button": "确 认"},
+   "description": "costEdit 底栏确认（addCost check→$confirm 二次确认→toast 添加成功→回列表）"
+  }
+ },
+ "textbox_fills": {
+  "请输入内容@0": ["fee_name", "fee_name_input", "${generate_bl_no(prefix='测试新费用')}"],
+  "请输入内容@1": ["fee_name_en", "fee_name_en_input", "${generate_bl_no(prefix='test_new_fee')}"]
+ },
+ "noise_fill_literals": ["测试新费用20261104"],
+ "radio_picks": {
+  "客商定制费用": "fee_type_custom_radio"
+ },
+ "css_picks": {
+  ".el-select__input": [
+   "fee_customer",
+   "fee_customer_select",
+   "青岛统济机电制造有限公司"
+  ],
+  "div:nth-child(6) > .el-form-item > .el-form-item__content > .el-select > .el-select__tags > .el-select__input": [
+   "fee_supplier",
+   "fee_supplier_select",
+   "芜湖长信科技股份有限公司"
+  ]
+ },
+ "nth_select_guesses": {
+  "0": [
+   "price_unit",
+   "fee_price_unit_select",
+   "高：探针实证 计价单位下拉选项=票/箱型/计费吨，录制选「票」；录制 .first 对得上是因客户/供应商已选 tag 后占位 input 消失"
+  ],
+  "1": [
+   "currency",
+   "fee_currency_select",
+   "高：币制下拉（dict sys_currency）录制选「USD」，同上 nth(1) 语义"
+  ]
+ },
+ "query": {
+  "text": "查询",
+  "placeholder": "请输入",
+  "wait_ms": 500,
+  "assert_field": "fee_name"
+ },
+ "button_behaviors": {
+  "fee_add_button": {
+   "role": "click",
+   "wait_after_ms": 1500
+  },
+  "fee_submit_button": {
+   "role": "confirm_watchdog",
+   "value": "确 认",
+   "watchdog": ["添加成功"],
+   "wait_ms": 800
+  }
+ }
+}
