@@ -1,0 +1,163 @@
+{
+ "form_id": "rel_period_rule",
+ "scope_labels": {"merchantManage": "客商管理"},
+ "proven": "2026-11-04 只读探针+前端源码定案：客商关系管理列表路由 #/development/merchantManage/relationship（入口=审批中心落地→客商管理菜单组→link 客商关系管理）；查询区 placeholder=请输入客户名称/请输入供应商名称+查询按钮；全选=表头 fixed-left 复选框（录制 col_12）；变更特殊账期截转规则=弹窗 radio（1=25日后订单截转下月计算账期…，2=全部按ATD本月计算账期）footer 确 认；源码 interfaceRul 提交链：确 认→action=check→showConfirm(您确认要提交该变更吗？)确定→action=audit→node_select=1 弹审批人选择（node_list radio，录制选 张乐UI-）→确认→action=submit→msgSuccess(提交变更特殊账期截转规则审批流成功)（changeRelatePeriodRule）。审批中心段复用 apc3_* 定式：col_2 表头全选+批量审核+radio 通过+确认/确定+toast 审批成功（audit_success_toast #686）。",
+ "case": {
+  "name": "客商管理·变更特殊账期截转规则+审批（codegen 导入）",
+  "description": "codegen 录制导入：客商关系管理 → 检索客商（统济机电×长信科技）→ 表头全选 → 变更特殊账期截转规则（全部按ATD本月计算账期）→ 确 认→变更确认确定→选审批人（张乐UI-）→确认 → 审批中心 → 表头全选 → 批量审核通过。注：①审批段全选=批准当前列表全部待审单（非仅本单），测试环境可接受；②审批人 radio 固定锚 张乐UI-（改名即失败）；③重复执行=对同一客商关系再变更再审批（业务幂等）",
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "n1_assert": {
+  "url_contains": "/merchantManage/relationship",
+  "message": "落地客商关系管理列表"
+ },
+ "stages": [
+  {
+   "key": "change",
+   "label": "变更特殊账期截转规则",
+   "scope": "merchantManage/relationship",
+   "scope_label": "客商关系管理",
+   "start": {
+    "kind": "nav_link",
+    "value": "客商关系管理"
+   },
+   "nav_click_texts": ["客商管理", "客商关系管理"],
+   "route_field": "rel_route",
+   "route_value": "#/development/merchantManage/relationship",
+   "elements": {
+    "rel_customer_name_input": {
+     "strategies": {"placeholder": "请输入客户名称"},
+     "description": "客商关系列表·客户名称检索框（placeholder 精确）"
+    },
+    "rel_supplier_name_input": {
+     "strategies": {"placeholder": "请输入供应商名称"},
+     "description": "客商关系列表·供应商名称检索框（placeholder 精确）"
+    },
+    "rel_select_all_checkbox": {
+     "strategies": {"css": ".vxe-table--header-wrapper.fixed-left--wrapper .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"},
+     "description": "客商关系列表·表头全选复选框（fixed-left 克隆表，录制 col_12 归一；主表/克隆表双份 col_12，取 fixed-left 单例防 strict 多命中）"
+    },
+    "rel_change_rule_button": {
+     "strategies": {"button": "变更特殊账期截转规则"},
+     "description": "列表工具栏·变更特殊账期截转规则按钮（需先勾选行，开规则弹窗）"
+    },
+    "rel_period_rule_radio": {
+     "strategies": {"role": "radio", "role_extra": "全部按ATD本月计算账期"},
+     "description": "规则弹窗·radio 全部按ATD本月计算账期（period_rule=2；另一项=25日后订单截转下月计算账期）"
+    },
+    "rel_period_confirm": {
+     "strategies": {"css": ".el-dialog__wrapper:visible button:has-text(\"确\")"},
+     "description": "规则弹窗 footer·确 认（触发 check→showConfirm；弹窗内唯一含「确」按钮，取 消不含）"
+    },
+    "rel_msgbox_ok": {
+     "strategies": {"css": ".el-message-box__wrapper:visible button:has-text(\"确定\")"},
+     "description": "变更确认 MessageBox·确定（您确认要提交该变更吗？→action=audit 开审批人弹窗）"
+    },
+    "rel_approver_radio": {
+     "strategies": {"role": "radio", "role_extra": "张乐UI-"},
+     "description": "审批人选择弹窗·radio 张乐UI-（node_list 首审批节点，专用测试审批人）"
+    },
+    "rel_audit_confirm": {
+     "strategies": {"css": ".el-dialog__wrapper:visible button:has-text(\"确认\")"},
+     "description": "审批人弹窗 footer·确认（action=submit→toast 提交变更特殊账期截转规则审批流成功；has-text 确认 不含空格形态「确 认」，与规则弹窗 footer 不撞）"
+    }
+   },
+   "textbox_fills": {
+    "请输入客户名称@0": ["customer_name", "rel_customer_name_input", "青岛统济机电制造有限公司"],
+    "请输入供应商名称@0": ["supplier_name", "rel_supplier_name_input", "芜湖长信科技股份有限公司"]
+   },
+   "query": {
+    "text": "查询",
+    "wait_ms": 800,
+    "assert_field": "customer_name"
+   },
+   "css_click_patterns": [
+    ["vxe-table--header-wrapper\\.fixed-left--wrapper.*col_\\d+.*vxe-checkbox", "rel_select_all_checkbox"]
+   ],
+   "radio_picks": {
+    "全部按ATD本月计算账期": "rel_period_rule_radio",
+    "张乐UI-": "rel_approver_radio"
+   },
+   "button_overrides": {
+    "确 认": "rel_period_confirm",
+    "确定": "rel_msgbox_ok",
+    "确认": "rel_audit_confirm"
+   },
+   "button_behaviors": {
+    "rel_change_rule_button": {
+     "role": "click",
+     "wait_after_ms": 800
+    },
+    "rel_period_confirm": {
+     "role": "click",
+     "wait_after_ms": 1000
+    },
+    "rel_msgbox_ok": {
+     "role": "click",
+     "wait_after_ms": 1200
+    },
+    "rel_audit_confirm": {
+     "role": "watchdog_after",
+     "watchdog": ["提交变更特殊账期截转规则审批流成功"],
+     "wait_ms": 800
+    }
+   }
+  },
+  {
+   "key": "approve",
+   "label": "审批中心批量审核",
+   "scope": "workbench/approvalCenter",
+   "scope_label": "审批中心",
+   "start": {
+    "kind": "nav_link",
+    "value": "审批中心"
+   },
+   "nav_click_texts": ["审批中心"],
+   "route_field": "approve_route",
+   "route_value": "#/development/workbench/approvalCenter",
+   "elements": {
+    "apc3_select_all_checkbox": {
+     "strategies": {"css": ".vxe-table--header-wrapper:visible .vxe-header--row .vxe-cell--checkbox:not(.is--disabled)"},
+     "description": "表头全选（col_2 归一；审批中心表无 fixed-left，通用 header selector）"
+    },
+    "apc3_batch_button": {
+     "strategies": {"button": "批量审核"},
+     "description": "批量审核"
+    },
+    "apc3_approve_radio": {
+     "strategies": {"role": "radio", "role_extra": "通过"},
+     "description": "审核结果·通过（s6 apc_approve_radio 同款，scope 内自建）"
+    },
+    "apc3_confirm_button": {
+     "strategies": {"css": ".el-message-box__wrapper:visible button:has-text(\"确认\"), .el-dialog__wrapper:visible button:has-text(\"确认\")"},
+     "description": "确认"
+    },
+    "apc3_ok_button": {
+     "strategies": {"css": ".el-message-box__wrapper:visible button:has-text(\"确定\"), .el-dialog__wrapper:visible button:has-text(\"确定\")"},
+     "description": "确定"
+    }
+   },
+   "css_click_patterns": [
+    ["vxe-table--header-wrapper.*col_2.*vxe-checkbox", "apc3_select_all_checkbox"]
+   ],
+   "radio_picks": {
+    "通过": "apc3_approve_radio"
+   },
+   "button_overrides": {
+    "批量审核": "apc3_batch_button",
+    "确认": "apc3_confirm_button",
+    "确定": "apc3_ok_button"
+   },
+   "button_behaviors": {
+    "apc3_ok_button": {
+     "role": "watchdog_after",
+     "watchdog": ["审批成功"],
+     "wait_ms": 800
+    }
+   }
+  }
+ ]
+}
