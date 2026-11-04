@@ -898,6 +898,21 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
                     continue
                 b = behaviors.get(ekey, {"role": "click"})
                 role = b.get("role", "click")
+                # --- confirm 主按钮回声吸收：提交按钮（确 定）触发 $confirm 二次确认
+                #     弹窗（渲染需 250~500ms），录制者在弹窗里补点的「确定」与提交
+                #     按钮同 label 同元素——再分发一套 click+confirm+watchdog 会在
+                #     保存成功自动回列表后死等不存在的按钮。近 4 步内已有本元素的
+                #     confirm 增强时按弹窗回声吸收（exec1091/1092 实证：裸
+                #     click_text 确定 在弹窗渲染前落回底栏按钮，弹窗到死无人答，
+                #     十余步全绿但 userEdit 从未发出）
+                if role == "confirm_watchdog" \
+                        and label in {"确定", "确认", "继续提交"} \
+                        and any(isinstance(st, dict) and st.get("action") == "confirm"
+                                for st in cur[-4:]):
+                    dropped.append((line, s["raw"],
+                                    "确定弹窗点击剔除：已由前置 confirm/watchdog 接管（同元素回声）"))
+                    i += 1
+                    continue
                 if role == "node_split" and not no_split:
                     cur.append({"action": "click", "element": el_ref(ekey)})
                     keep.append((line, s["raw"], f"click {el_desc(ekey)}（节点切分点，其后进新节点）"))
@@ -951,6 +966,14 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
                 else:
                     cur.append({"action": "click", "element": el_ref(ekey)})
                     keep.append((line, s["raw"], f"click {el_desc(ekey)}"))
+                # 跨页按钮水合等待：row_button/切分点点击常触发整页路由跳转，目标
+                # 表单靠详情 API 异步水合（userDetail 类），零等待紧跟 fill+确定会
+                # 撞必填校验静默失败——十步全绿但保存未落库（exec1090 实证：列表
+                # 行更新戳停留早前人工操作）。按钮行为声明 wait_after_ms 即追加等待
+                if b.get("wait_after_ms"):
+                    cur.append({"action": "wait", "value": b["wait_after_ms"]})
+                    keep.append((line, "wait",
+                                 f"跨页水合等待 {b['wait_after_ms']}ms（{el_desc(ekey)} 后）"))
                 i += 1
                 continue
             # 查询按钮 → click_text + 查询增强
@@ -984,7 +1007,10 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
                     keep.append((line, s["raw"], f"click {el_desc(_ekey)}（text_click_rules 兜底映射）"))
                     i += 1
                     continue
-                tv = loc.get("value") or loc.get("name") or ""
+                # role 定位器文本=可访问名（:449 _nk 同序）；value 是角色名（link/button），
+                # 先取 value 会生成 click_text "link" 这种废步骤（exec1087 实证）
+                tv = (loc.get("name") or loc.get("value") or "") if loc.get("kind") == "role" \
+                    else (loc.get("value") or loc.get("name") or "")
                 mapped = _apply_literal_map(rule, tv)
                 cur.append({"action": "click_text", "value": mapped})
                 keep.append((line, s["raw"], f"click_text {mapped}（未匹配元素库，按文本点击）"))
@@ -1375,6 +1401,15 @@ def main():
 def _apply_case(pf, project_id, group_id, env_id, rule, dag, configs, dataset, ds_desc=None):
     """幂等落库：同项目同名用例已存在则 PUT 更新 + 数据集行同步；否则 POST 新建。
     链式/单表单分支共用（调试回合反复 apply 不堆新用例）。→ (case_id, dataset_id)"""
+    # 空转换守卫：总步数 0 时 PUT 会把既有用例清成空节点（dag.nodes 有壳无步），
+    # 运行时 0 步执行还记 SUCCESS（exec1089 实证「空心成功」）。宁可拒绝落库
+    # 也不清空——空转换几乎必是规则问题（nav_click_texts 出口锚未命中 → 整段
+    # 录制被当登录段剔除；或元素全未匹配），人工核对三栏清单后再来。
+    total_steps = sum(len(((c.get("ui_params") or {}).get("steps")) or []) for c in configs)
+    if total_steps == 0:
+        sys.exit("拒绝落库：转换结果 0 步（全部语句被剔除）。--apply 会把同名用例清空，"
+                 "且 0 步执行记 SUCCESS（exec1089 实证）。排查：三栏清单里登录段是否吞了"
+                 "全部语句（nav_click_texts 出口锚未命中）？规则元素/文本是否全未匹配？")
     body = {
         "project_id": project_id, "group_id": group_id, "env_id": env_id,
         "name": rule["case"]["name"], "description": rule["case"]["description"],

@@ -1,0 +1,64 @@
+{
+ "form_id": "system_user_pwd",
+ "proven": "已实证（2026-11-03~04 exec1090/1091 空心绿 + exec1092 平台插桩定案）：根因是确认框竞速而非水合——提交按钮（确 定）触发 $confirm 二次确认弹窗（渲染需 250~500ms），录制里紧跟的弹窗「确定」若成裸 click_text 会在弹窗渲染前落回底栏按钮，弹窗永远无人确认、userEdit 从未发出，十余步全绿但零落库（行戳不动）。修复=提交按钮挂 confirm_watchdog（click+wait800+confirm 自适应+watchdog 断言「修改成功」）+ 导入器同元素回声吸收 + 运行时 click_text 弹窗内候选优先。row_button 跨页后 wait 2000 保留（userDetail 异步水合，表单没水合时必填校验拦提交、confirm 拿不到弹窗会 fail-loud）。荣洋密码=yhd123456!（幂等重置）。",
+ "detect": {
+  "nav_link_texts": ["用户管理"]
+ },
+ "case": {
+  "name": "系统·修改用户密码（codegen 导入）",
+  "description": "codegen 录制导入：用户管理 → 查询荣洋 → 编辑 → 设置密码 → 确定",
+  "group_name": "codegen 导入",
+  "env": {
+   "base_url_contains": "fin-tidb"
+  }
+ },
+ "page": {
+  "scope": "system/userManage",
+  "scope_label": "用户管理",
+  "route_field": "user_mgmt_route",
+  "route_value": "#/development/backendManage/user"
+ },
+ "nav_click_texts": ["用户管理"],
+ "elements": {
+  "username_query_input": {
+   "strategies": {"role": "textbox", "role_extra": "请输入用户名称"},
+   "description": "用户名称检索框"
+  },
+  "user_edit_button": {
+   "strategies": {"button": "编辑"},
+   "description": "行内编辑按钮"
+  },
+  "user_edit_password_input": {
+   "strategies": {"role": "textbox", "role_extra": "请输入密码"},
+   "description": "编辑页·密码输入框"
+  },
+  "user_submit_button": {
+   "strategies": {"button": "确 定"},
+   "description": "编辑页底栏确定（提交→$confirm 二次确认弹窗）"
+  }
+ },
+ "textbox_fills": {
+  "请输入用户名称@0": ["username", "username_query_input", "荣洋"],
+  "请输入密码@0": ["new_password", "user_edit_password_input", "yhd123456!"]
+ },
+ "query": {
+  "text": "查询",
+  "placeholder": "请输入",
+  "wait_ms": 500,
+  "assert_field": "username"
+ },
+ "button_behaviors": {
+  "user_edit_button": {
+   "role": "row_button",
+   "value": "编辑",
+   "row_field": "username",
+   "wait_after_ms": 2000
+  },
+  "user_submit_button": {
+   "role": "confirm_watchdog",
+   "value": "确 定",
+   "watchdog": ["修改成功"],
+   "wait_ms": 800
+  }
+ }
+}
