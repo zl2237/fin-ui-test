@@ -118,7 +118,7 @@
                     <el-icon class="step-arrow" :class="{ expanded: openIdx === i }"><ArrowDown /></el-icon>
                   </div>
                   <div v-if="openIdx === i" class="step-edit">
-                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :scope-labels="scopeLabels" :node-scope="nodeScope || scopeDraft || undefined" />
+                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :case-id="caseId" :bound-dataset-id="boundDatasetId" :scope-labels="scopeLabels" :node-scope="nodeScope || scopeDraft || undefined" @rows-changed="onDsRowsChanged" />
                   </div>
                 </div>
                 <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
@@ -279,11 +279,30 @@ async function loadDsSheets() {
       label: r.label || `Sheet${r.row_index}`,
       fields: Object.keys(r.data || {})
         .filter((k) => k !== 'nodes')
-        .map((name) => ({ name, desc: (r.field_desc || {})[name] || '' })),
+        .map((name) => ({
+          name,
+          desc: (r.field_desc || {})[name] || '',
+          // 单元格当前值预览（生成表达式原样展示，执行时才求值）
+          value: cellPreview((r.data || {})[name]),
+        })),
     }))
   } catch {
     dsSheets.value = []  // 数据集加载失败仅影响插入器，静默降级
   }
+}
+
+/** 单元格值 → 预览文本（对象/数组 JSON 化，其余 String） */
+function cellPreview(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  try { return JSON.stringify(v) } catch { return String(v) }
+}
+
+/** 插入器里临时新增了一行：作废缓存重拉 sheet（值预览同步刷新） */
+async function onDsRowsChanged() {
+  dsSheetsLoadedCase = null
+  await loadDsSheets()
 }
 
 async function loadUiElements() {
