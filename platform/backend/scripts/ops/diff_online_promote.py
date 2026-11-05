@@ -84,7 +84,7 @@ lel = {i: jload(s) for i, s in rows(lcur, "SELECT id, strategies FROM ui_element
 oel = {i: jload(s) for i, s in rows(ocur, "SELECT id, strategies FROM ui_elements")}
 for eid in sorted(set(lel) | set(oel)):
     if lel.get(eid) != oel.get(eid):
-        L(f"  el{eid}: L={json.dumps(leel) if False else json.dumps(lel.get(eid), ensure_ascii=False)[:140]}")
+        L(f"  el{eid}: L={json.dumps(lel.get(eid), ensure_ascii=False)[:140]}")
         L(f"  el{eid}: O={json.dumps(oel.get(eid), ensure_ascii=False)[:140]}")
 L(f"  (本地 {len(lel)} / 线上 {len(oel)} 个元素)")
 
