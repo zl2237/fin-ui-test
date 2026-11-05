@@ -4,7 +4,7 @@
   "merchantManage": "客商管理",
   "merchantManage/relationship": "客商关系管理"
  },
- "proven": "2026-11-04 SUT 前端源码定案（chunk-4019478e 静态拉取，免登录）：客户管理列表路由 #/development/merchantManage/customer（入口=客商管理菜单组→link 客户管理）；查询区 placeholder=请输入客户名称+查询按钮；全选=表头 fixed-left 复选框（录制 col_12，与客商关系列表同款结构）；批量添加操作=frameSlotOrder 弹窗（displayJudging=operationChange）：*操作=el-select multiple+filterable placeholder 请选择（form.operateBach，选项=status_options 的 user_name），footer 取消/确定。Vue Customer.operationAddChange 源码实证提交链：确定→batchOperateAdd(action=check)→code 200 自动 operationAddChange(submit)→showConfirm(您确认要提交该变更吗？,变更确认) MessageBox→确定→batchOperateAdd(action=submit)→toast 操作添加完成!→getList+cleanRul 关窗。两条「确定」同可访问名（录制第二条 get_by_label(dialog) 链解析后与裸按钮同形态）：footer 确定挂 confirm_watchdog（click+wait+confirm+watchdog），MessageBox 确定由 confirm 回声吸收；操作人员下拉=无名 textbox nth(3) 检索 ui + filter(has_text=张乐UI).locator(span) 选项点击（textbox_popper_picks textbox@3 一体化，检索词仅过滤非真值）",
+ "proven": "2026-11-04 SUT 前端源码定案（chunk-4019478e 静态拉取，免登录）：客户管理列表路由 #/development/merchantManage/customer（入口=客商管理菜单组→link 客户管理）；查询区 placeholder=请输入客户名称+查询按钮；全选=表头 fixed-left 复选框（录制 col_12，与客商关系列表同款结构）；批量添加操作=frameSlotOrder 弹窗（displayJudging=operationChange）：*操作=el-select multiple+filterable placeholder 请选择（form.operateBach，选项=status_options 的 user_name），footer 取消/确定。Vue Customer.operationAddChange 源码实证提交链：确定→batchOperateAdd(action=check)→code 200 自动 operationAddChange(submit)→showConfirm(您确认要提交该变更吗？,变更确认) MessageBox→确定→batchOperateAdd(action=submit)→toast 操作添加完成!→getList+cleanRul 关窗。两条「确定」同可访问名（录制第二条 get_by_label(dialog) 链解析后与裸按钮同形态）：footer 确定挂 confirm_watchdog（click+wait+confirm+watchdog），MessageBox 确定由 confirm 回声吸收；操作人员下拉=无名 textbox nth(3) 检索 ui + filter(has_text=张乐UI).locator(span) 选项点击（textbox_popper_picks textbox@3 一体化，检索词仅过滤非真值）。2026-11-04 晚实证（exec1076~1078）：multiple 下拉点选后浮层不收起、压住 footer 确定（hit-target 拦截 15s 死等）——popper_pick_esc 登记的 pick 后自动生成带元素定位的 press Escape 收浮层（locator.press 聚焦 select input 再按 Esc，el-select keydown ESC stopPropagation 不误关弹窗），录制人手收尾 Esc 一并吸收，exec1078 全绿（toast 操作添加完成@605ms）",
  "detect": {
   "nav_link_texts": ["客户管理"]
  },
@@ -55,6 +55,7 @@
  "textbox_popper_picks": {
   "textbox@3": ["operate_user", "cust_operate_select"]
  },
+ "popper_pick_esc": ["textbox@3"],
  "field_suggestions": {
   "operate_user": "张乐UI"
  },
