@@ -505,6 +505,28 @@ class TestEnsureCaseDataset:
         assert created["rows_data"] == [{"nodes": {"n2": {"params": {
             "body": {"bl_no": {"source": "constant", "value": "BL1"}}}}}}]
 
+    def test_pure_ui_case_still_gets_first_row(self):
+        """纯 UI 用例（无 API 绑定节点）建库仍带首行（2026-11-05 恒一行不变量：
+        零行数据集既无法执行也无法在节点配置新增 ${sheet.字段}）"""
+        case = SimpleNamespace(id=5, project_id=1, case_type="normal", dataset_id=None,
+                               dag_config={"nodes": [{"id": "n1"}], "edges": []})
+        created = {}
+
+        def fake_create(db, **kw):
+            created.update(kw)
+            return SimpleNamespace(id=77)
+
+        with patch.object(svc, "create_dataset", side_effect=fake_create):
+            svc.ensure_case_dataset(_hook_db([_cfg("n1", api_id=None)], []), case, user_id=1)
+        assert case.dataset_id == 77
+        assert created["rows_data"] == [{"nodes": {}}]  # 空 nodes dict 也照建 Sheet1
+
+    def test_bare_nodes_row_labeled_sheet1(self):
+        """裸 nodes dict 形态经 _normalize_rows_input 落为 Sheet1（与更新分支 _ensure_row 同形）"""
+        rows = svc._normalize_rows_input([{"nodes": {}}])
+        assert rows[0]["label"] == "Sheet1"
+        assert rows[0]["data"] == {"nodes": {}}
+
     def test_bound_appends_new_nodes_only(self):
         """已绑定：仅补画布新增节点的初始参数；已有节点参数（含用户改的动态来源）原样不动"""
         old_params = {"params": {"body": {"bl_no": {

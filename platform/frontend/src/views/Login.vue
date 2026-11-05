@@ -80,7 +80,7 @@
 
         <!-- 三行直陈能力（无卡片无图标框，工具感文案） -->
         <ul class="brand-points">
-          <li>60+ 浏览器动作，画布拖拽编排成链</li>
+          <li>{{ builtinActionCount }}+ 浏览器动作，画布拖拽编排成链</li>
           <li>元素库多策略定位，系统改版只改一处</li>
           <li>方案串行链跨系统串联用例，成员定向传参（__prev__）+ 整链批量轮次</li>
         </ul>
@@ -164,6 +164,10 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores'
 import { authApi, setToken } from '@/api'
+import { SELECTABLE_UI_ACTIONS } from '@/utils/ui'
+
+/** 内置动作数（词表实时取，减 custom 通道占位）——与上手指南/帮助中心同源，避免词表调整后失真 */
+const builtinActionCount = SELECTABLE_UI_ACTIONS.length - 1
 
 const router = useRouter()
 const route = useRoute()

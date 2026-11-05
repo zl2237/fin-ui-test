@@ -6,7 +6,9 @@
 
 /**
  * UI 动作词表：与后端 ui_runtime.py 动作词表对齐（原生 11 + 封装 12，共 23 种；
- * 其中 custom 为 JS 模板步骤占位，模板实体经动作库 custom_actions 维护）。
+ * 其中 custom 为 JS 模板步骤占位，模板实体经动作库 custom_actions 维护；
+ * screenshot / select_option 已下线（retired，2026-11-05：全库 1933 步 0 使用，
+ * 截图走环境 screenshot 策略、Element 下拉一律 pick），词条保留仅供存量步骤回显/编辑）。
  * name 为中文名（节点/步骤显示），desc 为面板说明文案；
  * params 为参数解析（帮助中心「动作解析」tab 展示，与后端实现对齐）。
  */
@@ -23,6 +25,8 @@ export interface UiActionMeta {
   desc: string
   origin: UiActionOrigin
   params?: UiActionParam[]
+  /** 已下线：不再出现在下拉/添加动作/帮助中心/动作库；存量步骤仍执行、仍显示中文名（词条保留即此用） */
+  retired?: boolean
 }
 /** 来源元信息（帮助中心分组与下拉标签共用；分组计数按词表实时计算） */
 export const UI_ACTION_ORIGINS: Record<UiActionOrigin, { label: string; group: string; note: string }> = {
@@ -52,7 +56,9 @@ export const UI_ACTIONS: UiActionMeta[] = [
       { name: 'element', desc: '目标下拉框', required: true },
       { name: 'value', desc: '选项文本（双向包含容差校验），支持 ${变量}', required: true },
     ] },
-  { action: 'select_option', name: '下拉选择(原生)', desc: '原生 select 选值（单选/多选）', origin: 'native',
+  // 已下线（2026-11-05，全库 0 使用）：业务系统全 Element 组件，下拉一律用 pick（带选中值校验）；
+  // 词条保留仅为存量 select_option 步骤的回显与编辑
+  { action: 'select_option', name: '下拉选择(原生)', desc: '原生 select 选值（单选/多选）', origin: 'native', retired: true,
     params: [
       { name: 'element', desc: '目标原生 select', required: true },
       { name: 'value / values', desc: 'option 的 value（非显示文本），支持多选', required: true },
@@ -64,7 +70,7 @@ export const UI_ACTIONS: UiActionMeta[] = [
     ] },
   { action: 'press', name: '按键', desc: '按键（可针对元素或整页）', origin: 'native',
     params: [
-      { name: 'value', desc: '键名，如 Enter / Control+A，默认 Enter', required: true },
+      { name: 'value', desc: '键名（大小写敏感），如 Enter / Escape / Control+A，默认 Enter', required: true },
       { name: 'element', desc: '可选；定位元素时按键作用于该元素，否则作用于整页' },
     ] },
   { action: 'type', name: '键盘输入', desc: '模拟真实敲键逐字输入（自定义组件无视程序化赋值时使用）', origin: 'native',
@@ -87,7 +93,9 @@ export const UI_ACTIONS: UiActionMeta[] = [
       { name: 'element', desc: '目标文件输入框（input[type=file]）', required: true },
       { name: 'files / value', desc: '文件中心 ID 或服务器绝对路径（可多个），支持 ${变量}', required: true },
     ] },
-  { action: 'screenshot', name: '截图', desc: '捕获当前页面截图（配合节点「执行后截图」策略使用）', origin: 'native' },
+  // 已下线（2026-11-05，全库 0 使用）：截图统一走环境 browser_config.screenshot 策略
+  // （on_failure/always/off，环境配置维护、DagExecutor 强制落库），动作本身在引擎里只是无操作标记
+  { action: 'screenshot', name: '截图', desc: '捕获当前页面截图（配合节点「执行后截图」策略使用）', origin: 'native', retired: true },
   { action: 'evaluate', name: '执行JS', desc: '在页面中执行 JS 表达式（高级用法/逃生门）', origin: 'native',
     params: [
       { name: 'value', desc: 'JS 表达式（返回值进 facts 供提取/断言），支持 ${变量} 注入', required: true },
@@ -143,6 +151,9 @@ export const UI_ACTIONS: UiActionMeta[] = [
     ] },
 ]
 
+/** 可供新步骤选择的动作（已下线条目滤除）：动作下拉 / 添加动作 / 帮助中心 / 动作库 共用 */
+export const SELECTABLE_UI_ACTIONS: UiActionMeta[] = UI_ACTIONS.filter((a) => !a.retired)
+
 /** 已合并下线的旧动作名 → 兼容别名（存量用例数据显示用；执行侧后端永久兼容） */
 const UI_ACTION_ALIASES: Record<string, string> = {
   js_click: 'JS点击（已并入点击·JS模式）',
@@ -171,11 +182,57 @@ export const STRATEGY_OPTIONS = [
   { value: 'test_id', label: 'data-testid' },
   { value: 'for', label: 'label 的 for 属性' },
 ]
-/** 需要元素定位的动作；press/wait/search/save 的定位可选（无元素时作用于整页/按文本兜底） */
+/** 各定位键的示例值与一句话语义：定位值输入框随键实时切换 placeholder/提示，
+ *  语义与引擎 _STRATEGY_PRIORITY 解析一一对应（按优先级排序，2026-11-05） */
+export const STRATEGY_HINTS: Record<string, { example: string; tip: string }> = {
+  test_id: { example: 'submit-btn', tip: 'data-testid 属性值（业务系统基本没埋，一般碰不到）' },
+  for: { example: 'cust_name', tip: 'label[for=X] 同容器首个输入框——for 值非真实 DOM id，别写 #cust_name 直查' },
+  label: { example: '提单号', tip: '按表单项容器文本匹配，取容器内首个输入框（el-form-item）' },
+  placeholder: { example: '请输入客户名称', tip: '输入框 placeholder，精确匹配（防「提单号/提单号批量」同类误中）' },
+  button: { example: '查 询', tip: '按按钮可访问名匹配（role=button），空格自动归一' },
+  tab: { example: 'tab-order_actual_cost', tip: 'tab 页签的 DOM id，非显示文字' },
+  role: { example: 'button', tip: 'ARIA 角色名（button/link/tab…）；可访问名另配 role_extra 键' },
+  text: { example: '暂无数据', tip: '可见文本包含匹配（get_by_text）' },
+  checkbox: { example: '无供应商', tip: '复选框旁的文本（本质按可见文本匹配）' },
+  toast: { example: '保存成功', tip: '全局提示文本（本质按可见文本匹配）' },
+  css: { example: '.el-dialog .el-button--primary', tip: 'Playwright CSS；支持 :visible 伪类限定弹窗/浮层语境' },
+  xpath: { example: "//button[contains(text(),'查询')]", tip: '相对 XPath（// 开头），倒数第二兜底' },
+  full_xpath: { example: '/html/body/div[2]/form/input', tip: '绝对路径，最脆（F12 Copy full XPath 原文）' },
+}
+/** 定位值格式校验：编排期拦"张冠李戴"（CSS 框里贴 XPath / id 键带 #），
+ *  避免到执行期定位超时才发现。返回错误文案或 null；语义键不做格式约束 */
+export function validateLocatorValue(strategy: string, value: string): string | null {
+  const v = value.trim()
+  if (!v) return null // 必填由各自的 required 校验管
+  if (strategy === 'xpath' || strategy === 'full_xpath') {
+    if (/^xpath=/i.test(v)) return '无需 xpath= 前缀，直接以 // 或 / 开头'
+    if (!v.startsWith('/') && !v.startsWith('(')) return 'XPath 应以 //（相对）或 /（绝对）开头'
+    return null
+  }
+  if (strategy === 'css') {
+    if (/^css=/i.test(v)) return '无需 css= 前缀，直接写选择器'
+    if (v.startsWith('/')) return '这是 XPath 写法——请把定位方式切成 XPath，或改写为 CSS 选择器'
+    return null
+  }
+  if (strategy === 'test_id' || strategy === 'for' || strategy === 'tab') {
+    if (v.includes('#') || /\s/.test(v)) return '填 id 本身（不带 #、不含空格）'
+  }
+  return null
+}
+/** 需要元素定位的动作；press/wait/search/save 的定位可选（无元素时作用于整页/按文本兜底）。
+ *  2026-11-05 核验补漏：type/date 引擎侧 _do_type/_do_date 都经 _locator(params)
+ *  定位（目标输入框/日期控件），此前漏登记——表单给不出定位配置，编辑存量步骤还会
+ *  被 collect() 清掉 element（数据丢失雷） */
 export const ELEMENT_ACTIONS = ['click', 'fill', 'pick', 'select_option', 'check', 'press', 'wait',
-  'upload', 'js_click', 'uncheck_all', 'search', 'save']
+  'upload', 'js_click', 'uncheck_all', 'search', 'save', 'type', 'date']
 export const ELEMENT_REQUIRED_ACTIONS = ['click', 'fill', 'pick', 'select_option', 'check', 'upload',
-  'js_click', 'uncheck_all']
+  'js_click', 'uncheck_all', 'type', 'date']
+/** 引擎不消费 timeout_ms 的动作（超时字段无效，表单隐藏；2026-11-05 逐 handler 核验）：
+ *  evaluate/custom 受 Playwright sync API 线程约束无法在驱动侧加超时（ui_runtime 注释实录）；
+ *  row_button(10×800ms)/scroll_bottom/confirm/confirm_wait/optional_confirm/popper_pick(8s)
+ *  为固定轮询窗；screenshot 已下线且本就是无操作标记。其余动作均传 timeout=timeout_ms */
+export const NO_TIMEOUT_ACTIONS = new Set(['evaluate', 'custom', 'row_button', 'scroll_bottom',
+  'confirm', 'confirm_wait', 'optional_confirm', 'popper_pick', 'screenshot'])
 /** value 为必填文本的组合动作（按钮文本/选项文本/期望提示/检索关键字） */
 export const TEXT_VALUE_ACTIONS = new Set(['search', 'click_text', 'click_text_contains', 'row_button',
   'popper_pick', 'toast_watch'])
@@ -194,11 +251,16 @@ export const TEXT_VALUE_META: Record<string, { label: string; tip: string }> = {
  * element 需先经表单 collect 收敛（库模式=element_id / 自定义=strategy+value）。
  * @returns 校验错误文案；null 表示通过
  */
-export function validateUiStepData(st: { action: string; url?: string; value?: any; values?: any[]; custom_id?: number; absent?: boolean; element?: { element_id?: number; value?: string } }): string | null {
+export function validateUiStepData(st: { action: string; url?: string; value?: any; values?: any[]; custom_id?: number; absent?: boolean; element?: { element_id?: number; strategy?: string; value?: string } }): string | null {
   const a = st.action
   if (a === 'custom' && !st.custom_id) return '请选择自定义动作'
   if (ELEMENT_REQUIRED_ACTIONS.includes(a) && !st.element?.element_id && !st.element?.value) {
     return '请定位元素（元素库引用或自定义定位值）'
+  }
+  // 数据级格式校验兜底：折叠步骤无表单实例（collect 不跑），CSS 贴 XPath 等张冠李戴在此拦
+  if (st.element?.strategy && st.element?.value) {
+    const fmt = validateLocatorValue(st.element.strategy, st.element.value)
+    if (fmt) return fmt
   }
   if (a === 'goto' && !st.url?.trim()) return '需要填写页面 URL'
   if (a === 'fill' && (st.value == null || st.value === '')) return '需要填写输入内容'

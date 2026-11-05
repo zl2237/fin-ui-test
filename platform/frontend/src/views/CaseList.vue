@@ -450,7 +450,7 @@
 
     <!-- 组合弹窗：拖拽调整拼接顺序，复制式生成新用例 -->
     <el-dialog v-model="combineVisible" title="组合用例" width="540px" align-center :close-on-click-modal="false">
-      <div class="combine-tip">拖拽调整拼接顺序（自上而下依次执行）；组合将复制生成新用例，不影响原用例。前段提取的变量后段可直接引用。</div>
+      <div class="combine-tip">拖拽调整拼接顺序（自上而下执行）；组合复制生成新用例，前段提取的变量后段可直接引用。</div>
       <div ref="combineListRef" class="combine-list">
         <div v-for="c in combineItems" :key="c.id" class="combine-item">
           <el-tooltip content="拖拽排序" placement="top" popper-class="app-tip">

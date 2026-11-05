@@ -1,26 +1,22 @@
 # ================= Python =================
-# 字节码与缓存
 __pycache__/
 *.py[cod]
 *.cache
 .pytest_cache/
-# 覆盖率产物（.coveragerc 为配置文件需入库，不匹配）
+venv/
+.venv/
+# 覆盖率产物（platform/backend/.coveragerc 为配置文件，入库）
 htmlcov/
 .coverage
 .coverage.*
-# 虚拟环境
-venv/
-.venv/
-env/
-# 本地 vendor 依赖（APScheduler 等沙箱/离线安装产物）
-platform/backend/.vendor/
 
 # ================= 前端 / Node =================
 platform/frontend/node_modules/
 platform/frontend/dist/
 platform/frontend/.vite/
+# vitest 覆盖率 HTML 报告（npm run test:coverage 产物）
+platform/frontend/coverage/
 *.tsbuildinfo
-.npm-cache/
 # OpenAPI 类型生成中间产物（api.gen.ts 由 gen:api 重新生成并提交）
 platform/frontend/openapi.json
 
@@ -28,37 +24,30 @@ platform/frontend/openapi.json
 # .env 与 .env.local 任意层级生效；.env.example 示例文件正常入库
 .env
 .env.local
-# 真实环境配置；env_demo.yaml 为示例，正常入库
-config/env_test.yaml
-config/env_pre.yaml
 
 # ================= 运行产物 =================
 logs/
 *.log
-report/
-# 前端 vitest 覆盖率 HTML 报告（npm run test:coverage 产物）
-platform/frontend/coverage/
-# 文件中心物理存储（内容寻址落盘，路径可被 .env UPLOAD_ROOT 覆盖）
+# 文件中心物理存储（内容寻址落盘，路径可被 UPLOAD_ROOT 覆盖）
 platform/backend/uploads/
-# 数据集迁移前备份（一次性产物）
-platform/backend/backup_*.json
-# 数据库 dump/备份目录（scripts 备份产物，含库数据勿提交）
-platform/backend/backups/
-# 本地导入接口所需文件
-*.har
-*.openapi.json
-# 浏览器诊断截图产物
-screenshots*/
+# 库数据备份（scripts 备份/数据修复库行备份，含数据勿提交；任意层级同名目录）
+backups/
 
-# ================= 开发调试临时文件 =================
-# 任意目录下划线开头的调试文件；但以下两类必须入库：
+# ================= 会话临时 / 防再生（2026-11-05 大清扫后）=================
+Temp/
+.ruff_cache/
+.tmp_*
+# codegen 录制产物（含业务系统凭据，永不入库；2026-11-05 移出跟踪）
+/record.py
+record.py_*_report.txt
+
+# ================= 下划线调试文件约定 =================
+# 任意目录下划线开头 = 调试文件不入库；两类例外必须入库：
 # Python 包标记（app/crud 等新包）与前端测试目录（vitest 约定）
 **/_*
 !**/__init__.py
 !**/__tests__/
 !**/__tests__/**
-# .tmp_ 前缀：CDP 诊断、临时自测脚本等
-.tmp_*
 
 # ================= IDE / 系统文件 =================
 .idea/
@@ -67,28 +56,3 @@ screenshots*/
 *.swo
 .DS_Store
 Thumbs.db
-
-# ================= 本地工作区 / 工具链（不入库）=================
-learn/
-.teach
-.deps/
-skills-lock.json
-.agents
-.claude
-.trae/
-# 待发布 skill 仓库（挪到项目外后可删除此行）
-trae-api-test-skills/
-
-.pw_tmp/
-
-# Architecture review reports (local archive, not tracked)
-architecture-reviews/
-
-# 数据修复脚本的库行备份（本地留存，不入库）
-platform/backend/scripts/backups/
-
-# 会话临时产物（调试脚本/日志/dump），2026-11-05 大清扫后防再生
-Temp/
-backups/
-.ruff_cache/
-record.py_*_report.txt

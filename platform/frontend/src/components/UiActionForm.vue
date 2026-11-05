@@ -1,29 +1,10 @@
 <template>
-  <el-form label-width="90px" class="ui-step-form">
-    <el-form-item label="动作类型" required>
-      <el-select :model-value="actionSelectValue" style="width: 100%" @update:model-value="onActionChange">
-        <el-option v-for="a in UI_ACTIONS" :key="a.action" :label="`${a.name}（${a.action}）`" :value="a.action">
-          <div class="action-opt">
-            <span class="action-opt-name">{{ a.name }}</span>
-            <span class="action-opt-code">{{ a.action }}</span>
-            <span class="action-opt-tag" :class="`origin-${a.origin}`">{{ UI_ACTION_ORIGINS[a.origin].label }}</span>
-          </div>
-        </el-option>
-        <!-- 项目自定义动作（JS 模板）直列下拉：一步选中，免去先选 custom 再选模板 -->
-        <el-option-group v-if="customActions.length" label="项目自定义（动作库维护）">
-          <el-option
-            v-for="ca in customActions" :key="`@custom/${ca.id}`" :value="`@custom/${ca.id}`"
-            :label="ca.description ? `${ca.name}（${firstLine(ca.description)}）` : ca.name"
-          >
-            <div class="action-opt">
-              <span class="action-opt-name">{{ ca.name }}</span>
-              <span class="action-opt-code">custom:{{ ca.id }}</span>
-              <span class="action-opt-tag origin-wrapped">自定义</span>
-            </div>
-          </el-option>
-        </el-option-group>
-      </el-select>
-      <p class="tip action-tip">{{ actionDesc }}</p>
+  <!-- label-width 100px：4 字标签 + 问号图标在 90px 下贴边折行（2026-11-05），配合下方 nowrap 双保险 -->
+  <el-form label-width="100px" class="ui-step-form">
+    <el-form-item required>
+      <template #label>动作类型<HintTip :content="actionDesc" /></template>
+      <!-- 统一动作下拉（2026-11-05）：与节点配置「+ 添加动作」共用 ActionSelect，交互一致 -->
+      <ActionSelect :model-value="actionSelectValue" style="width: 100%" :custom-actions="customActions" :action-docs="actionDocs" @update:model-value="onActionChange" />
     </el-form-item>
     <template v-if="st.action === 'goto'">
       <el-form-item label="页面 URL" required>
@@ -67,13 +48,13 @@
               <span class="element-opt" :title="el.description ? `${el.element_key}（${el.description}）` : el.element_key">{{ el.element_key }}</span>
             </el-option>
           </el-select>
+          <!-- 跨域/悬空是数据态错误，必须直接陈列（不收浮层） -->
           <p v-if="crossScopeElement" class="tip action-tip dangling-tip">
             当前引用的元素「{{ crossScopeElement }}」不属于节点页面域 {{ scopeDisplay(props.nodeScope!) }}，请重选本域元素
           </p>
           <p v-else-if="danglingElement" class="tip action-tip dangling-tip">
             当前引用的元素 #{{ st.element!.element_id }} 不在元素库中（元素库变更后遗留的悬空引用），请重选页面域与元素
           </p>
-          <p v-else class="tip action-tip">{{ props.nodeScope ? `只能选择本页面域（${scopeDisplay(props.nodeScope)}）下的元素；跨域元素请另建节点` : '元素库在「元素库」页面维护（支持 locator JSON 批量导入）' }}</p>
         </el-form-item>
       </template>
       <template v-else>
@@ -83,7 +64,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="定位值" :required="elementRequired">
-          <el-input v-model="st.element!.value" placeholder="如 #submit-btn / //button[@id='save']" />
+          <el-input v-model="st.element!.value" :placeholder="strategyHint?.example || '先选定位方式'" />
         </el-form-item>
         <el-form-item v-if="st.element!.strategy === 'role'" label="角色名称">
           <el-input v-model="st.element!.name" placeholder="如 提交 / Submit（get_by_role 的 name）" />
@@ -102,14 +83,12 @@
         <el-input v-model="st.value" :placeholder="textValuePlaceholder" @focus="valIns.onSqlFocus" />
         <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
-      <p class="tip action-tip">{{ textValueTip }}</p>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'save'" label="期望提示">
       <div class="ds-menu-row">
-        <el-input v-model="st.value" placeholder="默认「保存成功」；也可填其他成功提示文本，支持 ${变量}" @focus="valIns.onSqlFocus" />
+        <el-input v-model="st.value" placeholder="默认「保存成功」；留空按文本「保 存」定位保存按钮，支持 ${变量}" @focus="valIns.onSqlFocus" />
         <DatasetVarMenu v-bind="dvmProps" @insert="valIns.onSqlInsert" @rows-changed="emit('rows-changed')" />
       </div>
-      <p class="tip action-tip">留空时按文本「保 存」定位保存按钮，成功以该提示出现为准</p>
     </el-form-item>
     <el-form-item v-else-if="['pick', 'type', 'date'].includes(st.action)" label="值" required>
       <div class="ds-menu-row">
@@ -120,12 +99,17 @@
       </div>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'press'" label="按键" required>
-      <el-input v-model="st.value" placeholder="如 Enter / Control+A（默认 Enter）" />
+      <!-- 可选可输：常见键下拉杜绝大小写手误（键名严格区分，写错执行期当场报错）；
+           组合键开放集合（Control+Shift+Home 等）必须保留自由输入 -->
+      <el-select v-model="st.value" filterable allow-create default-first-option clearable
+                 placeholder="Enter（默认）；组合键如 Control+A 可直接输入" style="width: 100%">
+        <el-option v-for="k in PRESS_KEYS" :key="k" :label="k" :value="k" />
+      </el-select>
     </el-form-item>
-    <el-form-item v-else-if="st.action === 'wait'" label="等待时长">
+    <el-form-item v-else-if="st.action === 'wait'">
+      <template #label>等待时长<HintTip v-if="needsElement" content="定位了元素时改为「等元素可见」，时长仅作记录" /></template>
       <el-input-number v-model="waitValue" :min="0" :step="500" controls-position="right" style="width: 180px" />
       <span class="wait-unit">ms</span>
-      <span v-if="needsElement" class="tip inline-tip">定位了元素时改为「等元素可见」，时长仅作记录</span>
     </el-form-item>
     <el-form-item v-else-if="st.action === 'evaluate'" label="JS 表达式" required>
       <div class="ds-menu-row">
@@ -135,7 +119,6 @@
     </el-form-item>
     <el-form-item v-else-if="st.action === 'select_option'" label="选项值" required>
       <el-select v-model="optionValues" multiple filterable allow-create default-first-option placeholder="输入选项值后回车，可多个" style="width: 100%" />
-      <p class="tip action-tip">对应 select 的 value（非显示文本）；多选框可一次选多个值</p>
     </el-form-item>
     <!-- custom：自定义动作模板引用 + 传参 -->
     <template v-else-if="st.action === 'custom'">
@@ -144,7 +127,6 @@
           <el-option v-for="ca in customActions" :key="ca.id" :value="ca.id"
                      :label="ca.description ? `${ca.name}（${ca.description}）` : ca.name" />
         </el-select>
-        <p class="tip action-tip">{{ selectedCustom?.description || '项目级 JS 模板：脚本入参 args，return 值进 facts.result' }}</p>
       </el-form-item>
       <el-form-item label="传参 args">
         <div class="ds-menu-row">
@@ -155,56 +137,52 @@
     </template>
     <!-- 合并参数：click_text 匹配方式 / click 模式 / confirm 形态 -->
     <el-form-item v-if="st.action === 'click_text'" label="同名序号">
-      <el-input-number v-model="clickIndex" :min="0" :step="1" controls-position="right" style="width: 120px" />
-      <span class="tip inline-tip">同名按钮取第 N 个（0 起）；费用表两个「新增标准费用」取第 2 个填 1</span>
+      <el-input-number v-model="clickIndex" :min="0" :step="1" controls-position="right" placeholder="第 N 个（0 起）" style="width: 120px" />
     </el-form-item>
     <el-form-item v-if="st.action === 'click_text'" label="匹配方式">
       <el-radio-group v-model="clickMatch">
         <el-radio-button value="exact">精确（默认）</el-radio-button>
         <el-radio-button value="contains">包含</el-radio-button>
       </el-radio-group>
-      <p class="tip action-tip">包含匹配：填「导入」可点到「导入报关费用」</p>
     </el-form-item>
     <el-form-item v-if="st.action === 'click_text'" label="无则跳过">
       <el-switch v-model="clickOptional" />
-      <span class="tip inline-tip">按钮可能不存在时（如「作废」仅有生效单证才出现）跳过不报错，result=absent</span>
     </el-form-item>
     <!-- toast_watch：反向断言（不得出现）/ 宽容（超时不报错），二者互斥 -->
     <template v-if="st.action === 'toast_watch'">
       <el-form-item label="反向断言">
         <el-switch v-model="toastAbsent" />
-        <span class="tip inline-tip">观察窗（步骤超时）内出现提示即失败；开启后文本可空=任何提示都算命中</span>
       </el-form-item>
       <el-form-item label="无则跳过">
         <el-switch v-model="toastOptional" />
-        <span class="tip inline-tip">超时未出现返回 no-toast 不报错（配「无则跳过」点击的条件场景）</span>
       </el-form-item>
     </template>
-    <el-form-item v-if="st.action === 'click'" label="点击模式">
+    <el-form-item v-if="st.action === 'click'">
+      <template #label>点击模式<HintTip :content="clickMode === 'js'
+        ? '合成 click 事件，元素在 DOM 即可点（不可见/被遮挡时用，原 js_click）'
+        : '真实鼠标事件；被遮挡/动画未稳被拦时开下方「强制点击」跳过前置校验'" /></template>
       <el-radio-group v-model="clickMode">
         <el-radio-button value="default">普通</el-radio-button>
         <el-radio-button value="js">JS 直调</el-radio-button>
       </el-radio-group>
-      <p class="tip action-tip">JS 直调绕过可点击性校验（被遮挡/固定列副本区/动画中元素，原 js_click）</p>
     </el-form-item>
     <template v-if="st.action === 'confirm'">
       <el-form-item label="轮询等待">
         <el-switch v-model="confirmWait" />
-        <span class="tip inline-tip">弹窗延迟数秒出现时持续监视并点击</span>
       </el-form-item>
       <el-form-item label="无则跳过">
         <el-switch v-model="confirmOptional" />
-        <span class="tip inline-tip">只点「继续提交」类按钮，无弹窗不报错</span>
       </el-form-item>
     </template>
-    <el-form-item label="超时时间">
+    <!-- 超时时间仅对引擎消费 timeout_ms 的动作显示（NO_TIMEOUT_ACTIONS 逐 handler 核验；
+         toast_watch 的超时即观察窗，保留） -->
+    <el-form-item v-if="!NO_TIMEOUT_ACTIONS.has(st.action)" label="超时时间">
       <el-input-number v-model="timeoutMs" :min="0" :step="1000" controls-position="right" style="width: 180px" />
       <span class="wait-unit">ms</span>
-      <p class="tip wait-tip">本步骤元素定位/页面加载的超时上限，默认 15000ms。</p>
     </el-form-item>
-    <el-form-item v-if="st.action === 'click'" label="强制点击">
+    <!-- 强制点击仅普通模式有效（js 模式引擎不读 force，隐藏避免误导） -->
+    <el-form-item v-if="st.action === 'click' && clickMode !== 'js'" label="强制点击">
       <el-switch v-model="st.force" />
-      <span class="tip inline-tip">跳过元素可见性/可点击性校验（遮挡场景使用）</span>
     </el-form-item>
   </el-form>
 </template>
@@ -217,7 +195,9 @@
  */
 import { ref, computed, watch } from 'vue'
 import type { UiElement, UiStep, CustomAction, UiActionDoc } from '@/api'
-import { UI_ACTIONS, UI_ACTION_ORIGINS, STRATEGY_OPTIONS, ELEMENT_ACTIONS, ELEMENT_REQUIRED_ACTIONS, TEXT_VALUE_ACTIONS, TEXT_VALUE_META } from '@/utils/ui'
+import { UI_ACTIONS, STRATEGY_OPTIONS, STRATEGY_HINTS, validateLocatorValue, ELEMENT_ACTIONS, ELEMENT_REQUIRED_ACTIONS, TEXT_VALUE_ACTIONS, TEXT_VALUE_META, NO_TIMEOUT_ACTIONS } from '@/utils/ui'
+import ActionSelect from './ActionSelect.vue'
+import HintTip from './HintTip.vue'
 import DatasetVarMenu, { type DsVarSheet } from './DatasetVarMenu.vue'
 import { useSqlInsert } from '@/composables/useSqlInsert'
 
@@ -274,7 +254,6 @@ const actionDesc = computed(() => {
   return overridden || a.desc
 })
 const textValuePlaceholder = computed(() => TEXT_VALUE_META[st.value.action]?.label || '文本值，支持 ${变量}')
-const textValueTip = computed(() => TEXT_VALUE_META[st.value.action]?.tip || '')
 
 // 元素定位模式：元素库引用（element_id）/ 自定义单策略（strategy+value）
 const elementMode = ref<'library' | 'custom'>('library')
@@ -293,6 +272,15 @@ const crossScopeElement = computed(() => {
   return found.description || found.element_key
 })
 
+/** press 常用键名（Playwright 规范写法；组合键走 allow-create 自由输入） */
+const PRESS_KEYS = [
+  'Enter', 'Escape', 'Tab', 'Backspace', 'Delete', 'Space',
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Home', 'End', 'PageUp', 'PageDown',
+  'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+  'Control+A', 'Control+C', 'Control+V', 'Control+X', 'Control+Enter', 'Shift+Tab',
+]
+
 /** select_option 的多值输入 / wait 的时长 / click_text 序号与匹配 / click 模式 / confirm 形态（与 step 字段互转） */
 const optionValues = ref<string[]>([])
 const waitValue = ref<number>(1000)
@@ -302,6 +290,14 @@ const clickOptional = ref(false)
 const toastAbsent = ref(false)
 const toastOptional = ref(false)
 const clickMode = ref<'default' | 'js'>('default')
+/** 定位值随策略键实时换示例与语义提示（role 的可访问名走专属「角色名称」字段，提示单独说） */
+const strategyHint = computed(() => {
+  const h = STRATEGY_HINTS[st.value.element?.strategy ?? '']
+  if (!h) return null
+  return st.value.element?.strategy === 'role'
+    ? { ...h, tip: 'ARIA 角色名（button/link/tab…），可访问名填下方「角色名称」' }
+    : h
+})
 const confirmWait = ref(false)
 const confirmOptional = ref(false)
 const timeoutMs = computed<number>({
@@ -336,11 +332,6 @@ const actionSelectValue = computed(() => {
   }
   return s.action
 })
-
-/** 多行描述取首行（下拉 label 单行展示） */
-function firstLine(text?: string | null): string {
-  return (text || '').split('\n')[0].slice(0, 30)
-}
 
 /** 步骤对象变化（加载/删除致复用）时同步局部编辑状态 */
 watch(
@@ -401,6 +392,9 @@ function collect(): string | null {
     if (elementRequired.value && !p.element?.value) {
       return '请填写元素定位值'
     }
+    // 格式校验：CSS 框里贴 XPath 这类张冠李戴在编排期拦下（执行期只会表现为定位超时）
+    const fmtErr = validateLocatorValue(p.element?.strategy || '', p.element?.value || '')
+    if (fmtErr) return fmtErr
     const { strategy, value, name } = p.element ?? ({} as NonNullable<UiStep['element']>)
     p.element = strategy ? { strategy, value, name } : undefined
   }
@@ -420,6 +414,8 @@ function collect(): string | null {
     p.values = undefined
   }
   if (p.action === 'wait') p.value = waitValue.value
+  // press 键名首尾空格修剪（键名中空格无意义，尾随空格是 "Unknown key" 陷阱）
+  if (p.action === 'press' && typeof p.value === 'string') p.value = p.value.trim()
   if (p.action === 'click_text') {
     p.index = clickIndex.value || undefined
     p.match = clickMatch.value === 'contains' ? 'contains' : undefined
@@ -445,7 +441,8 @@ function collect(): string | null {
   p.wait = (p.action === 'confirm' && confirmWait.value) ? true : undefined
   p.optional = (p.action === 'confirm' && confirmOptional.value) ? true : undefined
   if (p.action !== 'goto') p.wait_for = undefined
-  if (p.action !== 'click') p.force = undefined
+  // js 模式引擎不消费 force（_do_click 提前 return），不留死配置
+  if (p.action !== 'click' || clickMode.value === 'js') p.force = undefined
   if (p.action !== 'custom') p.custom_id = undefined
   return null
 }
@@ -454,6 +451,10 @@ defineExpose({ collect })
 </script>
 
 <style scoped>
+/* label 单行强制：含问号图标的 4 字标签（动作类型/点击模式/等待时长）不许折行 */
+:deep(.el-form-item__label) {
+  white-space: nowrap;
+}
 .ui-step-form :deep(.el-form-item) {
   margin-bottom: 14px;
 }
@@ -472,36 +473,6 @@ defineExpose({ collect })
   flex-shrink: 0;
   line-height: 22px;
   padding-top: 4px;
-}
-/* 动作下拉项：名称 + 标识 + 来源标签 */
-.action-opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.action-opt-name {
-  font-weight: 500;
-}
-.action-opt-code {
-  font-family: var(--app-font-mono);
-  font-size: 11px;
-  color: var(--app-text-faint);
-}
-.action-opt-tag {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 10px;
-  line-height: 1;
-  padding: 3px 7px;
-  border-radius: 8px;
-}
-.action-opt-tag.origin-native {
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.12);
-}
-.action-opt-tag.origin-wrapped {
-  color: #b45309;
-  background: rgba(180, 83, 9, 0.12);
 }
 /* 页面域下拉项：中文名主显 + scope 编码次显（与元素库页一致） */
 .scope-opt {

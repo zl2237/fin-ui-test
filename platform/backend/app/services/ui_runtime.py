@@ -15,9 +15,17 @@
   元素库；元素库 strategies 沿用 locator JSON 的多策略字段，按固定优先级链解析，
   首个命中即用（full_xpath 永远兜底）。
 
-动作词表（ui_params.action）：
-goto / click / fill / pick / date / select_option / check / press / wait / upload / screenshot / evaluate
-（pick/date 为 Element-UI 定制：下拉"点击→检索→选项→Esc"、日期"fill+Enter"）
+动作词表（ui_params.action，与前端词表 utils/ui.ts 对齐）：
+- 原生 11：goto / click / fill / check / press / type / wait / upload / evaluate
+  / screenshot / select_option
+- 封装 12：pick / date / custom / search / click_text / row_button / scroll_bottom
+  / confirm / popper_pick / toast_watch / save / uncheck_all
+- 兼容别名 4（handler 永久保留，存量用例照常执行）：
+  js_click→click(mode=js) / click_text_contains→click_text(contains)
+  / confirm_wait→confirm(wait) / optional_confirm→confirm(optional)
+前端已下线（2026-11-05，全库 0 使用）：screenshot（截图走环境 browser_config.screenshot
+策略，动作在引擎里仅为无操作标记）、select_option（业务系统全 Element 组件，下拉一律
+pick 带选中值校验）——仅不再出现在新步骤下拉，执行侧永久兼容。
 
 产出契约（facts dict，进 StepResult.response_body）：
 后置提取与断言复用 API 管线的同一套机制——extractor 对 facts 做 json_path 提取、
@@ -604,11 +612,11 @@ class UiRuntime:
             return self._run_steps(params["steps"])
         if not params.get("action"):
             raise UiActionError(
-                "ui_params 需要 action 或 steps（基础动作 goto/click/fill/pick/select_option/check/"
-                "press/wait/upload/date/type/screenshot/evaluate；组合动作 search/js_click/"
-                "click_text/click_text_contains/row_button/scroll_bottom/confirm/confirm_wait/"
-                "optional_confirm/popper_pick/toast_watch/save/uncheck_all；"
-                "或 steps: [{action,...}] 组成页面级动作序列）")
+                "ui_params 需要 action 或 steps（基础动作 goto/click/fill/pick/check/"
+                "press/type/wait/upload/date/screenshot/evaluate/select_option；组合动作 "
+                "search/click_text/row_button/scroll_bottom/confirm/popper_pick/toast_watch/"
+                "save/uncheck_all/custom；兼容别名 js_click/click_text_contains/confirm_wait/"
+                "optional_confirm；或 steps: [{action,...}] 组成页面级动作序列）")
         action = str(params["action"])
         timeout_ms = self._timeout_ms(params)
         page = self.ensure_browser()
