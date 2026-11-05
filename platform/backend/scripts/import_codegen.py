@@ -585,12 +585,32 @@ def convert(path, rule, elements, *, stmts=None, first_goto=None, no_split=False
             if option == "__first_option__":
                 val = (rule.get("field_suggestions") or {}).get(fname, "")
                 review.append((line, f"popper_pick {fname}", f"录制未录选项文本（点首项），值取建议「{val}」，请在画布确认"))
+            # 多选下拉（el-select multiple）popper_pick 点完选项浮层不收起，
+            # 压住后续 footer 按钮（exec1076/1077 hit-target 拦截 15s 死等实证；
+            # 515 的「pick 自带 Esc 收起」对 popper_pick 不成立——引擎 popper_pick
+            # 不收浮层，multiple 也不自动关）→ 规则 popper_pick_esc 登记的 nth_key
+            # 补 press Escape 且绑定触发器元素：locator.press 先聚焦 select input
+            # 再按 Esc，确定性收浮层；el-select keydown ESC stopPropagation 不误关
+            # 外层弹窗（exec1078 全绿验证：toast 操作添加完成@605ms）。
+            # 录制里人手关浮层的紧跟 Esc（L31 形态）一并吸收，防二次按键冒泡。
+            esc_close = nth_key in (rule.get("popper_pick_esc") or [])
+            if esc_close and j < len(stmts) and stmts[j]["method"] == "press" \
+                    and (stmts[j]["args"] or [None])[0] == "Escape":
+                j += 1
             dataset[fname] = val
             cur.append({"action": "click", "element": el_ref(ekey)})
             cur.append({"action": "popper_pick", "value": "${" + fname + "}"})
+            if esc_close:
+                cur.append({"action": "press", "value": "Escape", "element": el_ref(ekey)})
+                keep.append((line, s["raw"] + " (增强)",
+                             f"增强：popper_pick 后 press Escape {el_desc(ekey)}（多选下拉选后浮层不收起，压住 footer 按钮）"))
             keep.append((line, s["raw"], f"click+popper_pick {el_desc(ekey)} → ${{{fname}}}={val}（控件替换型下拉）"))
             for k in range(i + 1, j):
-                dropped.append((stmts[k]["line"], stmts[k]["raw"], "并入上一条 popper_pick（点选由 popper_pick 完成）"))
+                _msg = "并入上一条 popper_pick（点选由 popper_pick 完成）"
+                if stmts[k]["method"] == "press" \
+                        and (stmts[k]["args"] or [None])[0] == "Escape":
+                    _msg = "并入 popper_pick 收尾 Esc（已由规则生成带元素定位的 press Escape 替代）"
+                dropped.append((stmts[k]["line"], stmts[k]["raw"], _msg))
             i = j
             continue
         if m == "click" and loc.get("kind") == "role" and loc.get("value") == "textbox" \
