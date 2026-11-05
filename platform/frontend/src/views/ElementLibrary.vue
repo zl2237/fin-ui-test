@@ -131,7 +131,7 @@
 
     <!-- 新增/编辑抽屉 -->
     <el-drawer v-model="drawerVisible" :title="editing ? '编辑元素' : '新增元素'" size="min(560px, 92vw)" direction="rtl">
-      <el-form :model="form" label-width="90px">
+      <el-form :model="form" label-width="100px">
         <el-form-item label="页面域" required>
           <el-input v-model="form.page_scope" placeholder="业务系统真实路由，如 orderManage/businessOrder" />
         </el-form-item>
@@ -141,7 +141,8 @@
         <el-form-item label="描述">
           <el-input v-model="form.description" placeholder="如 提单号输入框" />
         </el-form-item>
-        <el-form-item label="定位策略" required>
+        <el-form-item required>
+          <template #label>定位策略<HintTip content="执行时按优先级取首个有值键命中：test_id → for → label → placeholder → button → tab → role → text → checkbox → toast → css → xpath → full_xpath；定位值输入框按所选键提示示例" /></template>
           <el-tabs v-model="stratTab" class="strat-tabs">
             <!-- 键值对编辑：key 从常用策略键选择（可输入自定义键） -->
             <el-tab-pane label="键值对" name="kv">
@@ -149,11 +150,10 @@
                 <el-select v-model="row.key" filterable allow-create default-first-option placeholder="策略键" class="kv-key">
                   <el-option v-for="k in STRATEGY_KEYS" :key="k" :label="k" :value="k" />
                 </el-select>
-                <el-input v-model="row.value" placeholder="定位值" class="kv-val" />
+                <el-input v-model="row.value" :placeholder="STRATEGY_HINTS[row.key]?.example || '定位值'" class="kv-val" />
                 <el-button link type="danger" size="small" :disabled="kvRows.length <= 1" @click="kvRows.splice(i, 1)">删除</el-button>
               </div>
               <el-button size="small" @click="kvRows.push({ key: '', value: '' })">+ 添加策略</el-button>
-              <p class="form-tip">执行时按优先级取首个命中：test_id → for → label → placeholder → button → tab → text → checkbox → toast → css → xpath → full_xpath</p>
             </el-tab-pane>
             <!-- JSON 文本域：整包编辑（高级用法/粘贴已有片段） -->
             <el-tab-pane label="JSON" name="json">
@@ -183,7 +183,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, EditPen, Delete } from '@element-plus/icons-vue'
 import { elementApi, scopeLabelApi, type UiElement, type UiElementScope } from '@/api'
 import { useAppStore } from '@/stores'
-import { debounce } from '@/utils/ui'
+import { debounce, STRATEGY_HINTS, validateLocatorValue } from '@/utils/ui'
+import HintTip from '@/components/HintTip.vue'
 import { formatTime, formatRelativeTime } from '@/utils/format'
 import { useClientSort } from '@/composables/useClientSort'
 import { expandStorageKey } from '@/composables/useGroupTree'
@@ -193,9 +194,9 @@ import ScopeLabelDialog from '@/components/ScopeLabelDialog.vue'
 
 const store = useAppStore()
 
-// 常用策略键（locator JSON / 后端优先级链中出现过的键；键值对编辑可自定义输入）
+// 常用策略键（与后端 _STRATEGY_PRIORITY 优先级链一致，含 role；键值对编辑可自定义输入）
 const STRATEGY_KEYS = [
-  'test_id', 'for', 'label', 'placeholder', 'button', 'tab', 'text', 'checkbox', 'toast', 'css', 'xpath', 'full_xpath',
+  'test_id', 'for', 'label', 'placeholder', 'button', 'tab', 'role', 'text', 'checkbox', 'toast', 'css', 'xpath', 'full_xpath',
 ]
 
 // 占位示例（内嵌单引号，模板属性内无法直排，走 script 绑定）
@@ -458,12 +459,24 @@ function onEdit(row: UiElement) {
 
 /** 以当前激活 tab 的内容为准收敛 strategies */
 function collectStrategies(): Record<string, any> | null {
+  const validate = (obj: Record<string, any>): boolean => {
+    // 格式校验（与编排表单同源 validateLocatorValue）：CSS 键里贴 XPath 这类张冠李戴当场拦
+    for (const [k, v] of Object.entries(obj)) {
+      const err = validateLocatorValue(k, String(v ?? ''))
+      if (err) {
+        ElMessage.warning(`策略键 ${k} 的定位值：${err}`)
+        return false
+      }
+    }
+    return true
+  }
   if (stratTab.value === 'kv') {
     const obj = kvToObj()
     if (!Object.keys(obj).length) {
       ElMessage.warning('请至少填写一条有效的定位策略（策略键 + 定位值）')
       return null
     }
+    if (!validate(obj)) return null
     return obj
   }
   const obj = parseJson()
@@ -475,6 +488,7 @@ function collectStrategies(): Record<string, any> | null {
     ElMessage.warning('策略 JSON 不能为空对象')
     return null
   }
+  if (!validate(obj)) return null
   return obj
 }
 
@@ -567,6 +581,10 @@ watch(() => store.currentProjectId, (n, old) => {
 </script>
 
 <style scoped>
+/* label 单行强制：4 字标签 + 问号图标（定位策略）不许折行 */
+:deep(.el-form-item__label) {
+  white-space: nowrap;
+}
 .page {
   display: flex;
   flex-direction: column;

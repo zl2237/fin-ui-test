@@ -11,14 +11,14 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5-42b883.svg)](https://vuejs.org/)
 [![Element Plus](https://img.shields.io/badge/Element_Plus-2.9-409EFF.svg)](https://element-plus.org/)
 [![Vue Flow](https://img.shields.io/badge/Vue_Flow-DAG-ff6b6b.svg)](https://vueflow.dev/)
-[![Tests](https://img.shields.io/badge/pytest-984_passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/pytest-1003_passed-brightgreen.svg)](#testing)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](../LICENSE)
 
 ## Features
 
 - **DAG 可视化编排** — 拖拽 UI 操作节点 + 连线描述执行顺序，自动布局 / 新节点防重叠 / minimap；**节点即页面域**（元素按域沉淀，保存期 `validate_ui_scope_bindings` 强校验缺域/库外元素/跨域绑定三类 400，执行期 `_locator` 跨域引用即抛错）
-- **60+ 浏览器动作** — goto / click / fill / hover / select / 断言类动作 / 页面级组合动作（steps），每步产出结构化 facts（url / title / text…）
-- **元素库 + 动作库** — 多策略 + 兜底链定位（test_id / label / text / role / xpath 优先级可配），元素按名引用，内联策略可随用随配；自定义动作沉淀复用
+- **20 个内置浏览器动作 + 动作库 JS 模板** — 原生 goto / click / fill / press / upload / evaluate + 业务封装 pick（下拉增强）/ save（保存并确认）/ confirm（弹窗确认）/ search（列表检索）/ row_button（行内按钮）/ toast_watch（提示断言）等；每节点产出结构化 facts（url / title / text，逐步 result 留档）。词表见前端 `utils/ui.ts`，已下线动作（screenshot / select_option）存量步骤引擎侧永久兼容
+- **元素库 + 动作库** — 多策略 + 兜底链定位（test_id / for / label / placeholder / button / text / role / css / xpath，固定优先级、首个有值键生效），元素按名引用，内联策略可随用随配；自定义 JS 模板沉淀复用
 - **数据集收口（2026-10-28）** — UI 步骤 value/url/field/row 禁自带 `${函数(...)}` / `${db.query_*}`（保存校验拒绝）；生成规则写数据集单元格（整串 `${函数(...)}` 执行时求值，`evaluate_dataset_cell`，坏规则保留原文暴露），步骤只引用 `${sheet.字段}`；选中 sheet 双通道注入按原始数据相等去重；Excel 场景表一键迁移（migrate_excel_datasets.py，幂等）
 - **提取 + 17 种断言** — 页面事实 JSONPath 提取入节点命名空间；JSONPath / 耗时 / DB 查询 / DB 交叉校验断言复用共享引擎，DB 断言支持重试应对异步落库
 - **失败取证** — UI 节点失败自动截图入文件中心（按执行人归属），事件携带 `step_kind=ui` 与 `screenshot_file_id`
@@ -53,7 +53,7 @@ npm install && npm run dev
 ```
 ┌─────────────────────────────────────────────────┐
 │        前端 Vue3 + Element Plus + Vue Flow        │
-│  views (14 页) ← composables                      │
+│  views (20 页) ← composables                      │
 │  useExecutionRunner / useGroupTree / useRefGroups │
 │       │                    ↑ 复用轮询/分组/引用图   │
 │       │ api/index.ts ← types/api.gen.ts (OpenAPI) │
@@ -64,7 +64,7 @@ npm install && npm run dev
 │  HTTP 语义 + 鉴权 + 审计日志（薄层，无业务逻辑）      │
 ├─────────────────────────────────────────────────┤
 │       数据访问层 crud/（按域拆分，显式 re-export）   │
-│  users · auth · executions · datasets · plans    │
+│  users · auth · executions · datasets           │
 │  ui_elements · custom_actions · ui_action_docs   │
 │  files_center · versions · legacy                │
 ├─────────────────────────────────────────────────┤
@@ -111,11 +111,11 @@ npm install && npm run dev
 
 ```bash
 cd platform/backend
-python -m pytest tests/ -q          # 984 passed
+python -m pytest tests/ -q          # 1003 passed
 python -m ruff check --select F .   # 与 CI backend-lint 同口径
 python -m mypy app                  # 0 错误（本地口径；CI 未设 mypy 门禁）
 cd ../frontend && npx vue-tsc --noEmit   # 与 CI frontend-lint 同口径
-cd ../frontend && npm test -- --run      # vitest 179 passed
+cd ../frontend && npm test -- --run      # vitest 191 passed
 ```
 
 测试布局（fake-db 单测，不依赖真实 MySQL、不拉起浏览器）：

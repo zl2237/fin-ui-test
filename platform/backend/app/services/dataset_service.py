@@ -383,10 +383,10 @@ def ensure_case_dataset(db: Session, case, user_id: int | None = None,
         if not getattr(case, "dataset_id", None):
             if not allow_create:
                 return
-            rows_data = None
+            # 恒带首行（Sheet1）：零行数据集既无法执行也无法在节点配置新增 ${sheet.字段}
+            # （2026-11-05；纯 UI 用例 nodes 为空 dict 也照建，与更新分支 _ensure_row 产物同形）
             nodes = _node_initial_params(db, case)
-            if nodes:
-                rows_data = [{"nodes": nodes}]
+            rows_data = [{"nodes": nodes}]
             ds = create_dataset(db, project_id=case.project_id, name="默认数据集",
                                 user_id=user_id, case_id=case.id, rows_data=rows_data)
             case.dataset_id = ds.id

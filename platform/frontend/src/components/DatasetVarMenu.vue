@@ -1,6 +1,6 @@
 <template>
   <el-popover
-    v-if="sheets && sheets.length"
+    v-if="(sheets && sheets.length) || canAddRow"
     trigger="click"
     placement="bottom-end"
     :width="400"
@@ -27,7 +27,7 @@
         </div>
       </template>
       <!-- 常规：搜索 + 字段清单（带单元格值预览） -->
-      <template v-else>
+      <template v-else-if="hasSheets">
         <el-input v-model="keyword" size="small" clearable placeholder="搜索 sheet / 字段名 / 值" class="dvm-search">
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
@@ -53,6 +53,12 @@
           <a v-if="canAddRow" class="dvm-add" title="定义一个值存入绑定数据集新行，并插入引用" @click="openAdd">＋ 新增一行</a>
         </div>
       </template>
+      <!-- 空态：绑定数据集暂无 sheet（新建用例已恒建 Sheet1，此处兜底清空/迁移遗留），
+           新增一行不需要已有 sheet（onAddRow 整包 replaceRows，[] + 1 行满足 ≥1 校验） -->
+      <div v-else class="dvm-empty-state">
+        <div class="dvm-empty-text">暂无 sheet：新增一行将自动创建「{{ defaultLabel }}」并插入引用</div>
+        <a class="dvm-add" @click="openAdd">＋ 新增一行</a>
+      </div>
     </div>
   </el-popover>
 </template>
@@ -143,6 +149,8 @@ function onPick(sheet: string, name: string) {
 
 // ===== 临时新增一行（字段=值 → 绑定数据集追加 sheet → 插入 ${label.字段}） =====
 const canAddRow = computed(() => !!props.caseId && !!props.boundDatasetId)
+/** 是否有 sheet：零 sheet 时弹层渲染空态（2026-11-05：新建用例已恒建 Sheet1，此处兜底） */
+const hasSheets = computed(() => !!props.sheets?.length)
 const addMode = ref(false)
 const addSaving = ref(false)
 const addLabel = ref('')
@@ -183,6 +191,7 @@ async function onAddRow() {
       ElMessage.warning(`行标签「${label}」已存在，请换一个（sheet 名即引用命名空间）`)
       return
     }
+    // 零 sheet 安全：bound.rows 为空数组时 rows=[] + 新行，replaceRows 仍满足 ≥1 行校验
     const rows = bound.rows.map((r) => ({
       label: r.label || `Sheet${r.row_index}`,
       data: r.data || {},
@@ -322,5 +331,19 @@ async function onAddRow() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+/* 空态：绑定数据集零 sheet（兜底场景），引导新增首行 */
+.dvm-popper .dvm-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+.dvm-popper .dvm-empty-text {
+  font-size: 12px;
+  color: var(--app-text-muted, #909399);
+  line-height: 1.5;
+  text-align: center;
 }
 </style>

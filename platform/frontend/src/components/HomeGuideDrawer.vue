@@ -41,6 +41,10 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
+import { SELECTABLE_UI_ACTIONS } from '@/utils/ui'
+
+/** 内置动作数（词表实时取，减 custom 通道占位）——文案带数字一律走此源，避免词表调整后失真 */
+const builtinActionCount = SELECTABLE_UI_ACTIONS.length - 1
 
 /** 显隐由父级持有（v-model），首登自动展示逻辑在组件内部完成 */
 const visible = defineModel<boolean>({ default: false })
@@ -61,14 +65,14 @@ const guideSteps = [
   { title: '建一个项目', desc: '项目把一个被测系统的用例与元素装在一起，右上角随时切换', go: '去创建', to: '/projects' },
   { title: '配置环境', desc: '被测系统地址、登录账号、数据库连接，可即时测试连通性', go: '去配置', to: '/envs' },
   // 元素库为可选第三步：先在编排抽屉里内联定位，跑通后再沉淀进元素库复用
-  { title: '沉淀元素（可选）', desc: '把常用定位（多策略 + 兜底链）沉淀到元素库，编排时按名引用，系统改版只改一处', go: '去看看', to: '/elements' },
+  { title: '沉淀元素（可选）', desc: 'F12 里右键复制定位（多策略 + 兜底链）沉淀到元素库，编排时按名引用，系统改版只改一处', go: '去看看', to: '/elements' },
   { title: '编排用例', desc: '画布上把 UI 操作节点连成流程，双击节点配置动作链、提取与断言', go: '去编排', to: '/cases' },
   { title: '执行看报告', desc: '点执行由 Playwright 驱动浏览器走完流程，每步事实、截图与校验结果全留档', go: '去看', to: '/executions' },
 ]
 
 const guideCaps = [
   { title: '执行方案', desc: '跨系统串联用例成串行链：按序执行失败阻断，成员「传下一棒」定向传参；整链可叠轮数×并发批量策略', tab: null },
-  { title: 'UI 动作库', desc: '60+ 浏览器动作（原生/封装/项目自定义），事实结构与失败截图口径统一', tab: 'actions' as const },
+  { title: 'UI 动作库', desc: `${builtinActionCount} 个内置浏览器动作 + 项目自定义 JS 模板，事实结构与失败截图口径统一`, tab: 'actions' as const },
   { title: '数据自动生成', desc: '随机单号、日期格式化、唯一 ID：UI 步骤值里 ${func()} 直接调用内置函数', tab: 'expression' as const },
   { title: '17 种结果校验', desc: '页面事实 JSONPath、DB 交叉校验，支持失败重试', tab: 'assertion' as const },
 ]

@@ -1,17 +1,14 @@
 <template>
   <el-dialog
     :model-value="visible"
-    title="批量导入元素"
     width="min(960px, 92vw)"
     align-center
     :close-on-click-modal="false"
     @update:model-value="$emit('update:visible', $event)"
   >
-    <el-alert type="info" :closable="false" class="guide">
-      <div class="guide-line">两种格式自动识别：业务系统页面 <b>F12 → Copy outerHTML</b>（推荐，解析全部输入框/按钮/勾选框）；或 autotest-playwright 的 <b>locator JSON</b> 原文</div>
-      <div class="guide-line">粘贴后点「解析预览」：勾选保留项、改 key、补中文含义后导入（<b>同域同 key 覆盖</b>；HTML 模式自动剔除浮层与隐藏元素）</div>
-      <div class="guide-line">HTML 也支持粘贴 .vue 模板源码（识别 <code>@click</code> 行为节点）；hash 命名的候选无稳定语义锚点，默认不勾选</div>
-    </el-alert>
+    <template #header>
+      <span>批量导入元素<HintTip content="两种格式自动识别：业务系统页面 F12 → Copy outerHTML（推荐，解析全部输入框/按钮/勾选框）；或 autotest-playwright 的 locator JSON 原文。粘贴后点「解析预览」：勾选保留项、改 key、补中文含义后导入（同域同 key 覆盖；HTML 模式自动剔除浮层与隐藏元素）。也支持粘贴 .vue 模板源码（识别 @click 行为节点）；hash 命名的候选无稳定语义锚点，默认不勾选" /></span>
+    </template>
 
     <el-form label-width="70px" inline class="scope-form">
       <el-form-item label="页面域" required>
@@ -133,6 +130,7 @@ import { ElMessage } from 'element-plus'
 import { elementApi } from '@/api'
 import { useAppStore } from '@/stores'
 import { parseHtmlElements, type ParsedElement } from '@/utils/parseHtmlElements'
+import HintTip from './HintTip.vue'
 
 const props = defineProps<{ visible: boolean; defaultScope: string }>()
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void; (e: 'imported'): void }>()
@@ -372,13 +370,6 @@ async function onImport() {
 </script>
 
 <style scoped>
-.guide {
-  margin-bottom: 12px;
-}
-.guide-line {
-  font-size: 12px;
-  line-height: 1.8;
-}
 .scope-form {
   margin-bottom: 2px;
 }

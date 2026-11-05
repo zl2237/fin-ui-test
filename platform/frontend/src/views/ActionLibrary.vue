@@ -21,7 +21,7 @@
       <el-card shadow="never" class="card">
         <div class="table-tip">
           原生 {{ nativeCount }} · 封装 {{ builtinCount }} · JS 模板 {{ list.length }} · 全量 {{ nativeCount + builtinCount + list.length }}；
-          展开行看参数与用法，封装动作可覆写描述，JS 模板项目级增删改；词表口径与帮助「UI 动作解析」一致
+          展开行看参数与用法；封装动作可覆写描述，JS 模板项目级增删改
         </div>
         <el-table :data="filteredRows" size="small" row-key="key" height="100%">
           <template #empty>
@@ -107,9 +107,9 @@
             placeholder="何时用 / 入参 args 怎么传 / 返回什么（多行）——展示在编排下拉与帮助中心，给团队看"
           />
         </el-form-item>
-        <el-form-item label="脚本" required>
+        <el-form-item required>
+          <template #label>脚本<HintTip content="JS 函数体：入参 args（步骤传参），页面上下文可访问 document/window；return 值进 facts.result" /></template>
           <JsCodeEditor v-model="form.script" :height="360" />
-          <p class="form-tip">JS 函数体：入参 args（步骤传参），页面上下文可访问 document/window；return 值进 facts.result</p>
         </el-form-item>
       </el-form>
       <div v-else-if="drawerMode === 'desc' && selectedRow">
@@ -150,9 +150,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { customActionApi, uiActionDocApi, type CustomAction, type UiActionDoc } from '@/api'
-import { UI_ACTIONS, type UiActionMeta, type UiActionParam } from '@/utils/ui'
+import { SELECTABLE_UI_ACTIONS, type UiActionMeta, type UiActionParam } from '@/utils/ui'
 import { useAppStore } from '@/stores'
 import EmptyState from '@/components/EmptyState.vue'
+import HintTip from '@/components/HintTip.vue'
 import JsCodeEditor from '@/components/JsCodeEditor.vue'
 
 const store = useAppStore()
@@ -179,10 +180,11 @@ function docOf(actionKey: string): UiActionDoc | undefined {
   return docs.value.find((d) => d.action_key === actionKey)
 }
 
-/** 原生词表 / 内置封装（custom 为步骤占位，模板清单在 JS 模板中管理） */
-const nativeActions = computed<UiActionMeta[]>(() => UI_ACTIONS.filter((a) => a.origin === 'native'))
+/** 原生词表 / 内置封装（custom 为步骤占位，模板清单在 JS 模板中管理）；
+ *  词表取 SELECTABLE（滤已下线的 screenshot/select_option），与编排下拉一致 */
+const nativeActions = computed<UiActionMeta[]>(() => SELECTABLE_UI_ACTIONS.filter((a) => a.origin === 'native'))
 const builtinActions = computed<UiActionMeta[]>(() =>
-  UI_ACTIONS.filter((a) => a.origin === 'wrapped' && a.action !== 'custom'))
+  SELECTABLE_UI_ACTIONS.filter((a) => a.origin === 'wrapped' && a.action !== 'custom'))
 const nativeCount = computed(() => nativeActions.value.length)
 const builtinCount = computed(() => builtinActions.value.length)
 

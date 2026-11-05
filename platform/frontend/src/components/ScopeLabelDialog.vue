@@ -1,14 +1,13 @@
 <template>
   <el-dialog
     :model-value="visible"
-    :title="'页面域语义'"
     width="min(600px, 92vw)"
     :close-on-click-modal="false"
     @update:model-value="$emit('update:visible', $event)"
   >
-    <el-alert type="info" :closable="false" style="margin-bottom: 10px">
-      树中任意层级（模块/子模块/页面）都可配中文语义，保存后各处页面域树按中文展示；清空即删除；默认收起到一级，点箭头逐级展开
-    </el-alert>
+    <template #header>
+      <span>页面域语义<HintTip content="任意层级都可配中文名，保存后各处页面域树按中文展示；清空即删除" /></span>
+    </template>
     <div class="dialog-toolbar">
       <span class="toolbar-hint">共 {{ rows.length }} 个层级节点（{{ leafCount }} 个页面）</span>
       <span>
@@ -54,6 +53,7 @@ import { CaretRight } from '@element-plus/icons-vue'
 import { elementApi, scopeLabelApi, type UiElementScope } from '@/api'
 import { useAppStore } from '@/stores'
 import EmptyState from '@/components/EmptyState.vue'
+import HintTip from './HintTip.vue'
 
 /**
  * 页面域语义编辑弹窗（元素库 / 编排界面共用）。

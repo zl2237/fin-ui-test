@@ -527,17 +527,16 @@
       <!-- ========== UI 动作库解析（按来源分组：原生/非原生；非原生合并项目级用法文档与自定义动作） ========== -->
       <el-tab-pane label="UI 动作解析" name="actions">
         <div class="corecap-intro">
-          UI 节点的动作词表（全量 {{ UI_ACTIONS.length + customActions.length }} 个 = 原生 {{ UI_ACTIONS.filter(x => x.origin === 'native').length }} 引擎内置 + 预设封装 {{ UI_ACTIONS.filter(x => x.origin === 'wrapped').length }}（含 1 个自定义动作通道）+ JS 模板 {{ customActions.length }}，按来源分组），与编排面板「动作类型」一致；
-          参数均为可选高级项，编排面板按动作自动展示对应表单项。
-          非原生动作统一归入侧边栏「动作库」管理：内置封装可修改描述（此处与编排下拉即时生效），JS 模板可新建/修改/删除。
+          与编排面板「动作类型」一致的词表（{{ SELECTABLE_UI_ACTIONS.length + customActions.length }} 个），按来源分组；参数为可选高级项，面板按动作自动出表单。
+          封装动作在侧边栏「动作库」维护；已下线动作不再展示，存量步骤仍可执行。
         </div>
         <div v-for="og in ORIGIN_KEYS" :key="og" class="corecap-group">
           <div class="corecap-group-title">
-            {{ UI_ACTION_ORIGINS[og].group }}（{{ og === 'wrapped' ? `预设 ${wrappedPresets.length} 种 + JS 模板 ${customActions.length} 个` : `${UI_ACTIONS.filter(x => x.origin === og).length} 种` }}）
+            {{ UI_ACTION_ORIGINS[og].group }}（{{ og === 'wrapped' ? `预设 ${wrappedPresets.length} 种 + JS 模板 ${customActions.length} 个` : `${SELECTABLE_UI_ACTIONS.filter(x => x.origin === og).length} 种` }}）
           </div>
           <div class="corecap-origin-note">{{ UI_ACTION_ORIGINS[og].note }}</div>
           <div class="corecap-cards">
-            <div v-for="a in og === 'wrapped' ? wrappedPresets : UI_ACTIONS.filter(x => x.origin === og)" :key="a.action" class="corecap-card">
+            <div v-for="a in og === 'wrapped' ? wrappedPresets : SELECTABLE_UI_ACTIONS.filter(x => x.origin === og)" :key="a.action" class="corecap-card">
               <div class="corecap-card-head">
                 <code class="corecap-syntax">{{ a.action }}</code>
                 <span class="corecap-desc">{{ a.name }} — {{ og === 'wrapped' ? (docText(a.action) || a.desc) : a.desc }}</span>
@@ -599,15 +598,16 @@ import { authApi, customActionApi, uiActionDocApi, type CustomAction, type UiAct
 import CommandPalette from '@/components/CommandPalette.vue'
 import ProjectVersionHistory from '@/components/ProjectVersionHistory.vue'
 import AvatarCropper from '@/components/AvatarCropper.vue'
-import { resolveMenuActive, UI_ACTIONS, UI_ACTION_ORIGINS, type UiActionOrigin, type UiActionMeta } from '@/utils/ui'
+import { resolveMenuActive, SELECTABLE_UI_ACTIONS, UI_ACTION_ORIGINS, type UiActionOrigin, type UiActionMeta } from '@/utils/ui'
 
 // 动作解析 tab 的来源分组顺序（原生 / 非原生）
 const ORIGIN_KEYS: UiActionOrigin[] = ['native', 'wrapped']
 
 // ===== 动作库项目级数据（帮助中心「UI 动作解析」合并展示；动作库页维护） =====
-/** 预设封装动作（非原生词表；custom 为步骤占位，单独渲染项目清单） */
+/** 预设封装动作（非原生词表；custom 为步骤占位，单独渲染项目清单）；
+ *  词表取 SELECTABLE（滤已下线的 screenshot/select_option），与编排面板一致 */
 const wrappedPresets = computed<UiActionMeta[]>(() =>
-  UI_ACTIONS.filter((x) => x.origin === 'wrapped' && x.action !== 'custom'))
+  SELECTABLE_UI_ACTIONS.filter((x) => x.origin === 'wrapped' && x.action !== 'custom'))
 const customActions = ref<CustomAction[]>([])
 const actionDocs = ref<UiActionDoc[]>([])
 

@@ -34,7 +34,6 @@
             <el-input v-else :model-value="scopeDisplay(nodeScope)" disabled>
               <template #suffix><span class="scope-fixed-tag">固定</span></template>
             </el-input>
-            <p class="tip action-tip">节点即页面域：节点内所有动作只能操作该域下的元素（跨域绑定会被拦截）。</p>
           </el-form-item>
           <el-form-item label="页面动作">
             <div class="steps-wrap">
@@ -50,52 +49,18 @@
                 >
                   <template #prefix><el-icon><Search /></el-icon></template>
                 </el-input>
-                <!-- 不用 el-dropdown：其开启后会把焦点移入 teleport 到 body 的菜单，
-                     被 el-drawer 的 focus-trap 拽回抽屉，菜单随即"自动关闭"
-                     （线上实测 ~3.5s 必现）。改用 SqlRefMenu 同款自管 popover 弹层 -->
-                <el-popover
-                  v-model:visible="addMenuVisible"
-                  trigger="click"
-                  placement="bottom-end"
-                  :width="360"
-                  :persistent="false"
-                  popper-class="action-add-pop"
-                >
-                  <template #reference>
-                    <el-button size="small" type="primary" plain>+ 添加动作</el-button>
-                  </template>
-                  <div class="aam-body">
-                    <el-input
-                      v-model="addKeyword"
-                      size="small"
-                      clearable
-                      placeholder="搜索动作名 / 标识"
-                      class="aam-search"
-                    >
-                      <template #prefix><el-icon><Search /></el-icon></template>
-                    </el-input>
-                    <!-- 滚动收敛在弹层内部列表（同 SqlRefMenu）：行div不抢焦点，避免 drawer 焦点圈打架 -->
-                    <div class="aam-list">
-                      <template v-for="g in addActionGroups" :key="g.key">
-                        <div class="aam-title">{{ g.label }}（{{ g.items.length }}）</div>
-                        <div
-                          v-for="it in g.items"
-                          :key="it.key"
-                          class="aam-item"
-                          :title="it.desc"
-                          @click="pickAddAction(it)"
-                        >
-                          <span class="aam-name">{{ it.name }}</span>
-                          <span class="aam-code">{{ it.code }}</span>
-                        </div>
-                      </template>
-                      <div v-if="!addActionGroups.some((g) => g.items.length)" class="aam-empty">无匹配动作</div>
-                    </div>
-                    <div v-if="!customActions.length" class="aam-hint">
-                      JS 模板在「动作库」页维护后可在此直接添加（与动作库清单一致）
-                    </div>
-                  </div>
-                </el-popover>
+                <!-- 统一动作下拉（2026-11-05）：与步骤编辑「动作类型」共用 ActionSelect。
+                     旧自管 popover 为绕 el-dropdown 在抽屉内的焦点陷阱而生；el-select 在
+                     同一抽屉已被 UiActionForm 长期验证可用，交互统一后 popover 退役。
+                     autoReset：选中即追加并回 placeholder，可连续添加 -->
+                <ActionSelect
+                  auto-reset
+                  style="width: 170px"
+                  placeholder="+ 添加动作"
+                  :custom-actions="customActions"
+                  :action-docs="actionDocs"
+                  @select="onAddActionSelect"
+                />
               </div>
               <!-- 紧凑动作行：单行摘要，点击展开编辑（手风琴，同时只展开一个） -->
               <div class="steps-list">
@@ -123,10 +88,6 @@
                 </div>
                 <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
               </div>
-              <p class="tip steps-tip">
-                单行摘要点击展开编辑；几十个动作建议配合上方过滤框定位。
-                <a class="action-doc-link" @click.prevent="store.openCoreCapability('actions')">查看动作解析 →</a>
-              </p>
             </div>
           </el-form-item>
           <el-form-item label="等待时间">
@@ -139,7 +100,6 @@
               style="width: 180px"
             />
             <span class="wait-unit">ms</span>
-            <p class="tip wait-tip">本节点全部动作完成后、下一节点前的等待间隔。默认 0（不等待）。</p>
           </el-form-item>
         </el-form>
         <!-- API 节点：原有接口绑定表单 -->
@@ -161,22 +121,17 @@
               style="width: 180px"
             />
             <span class="wait-unit">ms</span>
-            <p class="tip wait-tip">当前接口执行完成后、下一个接口请求前的等待间隔，给后端处理事务/数据落库留出时间。默认 0（不等待）。</p>
           </el-form-item>
         </el-form>
       </el-tab-pane>
 
       <el-tab-pane label="后置提取" name="extract">
         <PostExtractTable v-model="draft.post_extract" :ref-groups="refGroups" />
-        <p v-if="isUiNode" class="tip">UI 步骤的提取对页面事实（facts）求值：<code>source=response</code> + JSONPath，如 <code>$.url</code>、<code>$.text</code>、<code>$.title</code>。</p>
-        <p v-else class="tip">提取的变量存入本节点命名空间，供后续节点按 <code>{{ SQL_BRACE }}</code>（SQL 内）或引用来源（参数取值）引用。</p>
       </el-tab-pane>
 
       <el-tab-pane label="断言规则" name="assert">
         <AssertionTable v-model="draft.assertions" :ref-groups="refGroups" />
         <div class="tip-with-help">
-          <p v-if="isUiNode" class="tip">UI 步骤断言对 facts 求值（如 <code>$.url</code> contains、<code>$.text</code> equals）；DB 断言可直接使用。</p>
-          <p v-else class="tip">DB 断言 SQL 可用 <code>{{ SQL_BRACE }}</code> 引用已提取变量；期望值支持四来源。</p>
           <el-button text size="small" class="help-link" @click="store.openCoreCapability('assertion')">
             <el-icon><QuestionFilled /></el-icon> 查看断言规则
           </el-button>
@@ -199,11 +154,12 @@ import { QuestionFilled, Search, ArrowDown } from '@element-plus/icons-vue'
 import PostExtractTable from './PostExtractTable.vue'
 import AssertionTable from './AssertionTable.vue'
 import UiActionForm from './UiActionForm.vue'
+import ActionSelect from './ActionSelect.vue'
 import DatasetVarMenu, { type DsVarSheet } from './DatasetVarMenu.vue'
 import { useAppStore } from '@/stores'
 import { elementApi, customActionApi, uiActionDocApi, caseApi, scopeLabelApi, type NodeConfig, type UiElement, type UiStep, type CustomAction, type UiActionDoc } from '@/api'
 import type { RefVarGroup } from './VarRefSelect.vue'
-import { UI_ACTIONS, uiActionName, validateUiStepData } from '@/utils/ui'
+import { uiActionName, validateUiStepData } from '@/utils/ui'
 
 const store = useAppStore()
 
@@ -221,8 +177,8 @@ const emit = defineEmits<{
   (e: 'save', config: NodeConfig): void
 }>()
 
-// SQL 占位语法字面量（含 }}，不能内嵌进模板插值表达式，经此常量输出）
-const SQL_BRACE = '{{节点.变量}}'
+// 2026-11-05 干爽行动：提取/断言 tab 的说明文案收进 tab 问号浮层，
+// 原 SQL_BRACE 字面量常量随之无消费，删除
 
 const activeTab = ref('basic')
 
@@ -379,13 +335,25 @@ function matchStep(st: UiStep): boolean {
   return hay.includes(kw)
 }
 
+/** 收敛展开步骤并消费校验结果：collect() 出错时弹提示（返回值原先被四处调用点丢弃，
+ *  格式/必填校验静默失效，2026-11-05 修复）；提前 return 会跳过局部状态写回，
+ *  调用方必须中止后续动作（折叠/移动/保存），否则编辑丢失 */
+function collectStep(i: number): string | null {
+  const err = stepFormRefs.value[i]?.collect?.() || null
+  if (err) {
+    const st = uiSteps.value[i]
+    ElMessage.warning(`步骤 ${i + 1}（${st ? uiActionName(st.action) : ''}）：${err}`)
+  }
+  return err
+}
+
 /** 展开/折叠步骤：切换前先把旧展开步骤的局部状态收敛回数据（表单即将卸载） */
 function toggleStep(i: number) {
   if (openIdx.value === i) {
-    stepFormRefs.value[i]?.collect?.()
+    if (collectStep(i)) return
     openIdx.value = -1
   } else {
-    if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+    if (openIdx.value >= 0 && collectStep(openIdx.value)) return
     openIdx.value = i
     nextTick(() => {
       document.querySelectorAll<HTMLElement>('.step-row')[i]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -393,54 +361,19 @@ function toggleStep(i: number) {
   }
 }
 
-// ===== 「+ 添加动作」弹层：清单与动作库页同构（原生 → 封装 → JS 模板） =====
-// 词表 custom 占位不再单列——JS 模板即 custom 步骤的实体形态，点选直建带 custom_id 的步骤，
-// 可选动作数量/形态与动作库页完全一致
-const addMenuVisible = ref(false)
-const addKeyword = ref('')
-interface AddActionItem { key: string; name: string; code: string; desc: string; customId?: number }
-const addActionGroups = computed<{ key: string; label: string; items: AddActionItem[] }[]>(() => {
-  const kw = addKeyword.value.trim().toLowerCase()
-  const hit = (it: AddActionItem) => !kw || `${it.name} ${it.code} ${it.desc}`.toLowerCase().includes(kw)
-  const builtin = UI_ACTIONS.filter((a) => a.origin === 'wrapped' && a.action !== 'custom')
-  return [
-    {
-      key: 'native',
-      label: '原生',
-      items: UI_ACTIONS.filter((a) => a.origin === 'native')
-        .map((a) => ({ key: a.action, name: a.name, code: a.action, desc: a.desc }))
-        .filter(hit),
-    },
-    {
-      key: 'builtin',
-      label: '组合封装',
-      items: builtin
-        .map((a) => {
-          const doc = actionDocs.value.find((d) => d.action_key === a.action)
-          return { key: a.action, name: a.name, code: a.action, desc: doc?.usage_text || a.desc }
-        })
-        .filter(hit),
-    },
-    {
-      key: 'js',
-      label: 'JS 模板（动作库）',
-      items: customActions.value
-        .map((ca) => ({ key: `custom:${ca.id}`, name: ca.name, code: `custom:${ca.id}`, desc: ca.description || '', customId: ca.id }))
-        .filter(hit),
-    },
-  ]
-})
-
-/** 弹层点选：关弹层后追加步骤（JS 模板直建 custom 步骤并带上 custom_id） */
-function pickAddAction(it: AddActionItem) {
-  addMenuVisible.value = false
-  addKeyword.value = ''
-  addStep(it.customId != null ? 'custom' : (it.code as UiStep['action']), it.customId)
+// ===== 「+ 添加动作」：统一走 ActionSelect（select 事件；JS 模板以 @custom/{id} 哨兵直建步骤） =====
+/** 下拉选中：追加并展开滚动到新步骤（@custom/N → custom 动作 + 绑定模板 id） */
+function onAddActionSelect(v: string) {
+  if (v.startsWith('@custom/')) {
+    addStep('custom', Number(v.slice('@custom/'.length)))
+  } else {
+    addStep(v as UiStep['action'])
+  }
 }
 
 /** 添加动作（弹层点选）：追加并展开滚动到新步骤 */
 function addStep(action: UiStep['action'], customId?: number) {
-  if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+  if (openIdx.value >= 0 && collectStep(openIdx.value)) return
   uiSteps.value.push(customId != null ? { action, custom_id: customId } : { action })
   openIdx.value = uiSteps.value.length - 1
   filterText.value = ''
@@ -465,7 +398,7 @@ function moveStep(i: number, delta: number) {
   const j = i + delta
   if (j < 0 || j >= uiSteps.value.length) return
   const wasOpen = openIdx.value
-  if (wasOpen === i) stepFormRefs.value[i]?.collect?.()
+  if (wasOpen === i && collectStep(i)) return
   const [item] = uiSteps.value.splice(i, 1)
   uiSteps.value.splice(j, 0, item)
   stepFormRefs.value.splice(i, 1)
@@ -532,8 +465,8 @@ function onSave() {
       ElMessage.warning('请先选择本节点的页面域（节点=页面域，动作只能操作该域元素）')
       return
     }
-    // 展开中的步骤先收敛局部状态（elementMode/多值/时长等写回数据）
-    if (openIdx.value >= 0) stepFormRefs.value[openIdx.value]?.collect?.()
+    // 展开中的步骤先收敛局部状态（elementMode/多值/时长等写回数据）；校验失败中止保存
+    if (openIdx.value >= 0 && collectStep(openIdx.value)) return
     // 全量数据校验（折叠步骤无表单实例，走数据级校验兜底）
     for (let i = 0; i < steps.length; i++) {
       const err = validateUiStepData(steps[i])
@@ -615,16 +548,6 @@ function onSave() {
   margin-left: 8px;
   color: var(--app-text-muted);
   font-size: 13px;
-}
-.wait-tip {
-  margin-top: 6px;
-  margin-bottom: 0;
-}
-/* 表单项内的行内提示/动作说明（紧贴控件，不占独立段距） */
-.action-tip {
-  margin-top: 4px;
-  margin-bottom: 0;
-  width: 100%;
 }
 /* 跳转帮助中心「动作解析」tab 的链接 */
 .action-doc-link {
@@ -747,13 +670,6 @@ function onSave() {
   font-size: 12px;
   color: var(--app-text-faint);
 }
-.steps-tip {
-  margin: 2px 0 0;
-}
-.inline-tip {
-  margin: 0 0 0 10px;
-  display: inline;
-}
 /* 页面域固定徽标（已定域节点） */
 .scope-fixed-tag {
   font-size: 10px;
@@ -782,56 +698,6 @@ function onSave() {
   flex-shrink: 0;
   margin-bottom: 0;
   padding: 0 20px;
-}
-/* 「+ 添加动作」弹层（teleport 到 body，样式需全局） */
-.action-add-pop .aam-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.action-add-pop .aam-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-.action-add-pop .aam-title {
-  padding: 4px 4px 2px;
-  font-size: 12px;
-  color: var(--app-text-muted, #909399);
-}
-.action-add-pop .aam-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  font-size: 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  min-width: 0;
-}
-.action-add-pop .aam-item:hover {
-  background: var(--app-hover, #f5f7fa);
-}
-.action-add-pop .aam-name {
-  flex-shrink: 0;
-}
-.action-add-pop .aam-code {
-  font-family: var(--app-font-mono, monospace);
-  color: var(--app-text-muted, #909399);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.action-add-pop .aam-empty {
-  padding: 12px 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--app-text-faint, #c0c4cc);
-}
-.action-add-pop .aam-hint {
-  padding: 4px 2px 0;
-  font-size: 11px;
-  color: var(--app-text-faint, #c0c4cc);
 }
 /* tab content 区域独立滚动 */
 .node-config-tabs > .el-tabs__content {
