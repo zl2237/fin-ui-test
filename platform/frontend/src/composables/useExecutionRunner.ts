@@ -112,14 +112,16 @@ export function useExecutionRunner() {
    * 不逐条轮询防成员多时定时器泛滥）→ 聚合提示 n/m 通过。
    * 本次运行按「基线 id」圈定：id ≥ execute 返回的最小 id——旧轮次 id 更小被排除，
    * 串行链成员行执行中陆续创建（id 恒大于基线）自动纳入。
+   * opts.rounds：本次整链轮数覆盖（chain 专用，执行弹窗「全部 sheet」用；不回写方案配置）。
    * 返回本次全部记录终态（超时含 running）；execute 失败（预检 400）原样抛出。
    */
   async function runPlanWithFeedback(
     planId: number,
     name: string,
-    opts: PollOptions = {},
+    opts: PollOptions & { rounds?: number } = {},
   ): Promise<ExecRecordLike[]> {
-    const started: ExecutionRecord[] = await planApi.execute(planId)
+    const started: ExecutionRecord[] = await planApi.execute(
+      planId, opts.rounds != null ? { rounds: opts.rounds } : {})
     favicon.running()
     const msg = ElMessage({ message: `方案「${name}」执行中...`, type: 'info', duration: 0 })
     const baseline = Math.min(...started.map((r) => r.id))

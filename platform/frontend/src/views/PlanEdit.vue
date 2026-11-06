@@ -195,6 +195,9 @@
         </el-card>
       </template>
     </div>
+
+    <!-- 串行链执行确认：全部 sheet（数据集行数轮）/ 自定义轮数，覆盖仅本次 -->
+    <PlanExecuteDialog v-model="executeVisible" :plan="plan" @confirm="onExecuteConfirm" />
   </div>
 </template>
 
@@ -211,6 +214,7 @@ import { useTabStore } from '@/stores/tabs'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
 import { formatTime } from '@/utils/format'
 import EmptyState from '@/components/EmptyState.vue'
+import PlanExecuteDialog from '@/components/PlanExecuteDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -225,6 +229,7 @@ const loadError = ref('')
 const dirty = ref(false)
 const saving = ref(false)
 const running = ref(false)
+const executeVisible = ref(false) // chain 执行弹窗（全部 sheet / 自定义轮数）
 
 const name = ref('')
 const description = ref('')
@@ -559,7 +564,7 @@ async function onClearSchedule() {
   }
 }
 
-// ===== 一键执行：先落盘未保存的编辑，再走统一执行入口 =====
+// ===== 一键执行：先落盘未保存的编辑；chain 弹执行弹窗（全部 sheet/自定义轮数），combo 直跑 =====
 async function onExecute() {
   if (!items.value.length) return ElMessage.warning('请先添加成员用例')
   if (running.value) return
@@ -568,9 +573,22 @@ async function onExecute() {
   } catch {
     return // 保存失败已在 onSave 内提示
   }
+  if (mode.value === 'chain' && plan.value) {
+    executeVisible.value = true
+    return
+  }
+  await startRun()
+}
+
+// 执行弹窗确认（chain）：rounds=本次覆盖（全部 sheet=成员数据集最大行数 / 自定义）
+async function onExecuteConfirm({ rounds }: { rounds: number }) {
+  await startRun(rounds)
+}
+
+async function startRun(rounds?: number) {
   running.value = true
   try {
-    await runner.runPlanWithFeedback(planId, name.value)
+    await runner.runPlanWithFeedback(planId, name.value, rounds != null ? { rounds } : {})
     await load() // 回写 last_run_at/next_run_at
   } catch (e: any) {
     ElMessage.error(e.message || '执行失败')

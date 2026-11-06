@@ -787,6 +787,13 @@ class ExecutionPlanUpdate(BaseModel):
     schedule_off: bool = False
 
 
+class PlanExecuteIn(BaseModel):
+    """一键执行的可选覆盖（仅本次运行生效，不回写方案配置）。
+    rounds：本次整链轮数（chain 专用；combo 传值 400）——执行弹窗「全部 sheet」
+    用数据集行数作覆盖值，免去手工同步方案 rounds。"""
+    rounds: int | None = None
+
+
 class ExecutionPlanOut(ORMBase):
     id: int
     project_id: int | None = None

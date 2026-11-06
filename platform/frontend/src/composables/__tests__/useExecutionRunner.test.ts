@@ -175,6 +175,21 @@ describe('useExecutionRunner', () => {
       await expect(p).rejects.toThrow('未绑定执行环境')
       expect(mockedList).not.toHaveBeenCalled()
     })
+
+    it('rounds 透传：带覆盖传 { rounds } body（执行弹窗「全部 sheet」），不带传空 body', async () => {
+      mockedPlanExecute.mockResolvedValue([prec(11, 'success')])
+      mockedList.mockResolvedValue(page([prec(11, 'success')]))
+      const { result } = withSetup(() => useExecutionRunner())
+      const p = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10, rounds: 5 })
+      await vi.advanceTimersByTimeAsync(20)
+      await expect(p).resolves.toHaveLength(1)
+      expect(mockedPlanExecute).toHaveBeenCalledWith(3, { rounds: 5 })
+
+      const p2 = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10 })
+      await vi.advanceTimersByTimeAsync(20)
+      await expect(p2).resolves.toHaveLength(1)
+      expect(mockedPlanExecute).toHaveBeenLastCalledWith(3, {})
+    })
   })
 
   it('组件卸载统一清理定时器（不再产生新轮询）', async () => {

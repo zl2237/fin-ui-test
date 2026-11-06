@@ -217,16 +217,22 @@ def replace_items(plan_id: int, data: schemas.PlanItemsReplaceIn,
 
 
 @router.post("/{plan_id}/execute", response_model=list[schemas.ExecutionRecordOut])
-def execute(plan_id: int, db: Session = Depends(get_db),
+def execute(plan_id: int, data: schemas.PlanExecuteIn | None = None,
+            db: Session = Depends(get_db),
             user: models.User = Depends(get_current_user)):
     """一键执行方案：先全量预检（任一成员不可执行 → 400、零记录），再按模式发射
-    （combo 并行 concurrency=方案配置 / chain 串行链后台驱动），返回本次全部记录供轮询"""
+    （combo 并行 concurrency=方案配置 / chain 串行链后台驱动），返回本次全部记录供轮询。
+    body 可选 rounds=本次整链轮数覆盖（chain 专用，不回写方案配置）。"""
     obj = _get_or_404(db, plan_id)
     try:
-        records = plan_executor.run_plan(db, obj, user.id, trigger_type="plan")
+        records = plan_executor.run_plan(
+            db, obj, user.id, trigger_type="plan",
+            rounds_override=(data.rounds if data else None))
     except ValueError as e:
         raise HTTPException(400, str(e))
-    crud.log_operation(db, user, "execute", "plan", obj.id, obj.name)
+    detail = (f"（本次轮数={data.rounds}）"
+              if data and data.rounds is not None else None)
+    crud.log_operation(db, user, "execute", "plan", obj.id, obj.name, detail)
     return records
 
 
