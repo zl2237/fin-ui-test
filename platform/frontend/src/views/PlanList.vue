@@ -57,7 +57,7 @@
         <el-table-column label="批量策略" width="90" align="center">
           <template #default="{ row }">
             <!-- combo：成员并行上限；chain：整链轮数×轮间并发（轮内恒串行） -->
-            <el-tooltip v-if="row.mode === 'chain'" :content="`整链 ${row.rounds} 轮（轮内按序串行+相邻传参+失败阻断），轮间最多 ${row.concurrency} 轮并行`" placement="top" popper-class="app-tip">
+            <el-tooltip v-if="row.mode === 'chain'" :content="`默认 ${row.rounds} 轮（轮内按序串行+相邻传参+失败阻断），轮间最多 ${row.concurrency} 轮并行`" placement="top" popper-class="app-tip">
               <span class="app-data">{{ row.rounds }}轮×{{ row.concurrency }}</span>
             </el-tooltip>
             <span v-else class="app-data">并发{{ row.concurrency }}</span>
@@ -139,7 +139,7 @@
       </template>
     </el-dialog>
 
-    <!-- 串行链执行确认：全部 sheet（数据集行数轮）/ 自定义轮数，覆盖仅本次 -->
+    <!-- 执行确认：chain=轮数选择（全部 sheet/自定义，覆盖仅本次）；combo=成员/记录数摘要 -->
     <PlanExecuteDialog v-model="executeDialogVisible" :plan="executePlan" @confirm="onExecuteConfirm" />
   </div>
 </template>
@@ -201,29 +201,16 @@ async function onToggleEnabled(row: ExecutionPlan) {
   }
 }
 
-// 一键执行：chain 弹执行弹窗（全部 sheet/自定义轮数，覆盖仅本次生效）；combo 保持确认框直跑
+// 一键执行：两模式统一弹执行确认（chain=全部 sheet/自定义轮数，覆盖仅本次生效；
+// combo=成员/记录数摘要），行为可预期
 async function onRun(row: ExecutionPlan) {
   if (!row.item_count) return ElMessage.warning('方案未配置成员，请先编辑添加用例')
-  if (row.mode === 'chain') {
-    executePlan.value = row
-    executeDialogVisible.value = true
-    return
-  }
-  const detail = `共 ${row.item_count} 个成员，按并发 ${row.concurrency} 独立并行执行（成员失败互不影响）`
-  try {
-    await ElMessageBox.confirm(
-      `方案「${row.name}」${detail}，确认开始？`,
-      '一键执行',
-      { type: 'info', confirmButtonText: '开始执行' },
-    )
-  } catch {
-    return // 用户取消
-  }
-  await startRun(row)
+  executePlan.value = row
+  executeDialogVisible.value = true
 }
 
-// 执行弹窗确认（chain）：rounds=本次覆盖（全部 sheet=成员数据集最大行数 / 自定义）
-async function onExecuteConfirm({ rounds }: { rounds: number }) {
+// 执行弹窗确认：chain 带 rounds=本次覆盖（全部 sheet=成员数据集最大行数 / 自定义）；combo 不带
+async function onExecuteConfirm({ rounds }: { rounds?: number }) {
   if (!executePlan.value) return
   await startRun(executePlan.value, rounds)
 }
