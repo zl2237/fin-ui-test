@@ -96,6 +96,7 @@
                            @click="bindDataset(current)">设为绑定</el-button>
                 <el-button v-else size="small" plain @click="bindDataset(null)">解绑</el-button>
                 <el-button size="small" @click="copyDataset">复制</el-button>
+                <el-button size="small" @click="importVisible = true">批量导入</el-button>
                 <el-button size="small" @click="renameDataset">改名</el-button>
                 <el-button size="small" type="danger" link @click="removeDataset">删除</el-button>
               </div>
@@ -111,6 +112,14 @@
         </template>
       </div>
     </div>
+
+    <!-- 批量导入：粘贴一批数据（Excel 复制/CSV/单列）→ 每行一个 sheet -->
+    <ImportSheetsDialog
+      v-model:visible="importVisible"
+      :dataset-id="current?.id ?? null"
+      :existing-rows="current?.rows ?? []"
+      @imported="onRowsSaved"
+    />
   </div>
 </template>
 
@@ -123,6 +132,7 @@ import { useGroupTree, type GroupTreeNode } from '@/composables/useGroupTree'
 import { useAppStore } from '@/stores'
 import EmptyState from '@/components/EmptyState.vue'
 import DatasetSheetsEditor from '@/components/DatasetSheetsEditor.vue'
+import ImportSheetsDialog from '@/components/ImportSheetsDialog.vue'
 
 /**
  * 数据集管理页（数据集编辑的唯一入口，参考 API 测试平台同名页）：左用例分组树（带数据集计数）
@@ -137,6 +147,7 @@ const currentCase = ref<TestCase | null>(null)
 const currentId = ref<number | null>(null)
 const loading = ref(false)
 const loadError = ref('')
+const importVisible = ref(false) // 批量导入弹窗（作用于当前数据集）
 
 const caseDatasets = computed(() => datasets.value.filter((d) => d.case_id === currentCase.value?.id))
 const current = computed(() => caseDatasets.value.find((d) => d.id === currentId.value)

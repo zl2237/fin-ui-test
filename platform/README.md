@@ -19,10 +19,10 @@
 - **DAG 可视化编排** — 拖拽 UI 操作节点 + 连线描述执行顺序，自动布局 / 新节点防重叠 / minimap；**节点即页面域**（元素按域沉淀，保存期 `validate_ui_scope_bindings` 强校验缺域/库外元素/跨域绑定三类 400，执行期 `_locator` 跨域引用即抛错）
 - **20 个内置浏览器动作 + 动作库 JS 模板** — 原生 goto / click / fill / press / upload / evaluate + 业务封装 pick（下拉增强）/ save（保存并确认）/ confirm（弹窗确认）/ search（列表检索）/ row_button（行内按钮）/ toast_watch（提示断言）等；每节点产出结构化 facts（url / title / text，逐步 result 留档）。词表见前端 `utils/ui.ts`，已下线动作（screenshot / select_option）存量步骤引擎侧永久兼容
 - **元素库 + 动作库** — 多策略 + 兜底链定位（test_id / for / label / placeholder / button / text / role / css / xpath，固定优先级、首个有值键生效），元素按名引用，内联策略可随用随配；自定义 JS 模板沉淀复用
-- **数据集收口（2026-10-28）** — UI 步骤 value/url/field/row 禁自带 `${函数(...)}` / `${db.query_*}`（保存校验拒绝）；生成规则写数据集单元格（整串 `${函数(...)}` 执行时求值，`evaluate_dataset_cell`，坏规则保留原文暴露），步骤只引用 `${sheet.字段}`；选中 sheet 双通道注入按原始数据相等去重；Excel 场景表一键迁移（migrate_excel_datasets.py，幂等）
+- **数据集收口（2026-10-28）** — UI 步骤 value/url/field/row 禁自带 `${函数(...)}` / `${db.query_*}`（保存校验拒绝）；生成规则写数据集单元格（整串 `${函数(...)}` 执行时求值，`evaluate_dataset_cell`，坏规则保留原文暴露），步骤只引用 `${sheet.字段}`；选中 sheet 双通道注入按原始数据相等去重；Excel 场景表一键迁移（migrate_excel_datasets.py，幂等）；批量导入（2026-11-06）——数据集页粘贴一批数据（Excel 复制 Tab 分隔 / CSV / 单列纯值），前端解析成 N 个 sheet（首行=字段名，sheet 名=首列值；单列字段名预填现有 sheet 首字段），支持追加/覆盖
 - **提取 + 17 种断言** — 页面事实 JSONPath 提取入节点命名空间；JSONPath / 耗时 / DB 查询 / DB 交叉校验断言复用共享引擎，DB 断言支持重试应对异步落库
 - **失败取证** — UI 节点失败自动截图入文件中心（按执行人归属），事件携带 `step_kind=ui` 与 `screenshot_file_id`
-- **执行方案** — 跨系统用例编排：`combo` 并行组合 / `chain` 串行链（整链轮数 × 轮间并行正交、相邻成员 `pass_vars` 名单定向传参注入 `__prev__`、失败阻断本轮下游；第 r 轮取成员第 r 个 sheet）、成员级数据集换绑、方案内嵌定时（2026-10-28 套件收口承接）
+- **执行方案** — 跨系统用例编排：`combo` 并行组合 / `chain` 串行链（整链轮数 × 轮间并行正交、相邻成员 `pass_vars` 名单定向传参注入 `__prev__`、失败阻断本轮下游；第 r 轮取成员第 r 个 sheet）、成员级数据集换绑、方案内嵌定时（2026-10-28 套件收口承接）；执行弹窗「全部 sheet」（2026-11-06）——chain 一键执行时本次轮数覆盖为成员数据集最大行数（`POST /plans/{id}/execute` body.rounds，仅本次生效不回写配置），批量数据逐 sheet 跑的标准入口
 - **结构化报告** — 每步 facts / 断言 / 耗时全量落库，响应体 JSON 可展开收起；后端导出 CSV（Excel 兼容）/ HTML（可打印 PDF）
 - **工程化** — JWT 鉴权 + admin/member 角色 + 操作审计 + Alembic 迁移 + 亮暗主题 + 标签页 + 命令面板（Ctrl+K）
 

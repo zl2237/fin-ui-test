@@ -138,6 +138,9 @@
         <el-button type="primary" :loading="creating" @click="onCreate">创建并配置成员</el-button>
       </template>
     </el-dialog>
+
+    <!-- 串行链执行确认：全部 sheet（数据集行数轮）/ 自定义轮数，覆盖仅本次 -->
+    <PlanExecuteDialog v-model="executeDialogVisible" :plan="executePlan" @confirm="onExecuteConfirm" />
   </div>
 </template>
 
@@ -152,6 +155,7 @@ import { storeToRefs } from 'pinia'
 import { formatTime, formatRelativeTime } from '@/utils/format'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
 import EmptyState from '@/components/EmptyState.vue'
+import PlanExecuteDialog from '@/components/PlanExecuteDialog.vue'
 
 const router = useRouter()
 const store = useAppStore()
@@ -165,6 +169,10 @@ const filterProjectId = ref<number | null>(currentProjectId.value)
 
 // 一键执行防抖（同方案执行中不允许重复点击）
 const runningId = ref<number | null>(null)
+
+// chain 执行弹窗（全部 sheet / 自定义轮数）
+const executeDialogVisible = ref(false)
+const executePlan = ref<ExecutionPlan | null>(null)
 
 function scheduleText(row: ExecutionPlan): string {
   if (row.schedule_type === 'interval') return `每 ${row.schedule_interval_minutes} 分钟`
@@ -193,12 +201,15 @@ async function onToggleEnabled(row: ExecutionPlan) {
   }
 }
 
-// 一键执行：确认（含成员摘要）→ runPlanWithFeedback（预检 400 直达提示）→ 跳方案过滤的执行记录
+// 一键执行：chain 弹执行弹窗（全部 sheet/自定义轮数，覆盖仅本次生效）；combo 保持确认框直跑
 async function onRun(row: ExecutionPlan) {
   if (!row.item_count) return ElMessage.warning('方案未配置成员，请先编辑添加用例')
-  const detail = row.mode === 'chain'
-    ? `串行链共 ${row.item_count} 个成员，整链 ${row.rounds} 轮（轮内按序串行+相邻传参+失败阻断本轮下游，轮间最多 ${row.concurrency} 轮并行）`
-    : `共 ${row.item_count} 个成员，按并发 ${row.concurrency} 独立并行执行（成员失败互不影响）`
+  if (row.mode === 'chain') {
+    executePlan.value = row
+    executeDialogVisible.value = true
+    return
+  }
+  const detail = `共 ${row.item_count} 个成员，按并发 ${row.concurrency} 独立并行执行（成员失败互不影响）`
   try {
     await ElMessageBox.confirm(
       `方案「${row.name}」${detail}，确认开始？`,
@@ -208,9 +219,19 @@ async function onRun(row: ExecutionPlan) {
   } catch {
     return // 用户取消
   }
+  await startRun(row)
+}
+
+// 执行弹窗确认（chain）：rounds=本次覆盖（全部 sheet=成员数据集最大行数 / 自定义）
+async function onExecuteConfirm({ rounds }: { rounds: number }) {
+  if (!executePlan.value) return
+  await startRun(executePlan.value, rounds)
+}
+
+async function startRun(row: ExecutionPlan, rounds?: number) {
   runningId.value = row.id
   try {
-    await runner.runPlanWithFeedback(row.id, row.name)
+    await runner.runPlanWithFeedback(row.id, row.name, rounds != null ? { rounds } : {})
     router.push({ path: '/executions', query: { plan_id: String(row.id) } })
   } catch (e: any) {
     ElMessage.error(e.message || '执行失败')

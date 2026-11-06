@@ -163,6 +163,22 @@ class TestRunPlan:
             run_plan(DB(), plan, 22)
         assert stubbed.built == []
 
+    def test_rounds_override_rejected_on_combo(self, stubbed, plan, monkeypatch):
+        """轮次覆盖仅 chain 适用：combo 传值即拒（零发射）"""
+        self._stub_env(monkeypatch)
+        with pytest.raises(ValueError, match="chain"):
+            run_plan(DB(), plan, 22, rounds_override=3)
+        assert stubbed.built == []
+
+    def test_rounds_override_out_of_range(self, stubbed, plan, monkeypatch):
+        """覆盖轮数越界（<1 或 >9999）：预检前即拒（chain 方案上验证范围校验）"""
+        self._stub_env(monkeypatch)
+        plan.mode = "chain"
+        for bad in (0, 10000):
+            with pytest.raises(ValueError, match="1~9999"):
+                run_plan(DB(), plan, 22, rounds_override=bad)
+        assert stubbed.built == []
+
 
 class TestLaunchChain:
     """chain 建记录阶段：轮主序预建 rounds×成员 + 数据行按轮准备 + 纯数据提交。"""
@@ -242,6 +258,26 @@ class TestLaunchChain:
         with pytest.raises(ValueError, match="整链轮数×成员数超过"):
             run_plan(DB(), chain_plan, 22)
         assert created == [] and submitted == []
+
+    def test_rounds_override_effective_and_not_persisted(self, chain_plan, monkeypatch):
+        """覆盖轮数本次生效（3×2=6 条记录、驱动收 3 轮），plan.rounds 不被回写"""
+        created, submitted = self._stub(monkeypatch)
+        records = run_plan(DB(), chain_plan, 22, rounds_override=3)
+        assert len(records) == 6 and submitted[0]["rounds"] == 3
+        assert chain_plan.rounds == 2  # 配置不动
+
+    def test_rounds_override_cap_uses_effective_rounds(self, chain_plan, monkeypatch):
+        """覆盖值代入上限检查：9999×2 超限即拒（配置值 2 本不超）"""
+        created, submitted = self._stub(monkeypatch)
+        with pytest.raises(ValueError, match="整链轮数×成员数超过"):
+            run_plan(DB(), chain_plan, 22, rounds_override=9999)
+        assert created == [] and submitted == []
+
+    def test_rounds_override_none_falls_back_to_config(self, chain_plan, monkeypatch):
+        """不传覆盖=现状：按 plan.rounds 执行"""
+        created, submitted = self._stub(monkeypatch)
+        run_plan(DB(), chain_plan, 22, rounds_override=None)
+        assert submitted[0]["rounds"] == 2
 
 
 class TestPlanChain:

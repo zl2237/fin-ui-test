@@ -65,16 +65,25 @@ def _validate_item_launchable(db: Session, item: models.ExecutionPlanItem, case)
 
 
 def run_plan(db: Session, plan: models.ExecutionPlan, user_id: int, *,
-             trigger_type: str = "plan") -> list[models.ExecutionRecord]:
+             trigger_type: str = "plan",
+             rounds_override: int | None = None) -> list[models.ExecutionRecord]:
     """执行方案：预检 → 建记录 → 提交（combo 并行 / chain 按轮并行）。
 
     trigger_type：'plan'（一键）/ 'plan_schedule'（方案定时）。
+    rounds_override：仅本次执行生效的整链轮数覆盖（chain 专用；执行弹窗「全部 sheet」
+    传数据集行数），不回写 plan.rounds。combo 传值/越界均抛 ValueError。
     任何成员不可执行抛 ValueError（调用方转 400 或定时跳过本轮），零记录产生。
     返回本次产生的全部执行记录（combo 含 run_count 重复；chain 为 轮数×成员）。
     """
     items = sorted(plan.items, key=lambda x: x.sort_order)
     if not items:
         raise ValueError("方案未配置成员，请先在方案编辑中添加用例")
+
+    if rounds_override is not None:
+        if (plan.mode or "combo") != "chain":
+            raise ValueError("轮次覆盖仅适用于串行链（chain）方案")
+        if not 1 <= rounds_override <= MAX_RUN_COUNT:
+            raise ValueError(f"本次执行轮数须在 1~{MAX_RUN_COUNT} 之间")
 
     # 阶段 1：全量预检（只读）——任何失败在产生记录前抛出
     for item in items:
@@ -87,7 +96,8 @@ def run_plan(db: Session, plan: models.ExecutionPlan, user_id: int, *,
                                    [i.case_id for i in items])
 
     if (plan.mode or "combo") == "chain":
-        return _launch_chain(db, plan, items, user_id, trigger_type=trigger_type)
+        return _launch_chain(db, plan, items, user_id, trigger_type=trigger_type,
+                             rounds_override=rounds_override)
 
     # 阶段 2（combo）：逐成员发射（成员级覆盖 + 次数）
     plans = []
@@ -112,11 +122,13 @@ def run_plan(db: Session, plan: models.ExecutionPlan, user_id: int, *,
 # ============ chain 串行链（组织依赖与传参；批量策略=轮数×轮间并发） ============
 
 def _launch_chain(db: Session, plan: models.ExecutionPlan, items: list,
-                  user_id: int, *, trigger_type: str) -> list[models.ExecutionRecord]:
-    """链模式建记录 + 后台驱动：轮主序预建 rounds×成员，第 r 轮取各成员第 r 个 sheet。"""
+                  user_id: int, *, trigger_type: str,
+                  rounds_override: int | None = None) -> list[models.ExecutionRecord]:
+    """链模式建记录 + 后台驱动：轮主序预建 rounds×成员，第 r 轮取各成员第 r 个 sheet。
+    rounds_override 非空时本次按该轮数执行（plan.rounds 不变）。"""
     from ..crud import executions as exec_domain
 
-    rounds = plan.rounds or 1
+    rounds = rounds_override or plan.rounds or 1
     if rounds * len(items) > MAX_RUN_COUNT:
         raise ValueError(f"整链轮数×成员数超过 {MAX_RUN_COUNT}（当前 {rounds}×{len(items)}），请调低轮数")
 

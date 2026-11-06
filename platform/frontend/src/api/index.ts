@@ -621,7 +621,9 @@ export const planApi = {
   remove: (id: number) => http.delete(`/plans/${id}`),
   // 一键执行：预检失败 400 零记录；返回本次全部记录
   // （combo 并行独立轮询到终态 / chain 后台按轮驱动：轮内串行+相邻传参 __prev__+失败阻断本轮下游）
-  execute: (id: number) => http.post<ExecutionRecord[]>(`/plans/${id}/execute`).then((r) => r.data),
+  // body.rounds=本次整链轮数覆盖（chain 专用，不回写方案配置；执行弹窗「全部 sheet」用数据集行数）
+  execute: (id: number, body?: { rounds?: number }) =>
+    http.post<ExecutionRecord[]>(`/plans/${id}/execute`, body ?? {}).then((r) => r.data),
 }
 
 // ============ ProjectVersion 项目版本 ============
