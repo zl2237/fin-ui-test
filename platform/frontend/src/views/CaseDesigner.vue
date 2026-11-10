@@ -80,7 +80,7 @@
           <el-tag v-else size="small" type="danger" effect="plain">环境未绑定</el-tag>
           <!-- dirty 圆点提示：抽屉「应用配置」只写内存，此处按钮才是持久化（双层保存语义可视化） -->
           <el-button type="primary" :class="{ 'save-dirty': dirty }" :loading="saving" @click="onSave">
-            保存用例<span v-if="dirty" class="dirty-dot" aria-hidden="true" />
+            保存用例<span v-if="dirty" class="dirty-dot" aria-hidden="true" /><DrawCheck v-if="justSaved" :size="13" class="save-check" />
           </el-button>
           <el-button type="success" :loading="running" @click="onRun">执行</el-button>
         </div>
@@ -206,10 +206,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Grid, Share, Scissor, Loading, WarningFilled, Search, EditPen } from '@element-plus/icons-vue'
 import DagCanvas from '@/components/DagCanvas.vue'
+import DrawCheck from '@/components/DrawCheck.vue'
 import EnvBadge from '@/components/EnvBadge.vue'
 import NodeConfigDrawer from '@/components/NodeConfigDrawer.vue'
 import ScopeLabelDialog from '@/components/ScopeLabelDialog.vue'
 import { expandStorageKey } from '@/composables/useGroupTree'
+import { useTransientFlag } from '@/composables/useTransientFlag'
 import { caseApi, elementApi, scopeLabelApi, type TestCase, type NodeConfig, type UiParams, type UiStep, type UiElement, type SplitVar } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
@@ -249,6 +251,8 @@ const selectedNodeId = ref<string | null>(null)
 const saving = ref(false)
 const running = ref(false)
 const dirty = ref(false)
+/** 保存成功就地反馈：按钮内对勾按笔画绘制 1.5s（替代全局 toast，画布视线不被拉走） */
+const { active: justSaved, trigger: pulseSaved } = useTransientFlag(1500)
 const loading = ref(false)
 // 页面级加载失败（接口/用例编排数据拉取失败）：内联错误块 + 重试，不让画布静默空壳
 const loadError = ref('')
@@ -722,7 +726,7 @@ async function onSave(): Promise<boolean> {
     // 同步回本地，保持 UI 与已保存数据一致
     configs.value = cleanedConfigs
     dirty.value = false
-    ElMessage.success('已保存')
+    pulseSaved()
     return true
   } catch (e: any) {
     ElMessage.error(e.message)
@@ -1020,6 +1024,11 @@ function onKeydown(e: KeyboardEvent) {
 }
 .dirty-tip {
   white-space: nowrap;
+}
+/* 保存按钮成功对勾：成功色不随按钮 loading/禁用态变灰 */
+.save-check {
+  margin-left: 4px;
+  color: var(--app-success-text);
 }
 .dirty-tip {
   font-size: 12px;
