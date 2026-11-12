@@ -303,9 +303,9 @@ const runningId = ref<number | null>(null)
 async function runCase(c: { id: number; name: string }) {
   runningId.value = c.id
   try {
-    const rec = await caseApi.execute(c.id)
+    const recs = await caseApi.execute(c.id)
     ElMessage.success('已开始执行，正在跳转报告')
-    router.push(`/reports/${rec.id}`)
+    if (recs[0]) router.push(`/reports/${recs[0].id}`)
   } catch (e: any) {
     ElMessage.error(e?.message || '执行失败')
   } finally {

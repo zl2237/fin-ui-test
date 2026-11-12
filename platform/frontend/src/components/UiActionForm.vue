@@ -209,9 +209,9 @@ const props = defineProps<{
   actionDocs?: UiActionDoc[]
   /** 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；空=不渲染插入按钮） */
   dsSheets?: DsVarSheet[]
-  /** 归属用例 + 绑定数据集 id（插入器「临时新增一行」落点，透传 DatasetVarMenu） */
+  /** 归属用例 + 绑定数据集 id 集（插入器「临时新增一行」落点=首个 bound，透传 DatasetVarMenu） */
   caseId?: number
-  boundDatasetId?: number | null
+  boundDatasetIds?: number[]
   /** 页面域 scope → 中文名（元素库页维护）：下拉/回显显示中文而非裸编码 */
   scopeLabels?: Record<string, string>
   /** 节点页面域（编排改造：节点=页面域）：固定元素可选范围，不传则步骤内自选域 */
@@ -223,7 +223,7 @@ const emit = defineEmits<{ (e: 'rows-changed'): void }>()
 const dvmProps = computed(() => ({
   sheets: props.dsSheets,
   caseId: props.caseId,
-  boundDatasetId: props.boundDatasetId,
+  boundDatasetIds: props.boundDatasetIds,
 }))
 
 // 光标处插入 ${sheet.字段}：value 与 url 各一条通道（复用 SQL 引用插入器，

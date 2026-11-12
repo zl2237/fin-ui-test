@@ -71,35 +71,52 @@ export function useExecutionRunner() {
   }
 
   /**
-   * 单用例执行完整反馈：execute → 进度消息（不自动关）→ 轮询 → favicon 三态
-   * + 结果提示。返回最终记录（超时时 status 为 running）；execute 失败或轮询
-   * 网络错误在关闭进度消息、复位 favicon 后原样抛出。
+   * 单用例执行完整反馈：execute → 进度消息（不自动关）→ 逐条轮询 → favicon 三态
+   * + 结果提示。execute 返回「选中/绑定数据集 × sheet」展开的全部记录，逐条
+   * 轮询到终态后按记录数聚合提示（单条保留步骤级 n/m 明细，多条按记录级 n/m 聚合）。
+   * 返回最终记录数组（超时项 status 为 running）；execute 失败或轮询网络错误在
+   * 关闭进度消息、复位 favicon 后原样抛出。
    * 环境严格绑定：执行环境=用例绑定环境，此处不再接收 envId。
-   * datasetId/rowIndex：执行时临时换数据集/选行（缺省=绑定数据集第 1 行）。
+   * datasetId：临时换数据集（该数据集全部 sheet 各一条）；+rowIndex 单发指定 sheet；
+   * 双缺省 = 用例全部 bound 数据集全 sheet 展开。
    */
   async function runWithFeedback(
     caseId: number,
     opts: PollOptions & { runningMsg?: string; datasetId?: number; rowIndex?: number } = {},
-  ): Promise<ExecRecordLike> {
-    const rec: ExecRecordLike = await caseApi.execute(caseId, opts.datasetId, opts.rowIndex)
+  ): Promise<ExecRecordLike[]> {
+    const started: ExecutionRecord[] = await caseApi.execute(caseId, opts.datasetId, opts.rowIndex)
     favicon.running()
     const msg = ElMessage({ message: opts.runningMsg ?? '执行中...', type: 'info', duration: 0 })
     try {
-      const cur = await pollUntilDone(rec.id, opts)
+      const finals = await Promise.all(started.map((r) => pollUntilDone(r.id, opts)))
       msg.close()
-      if (cur.status === 'success') {
-        favicon.success()
-        ElMessage.success(`执行通过：${cur.summary?.passed ?? 0}/${cur.summary?.total ?? 0}`)
-      } else if (cur.status === 'running') {
+      const passed = finals.filter((r) => r.status === 'success').length
+      const running = finals.filter((r) => r.status === 'running').length
+      if (finals.length === 1) {
+        const cur = finals[0]
+        if (cur.status === 'success') {
+          favicon.success()
+          ElMessage.success(`执行通过：${cur.summary?.passed ?? 0}/${cur.summary?.total ?? 0}`)
+        } else if (cur.status === 'running') {
+          favicon.reset()
+          ElMessage.warning('执行超时，请到执行记录查看结果')
+        } else {
+          favicon.failed()
+          // 登录失败/环境异常等执行级错误直接带原因，用户无需进报告页排查
+          const reason = cur.summary?.error ? `（${cur.summary.error}）` : ''
+          ElMessage.warning(`执行失败：${cur.summary?.failed ?? 0} 项未通过${reason}`)
+        }
+      } else if (running > 0) {
         favicon.reset()
-        ElMessage.warning('执行超时，请到执行记录查看结果')
+        ElMessage.warning(`执行超时：${passed}/${finals.length} 通过，其余请到执行记录查看`)
+      } else if (passed === finals.length) {
+        favicon.success()
+        ElMessage.success(`执行通过：${passed}/${finals.length}`)
       } else {
         favicon.failed()
-        // 登录失败/环境异常等执行级错误直接带原因，用户无需进报告页排查
-        const reason = cur.summary?.error ? `（${cur.summary.error}）` : ''
-        ElMessage.warning(`执行失败：${cur.summary?.failed ?? 0} 项未通过${reason}`)
+        ElMessage.warning(`执行完成：${passed}/${finals.length} 通过，${finals.length - passed} 未通过`)
       }
-      return cur
+      return finals
     } catch (e) {
       msg.close()
       favicon.reset()
@@ -111,17 +128,15 @@ export function useExecutionRunner() {
    * 方案一键执行完整反馈：execute → 批量轮询（execApi.list 按 plan_id 一页取回，
    * 不逐条轮询防成员多时定时器泛滥）→ 聚合提示 n/m 通过。
    * 本次运行按「基线 id」圈定：id ≥ execute 返回的最小 id——旧轮次 id 更小被排除，
-   * 串行链成员行执行中陆续创建（id 恒大于基线）自动纳入。
-   * opts.rounds：本次整链轮数覆盖（chain 专用，执行弹窗「全部 sheet」用；不回写方案配置）。
+   * 执行中陆续创建的成员行（id 恒大于基线）自动纳入。
    * 返回本次全部记录终态（超时含 running）；execute 失败（预检 400）原样抛出。
    */
   async function runPlanWithFeedback(
     planId: number,
     name: string,
-    opts: PollOptions & { rounds?: number } = {},
+    opts: PollOptions = {},
   ): Promise<ExecRecordLike[]> {
-    const started: ExecutionRecord[] = await planApi.execute(
-      planId, opts.rounds != null ? { rounds: opts.rounds } : {})
+    const started: ExecutionRecord[] = await planApi.execute(planId)
     favicon.running()
     const msg = ElMessage({ message: `方案「${name}」执行中...`, type: 'info', duration: 0 })
     const baseline = Math.min(...started.map((r) => r.id))

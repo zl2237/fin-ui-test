@@ -130,16 +130,16 @@ def combine_cases(db: Session, case_ids: list[int], name: str, group_id: int | N
                     "wait_after_ms": nc.wait_after_ms or 0,
                 })
 
-        # 源绑定数据集行的 per-node 入参配置：节点 ID 重映射（段间引用可跨段成立）
-        if case.dataset_id:
+        # 源 bound 数据集行的 per-node 入参配置：节点 ID 重映射（段间引用可跨段成立）。
+        # 绑定多选：各 bound 数据集的行内配置都随段合并（同节点以靠后数据集为准）
+        bounds = crud.list_bound_datasets(db, case.id)
+        for src_ds in bounds:
             from . import dataset_service
-            src_ds = crud.get_dataset(db, case.dataset_id)
-            if src_ds:
-                src_nodes = dataset_service.node_configs(dataset_service.row_data(src_ds))
-                remapped = {id_map[k]: deepcopy(v) for k, v in src_nodes.items() if k in id_map}
-                # 段内引用的节点 ID 同步重映射（spec ref / func arg / sql 占位）
-                remapped = _remap_node_refs(remapped, id_map)
-                remapped_nodes.append(remapped)
+            src_nodes = dataset_service.node_configs(dataset_service.row_data(src_ds))
+            remapped = {id_map[k]: deepcopy(v) for k, v in src_nodes.items() if k in id_map}
+            # 段内引用的节点 ID 同步重映射（spec ref / func arg / sql 占位）
+            remapped = _remap_node_refs(remapped, id_map)
+            remapped_nodes.append(remapped)
 
         # 段间串接：上一段所有出口 → 本段所有入口
         if prev_exits is not None:
@@ -162,8 +162,8 @@ def combine_cases(db: Session, case_ids: list[int], name: str, group_id: int | N
         "node_configs": config_payloads,
     }
     obj = crud.create_testcase(db, crud.schemas.TestCaseCreate(**data), user_id)
-    # 数据集合并：各源绑定数据集行的 per-node 入参配置（已重映射）合入新用例数据集
-    # 并绑定（执行强绑定）；段前缀保证节点 ID 不冲突
+    # 数据集合并：各源 bound 数据集行的 per-node 入参配置（已重映射）合入新用例
+    # 数据集并置 bound（执行强绑定）；段前缀保证节点 ID 不冲突
     if remapped_nodes:
         from .dataset_service import create_dataset
         merged_nodes: dict = {}
@@ -172,7 +172,7 @@ def combine_cases(db: Session, case_ids: list[int], name: str, group_id: int | N
         ds = create_dataset(db, project_id=project_id, case_id=obj.id,
                             name=f"{name}-数据", user_id=user_id,
                             rows_data=[{"nodes": merged_nodes}])
-        obj.dataset_id = ds.id
+        ds.bound = True
         db.commit()
         db.refresh(obj)
     crud.fill_audit_names(db, obj)
@@ -228,13 +228,11 @@ def scan_split_boundary(db: Session, case_id: int, node_ids: list[str]) -> dict:
     all_ids = {n["id"] for n in (case.dag_config or {}).get("nodes", [])}
     stay_set = all_ids - move_set
 
-    # 数据集行内 per-node 入参配置（引用与产出都算）
+    # 数据集行内 per-node 入参配置（引用与产出都算；绑定多选——各 bound 数据集合并）
     from . import dataset_service
     ds_nodes: dict[str, dict] = {}
-    if case.dataset_id:
-        ds = crud.get_dataset(db, case.dataset_id)
-        if ds:
-            ds_nodes = dataset_service.node_configs(dataset_service.row_data(ds))
+    for ds in crud.list_bound_datasets(db, case.id):
+        ds_nodes.update(dataset_service.node_configs(dataset_service.row_data(ds)))
 
     def _productions_of(nid: str) -> set[str]:
         out = _extracted_vars(cfg_map[nid]) if nid in cfg_map else set()
@@ -352,23 +350,23 @@ def split_case(
 
     crud.fill_audit_names(db, new_case)
     crud.fill_audit_names(db, updated)
-    # 数据资产分流：绑定数据集行内 per-node 入参配置按节点归属拆开——
-    # 新用例克隆数据集（只留抽离节点配置）并绑定；原用例数据集删抽离节点配置。
+    # 数据资产分流：各 bound 数据集行内 per-node 入参配置按节点归属拆开——
+    # 新用例对每个含抽离节点配置的 bound 数据集克隆一份（只留抽离节点配置）
+    # 并置 bound；原用例各 bound 数据集删抽离节点配置。
     # 跨界引用两边都会保留原样，断裂的由用户事后在数据集页补（扫描已提示）。
-    if case.dataset_id:
+    for src_ds in crud.list_bound_datasets(db, case.id):
         from . import dataset_service
-        src_ds = crud.get_dataset(db, case.dataset_id)
-        if src_ds:
-            src_nodes = dataset_service.node_configs(dataset_service.row_data(src_ds))
-            move_cfg = {nid: deepcopy(cfg) for nid, cfg in src_nodes.items() if nid in move_set}
-            if move_cfg:
-                new_case.dataset_id = dataset_service.create_dataset(
-                    db, project_id=case.project_id, case_id=new_case.id,
-                    name=new_name, user_id=user_id,
-                    rows_data=[{"nodes": move_cfg}]).id
-                db.commit()
-                db.refresh(new_case)
-            for nid in move_set:
-                if nid in src_nodes:
-                    dataset_service.remove_node_config(db, case.dataset_id, nid, user_id=user_id)
+        src_nodes = dataset_service.node_configs(dataset_service.row_data(src_ds))
+        move_cfg = {nid: deepcopy(cfg) for nid, cfg in src_nodes.items() if nid in move_set}
+        if move_cfg:
+            nds = dataset_service.create_dataset(
+                db, project_id=case.project_id, case_id=new_case.id,
+                name=src_ds.name, user_id=user_id,
+                rows_data=[{"nodes": move_cfg}])
+            nds.bound = True
+            db.commit()
+            db.refresh(new_case)
+        for nid in move_set:
+            if nid in src_nodes:
+                dataset_service.remove_node_config(db, src_ds.id, nid, user_id=user_id)
     return new_case, updated

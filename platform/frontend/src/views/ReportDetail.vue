@@ -597,9 +597,9 @@ async function onRerun() {
   }
   rerunning.value = true
   try {
-    const rec = await caseApi.execute(record.value.case_id)
+    const recs = await caseApi.execute(record.value.case_id)
     ElMessage.success('已触发重跑，正在跳转到新报告')
-    router.replace(`/reports/${rec.id}`)
+    if (recs[0]) router.replace(`/reports/${recs[0].id}`)
   } catch (e: any) {
     ElMessage.error(e.message || '重跑失败')
   } finally {

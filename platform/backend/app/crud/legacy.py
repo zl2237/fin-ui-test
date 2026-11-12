@@ -65,6 +65,29 @@ def fill_case_env_names(db: Session, objs) -> None:
         o.env_name = env_map.get(getattr(o, "env_id", None))
 
 
+def fill_bound_datasets(db: Session, objs) -> None:
+    """给 TestCase 填充 bound_dataset_ids（绑定数据集多选，一次查询；支持单个对象或列表）。
+
+    绑定多选（2026-11-12 B3 定案）：bound=True 的数据集 id 列表（按 id 稳定序），
+    执行展开 = 每个 bound 数据集的全部 sheet。"""
+    if not objs:
+        return
+    single = not isinstance(objs, list)
+    obj_list = [objs] if single else objs
+    case_ids = [o.id for o in obj_list if getattr(o, "id", None)]
+    bound_map: dict[int, list[int]] = {}
+    if case_ids:
+        rows = (db.query(models.DataSet.case_id, models.DataSet.id)
+                .filter(models.DataSet.case_id.in_(case_ids),
+                        models.DataSet.bound.is_(True))
+                .order_by(models.DataSet.case_id, models.DataSet.id).all())
+        for cid, did in rows:
+            bound_map.setdefault(cid, []).append(did)
+    for o in obj_list:
+        oid = getattr(o, "id", None)
+        o.bound_dataset_ids = bound_map.get(oid, []) if oid is not None else []
+
+
 def fill_exec_names(db: Session, objs) -> None:
     """给 ExecutionRecord 填充 case_name / env_name / project_id / project_name（支持单个对象或列表）"""
     if not objs:
@@ -167,9 +190,8 @@ def update_project(db: Session, project: models.Project, data: schemas.ProjectUp
 
 def _clear_datasets(db: Session, project_id: int | None = None, case_id: int | None = None):
     """删除指定范围的数据集及行（外键安全顺序）：
-    1) 解除用例 dataset_id 绑定（test_cases.dataset_id → data_sets）
-    2) 删行（data_set_rows.dataset_id → data_sets）
-    3) 删数据集本体"""
+    1) 删行（data_set_rows.dataset_id → data_sets）
+    2) 删数据集本体（绑定多选后无 test_cases.dataset_id 引用，直接删）"""
     q = db.query(models.DataSet)
     if project_id is not None:
         q = q.filter(models.DataSet.project_id == project_id)
@@ -178,9 +200,6 @@ def _clear_datasets(db: Session, project_id: int | None = None, case_id: int | N
     ds_ids = [i for (i,) in q.with_entities(models.DataSet.id).all()]
     if not ds_ids:
         return
-    db.query(models.TestCase).filter(
-        models.TestCase.dataset_id.in_(ds_ids)).update(
-        {models.TestCase.dataset_id: None}, synchronize_session=False)
     db.query(models.DataSetRow).filter(
         models.DataSetRow.dataset_id.in_(ds_ids)).delete(synchronize_session=False)
     db.query(models.DataSet).filter(
@@ -188,8 +207,8 @@ def _clear_datasets(db: Session, project_id: int | None = None, case_id: int | N
 
 
 def delete_project(db: Session, project: models.Project):
-    """删除项目：数据集为用例私有，不在 ORM 级联链上（case_id / dataset_id 双外键），
-    先清项目名下数据集（含解绑）再走既有级联，防外键约束 500。"""
+    """删除项目：数据集为用例私有，不在 ORM 级联链上（case_id 外键），
+    先清项目名下数据集再走既有级联，防外键约束 500。"""
     _clear_datasets(db, project_id=project.id)
     # 执行记录 env_id → environments：项目环境删除前先解引用
     # （记录本身随用例级联删，此处仅断开外键，历史记录将随项目整体消失）
@@ -664,18 +683,13 @@ def copy_testcase(db: Session, case: models.TestCase) -> models.TestCase:
         db.add(nnc)
     db.commit()
     db.refresh(obj)
-    # 数据集资产随迁：名下全部池深拷贝（保持原名），绑定关系照搬
+    # 数据集资产随迁：名下全部池深拷贝（保持原名），bound 绑定标记照搬
     # （静态值已收口进池，不同步则新用例执行 400「未绑定数据集」）
     from ..services.dataset_service import clone_dataset_to_case
-    ds_map: dict[int, int] = {}
     for ds in (db.query(models.DataSet)
                .filter(models.DataSet.case_id == case.id)
                .order_by(models.DataSet.id).all()):
-        ds_map[ds.id] = clone_dataset_to_case(db, ds, obj.id).id
-    if case.dataset_id and case.dataset_id in ds_map:
-        obj.dataset_id = ds_map[case.dataset_id]
-        db.commit()
-        db.refresh(obj)
+        clone_dataset_to_case(db, ds, obj.id)
     return obj
 
 

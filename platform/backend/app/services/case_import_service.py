@@ -289,27 +289,33 @@ def import_cases(db: Session, payload: dict, project_id: int, user_id: int | Non
                 assertions=cfg.get("assertions") or [],
                 wait_after_ms=cfg.get("wait_after_ms") or 0))
 
-        dataset_ids: dict[str, int] = {}
-        first_ds: int | None = None
+        dataset_ids: dict[str, models.DataSet] = {}
+        first_ds: models.DataSet | None = None
         for d in item.get("datasets") or []:
             ds = models.DataSet(
                 project_id=project_id, case_id=case.id, name=d.get("name") or "导入数据集",
                 description=d.get("description"), created_by=user_id, updated_by=user_id)
             db.add(ds)
             db.flush()
-            dataset_ids[ds.name] = ds.id
+            dataset_ids[ds.name] = ds
             if first_ds is None:
-                first_ds = ds.id
+                first_ds = ds
             for r in d.get("rows") or []:
                 db.add(models.DataSetRow(
                     dataset_id=ds.id, row_index=r.get("row_index") or 0,
                     data=r.get("data") or {}, label=r.get("label"),
                     field_desc=r.get("field_desc"), field_order=r.get("field_order")))
                 created_rows += 1
-        # 数据集绑定回放：导出时绑定的数据集名优先，缺失则绑第一个
-        bound = dataset_ids.get(item.get("dataset_name") or "") or first_ds
-        if bound:
-            case.dataset_id = bound
+        # 数据集绑定回放（多选，2026-11-12 B3 定案）：bound_dataset_names 按名勾选；
+        # 旧包（v2 早期）单字段 dataset_name 兼容回放；两者皆缺时绑第一个（可执行起步）
+        wanted = [n for n in (item.get("bound_dataset_names") or [])
+                  if n in dataset_ids]
+        if not wanted and item.get("dataset_name") and item.get("dataset_name") in dataset_ids:
+            wanted = [item["dataset_name"]]
+        if not wanted and first_ds is not None and (item.get("datasets") or []):
+            wanted = [first_ds.name]
+        for name in wanted:
+            dataset_ids[name].bound = True
 
     db.commit()
     return {

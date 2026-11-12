@@ -138,13 +138,13 @@
       </div>
     </div>
 
-    <!-- 节点配置抽屉（case-id/bound-dataset-id 供 UI 动作值的 ${sheet.字段} 插入器取绑定数据集） -->
+    <!-- 节点配置抽屉（case-id/bound-dataset-ids 供 UI 动作值的 ${sheet.字段} 插入器取绑定数据集） -->
     <NodeConfigDrawer
       v-model:visible="drawerVisible"
       :config="currentConfig"
       :ref-groups="refGroups"
       :case-id="caseData.id || undefined"
-      :bound-dataset-id="caseData.dataset_id ?? null"
+      :bound-dataset-ids="caseData.bound_dataset_ids || []"
       @save="onConfigSave"
     />
 
@@ -744,8 +744,9 @@ async function onRun() {
   running.value = true
   try {
     // 执行→进度消息→轮询→三态 favicon→结果提示；finally 复位 running（含成功/失败/超时）
-    const cur = await runner.runWithFeedback(caseData.value.id)
-    router.push(`/reports/${cur.id}`)
+    // 多记录（bound 数据集 × sheet 展开）跳首条报告，其余在执行记录列表查看
+    const recs = await runner.runWithFeedback(caseData.value.id)
+    if (recs[0]) router.push(`/reports/${recs[0].id}`)
   } catch (e: any) {
     ElMessage.error(e.message || '轮询执行状态失败')
   } finally {

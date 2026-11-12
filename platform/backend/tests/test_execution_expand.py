@@ -1,8 +1,8 @@
-"""执行展开：绑定数据集的用例用其单套数据执行（单套语义）。
+"""执行展开：绑定多选数据集 × 全 sheet 展开（2026-11-12 B3 删链定案）。
 
 seam：
-- dataset_service.plan_case_expansion：展开计划纯读函数（未绑定→1条普通；
-  绑定→该数据集唯一一套数据展开 1 条；无数据→拒）
+- dataset_service.plan_case_expansion：展开计划纯读函数（每个 bound/选中
+  数据集的每个 sheet 一条 item，多场景由此承接，替代旧链模式「每轮瞬移」）
 - crud.executions.create_execution：dataset 快照落 record（失败可溯源是哪套数据）
 """
 from types import SimpleNamespace
@@ -14,76 +14,84 @@ from app.crud import executions as exec_domain
 from app.services import dataset_service as svc
 
 
-def _ds(rows, columns=None, case_id=11, name="运单数据"):
-    return SimpleNamespace(id=7, case_id=case_id, name=name,
+def _ds(rows, columns=None, case_id=11, ds_id=7, name="运单数据"):
+    return SimpleNamespace(id=ds_id, case_id=case_id, name=name,
                            rows=rows)
 
 
-def _rows(n, labels=None):
+def _rows(n, labels=None, ds_id=7):
     """labels=None → 全部历史行（label=None，走回退）；否则按行序给真名"""
     out = []
     for i in range(1, n + 1):
         lab = None if labels is None else labels[i - 1]
-        out.append(SimpleNamespace(id=i, dataset_id=7, row_index=i, label=lab,
+        out.append(SimpleNamespace(id=i, dataset_id=ds_id, row_index=i, label=lab,
                                    data={"bl_no": f"BL{i:03d}"}))
     return out
 
 
 class TestPlanCaseExpansion:
     def test_unbound_case_rejected(self):
-        """未绑定数据集 → 拒绝执行（入参无默认值兜底，全空参数无意义）"""
-        case = SimpleNamespace(id=11, dataset_id=None)
-        with pytest.raises(ValueError, match="未绑定数据集"):
-            svc.plan_case_expansion(SimpleNamespace(), case)
+        """无 bound 数据集 → 拒绝执行（入参无默认值兜底，全空参数无意义）"""
+        case = SimpleNamespace(id=11)
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[]):
+            with pytest.raises(ValueError, match="未绑定数据集"):
+                svc.plan_case_expansion(SimpleNamespace(), case)
 
-    def test_bound_case_expands_single_set(self):
-        """绑定数据集 → 恒 1 条展开项：取首行（缺省），快照含 row_index/data/label；
-        多行数据集 label 带行号后缀（执行记录可溯源用的哪一行）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        rows = _rows(3)  # 存量多行：缺省取第一行（多场景 = 多个数据集）
-        ds = _ds(rows)
-        with patch.object(svc.crud, "get_dataset", return_value=ds), \
+    def test_bound_expands_every_sheet(self):
+        """单 bound 数据集多 sheet → 每 sheet 一条 item（全 sheet 展开承接多场景）；
+        历史行 label 回退「数据集名 第N行」"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(3)
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case)
+        assert len(plan) == 3
+        assert [(p["row"]["row_index"], p["row"]["data"]["bl_no"]) for p in plan] == \
+            [(1, "BL001"), (2, "BL002"), (3, "BL003")]
+        assert plan[1]["row"]["label"] == "运单数据 第2行"
+
+    def test_single_sheet_label_has_no_suffix(self):
+        """单 sheet 数据集 label 不带行号后缀（一行无歧义，保持简洁）"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(1)
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
              patch.object(svc.crud, "list_rows", return_value=rows):
             plan = svc.plan_case_expansion(SimpleNamespace(), case)
         assert len(plan) == 1
-        assert plan[0]["dataset_id"] == 7
-        assert plan[0]["row"] == {"row_index": 1, "data": {"bl_no": "BL001"},
-                                  "label": "运单数据 第1行"}
-
-    def test_single_row_label_has_no_suffix(self):
-        """单行数据集 label 不带行号后缀（一行无歧义，保持简洁）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        rows = _rows(1)
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
-             patch.object(svc.crud, "list_rows", return_value=rows):
-            plan = svc.plan_case_expansion(SimpleNamespace(), case)
         assert plan[0]["row"]["label"] == "运单数据"
-
-    def test_row_index_picks_named_row(self):
-        """row_index 显式选行（执行面板换行）：取该行数据，label 带对应行号"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        rows = _rows(3)
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
-             patch.object(svc.crud, "list_rows", return_value=rows):
-            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_index=2)
-        assert plan[0]["row"] == {"row_index": 2, "data": {"bl_no": "BL002"},
-                                  "label": "运单数据 第2行"}
 
     def test_real_label_wins_over_legacy_suffix(self):
         """有真 sheet 名：row.label 用真名（${label.字段} 引用的稳定锚点）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
+        case = SimpleNamespace(id=11)
         rows = _rows(2, labels=["正常单", "退款单"])
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
              patch.object(svc.crud, "list_rows", return_value=rows):
-            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_index=2)
-        assert plan[0]["row"]["label"] == "退款单"
+            plan = svc.plan_case_expansion(SimpleNamespace(), case)
+        assert [p["row"]["label"] for p in plan] == ["正常单", "退款单"]
+
+    def test_multi_bound_each_expands_own_sheets(self):
+        """多 bound 数据集 → 各按自己的 sheet 数展开；item.sheets 只携带
+        本数据集的全 sheet（不跨数据集混，${sheet.字段} 引用不串台）"""
+        case = SimpleNamespace(id=11)
+        ds7 = _ds(_rows(2, labels=["A1", "A2"], ds_id=7), ds_id=7, name="场景A")
+        ds8 = _ds(_rows(1, ds_id=8), ds_id=8, name="场景B")
+        rows_by_ds = {7: ds7.rows, 8: ds8.rows}
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[ds7, ds8]), \
+             patch.object(svc.crud, "list_rows",
+                          side_effect=lambda db, did: rows_by_ds[did]):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case)
+        assert [(p["dataset_id"], p["row"]["label"]) for p in plan] == \
+            [(7, "A1"), (7, "A2"), (8, "场景B")]
+        assert [s["label"] for s in plan[0]["sheets"]] == ["A1", "A2"]
+        # sheets 清单回退 Sheet{row_index}（与 row 快照的数据集名回退不同源）
+        assert [s["label"] for s in plan[2]["sheets"]] == ["Sheet1"]
 
     def test_sheets_carries_all_rows_with_fallback_labels(self):
         """sheets 携带全部行（${sheet.字段} 全 sheet 注入源）；历史行 label
         回退 Sheet{row_index}（与迁移回填一致）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
+        case = SimpleNamespace(id=11)
         rows = _rows(3, labels=["正常单", None, "退款单"])
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
              patch.object(svc.crud, "list_rows", return_value=rows):
             plan = svc.plan_case_expansion(SimpleNamespace(), case)
         assert plan[0]["sheets"] == [
@@ -92,36 +100,92 @@ class TestPlanCaseExpansion:
             {"row_index": 3, "label": "退款单", "data": {"bl_no": "BL003"}},
         ]
 
+    def test_row_index_pins_single_sheet(self):
+        """row_index 显式选行（执行面板单发）：只发该 sheet 一条，sheets 仍带全量
+        （引擎 ${sheet.字段} 可引用非选中 sheet）"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(3, labels=["正常单", "退款单", "取消单"])
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_index=2)
+        assert len(plan) == 1
+        assert plan[0]["row"] == {"row_index": 2, "data": {"bl_no": "BL002"},
+                                  "label": "退款单"}
+        assert len(plan[0]["sheets"]) == 3
+
     def test_row_index_out_of_range_rejected(self):
         """row_index 不存在 → 拒绝并列出现有 sheet（手填/数据已删时的明确报错）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(_rows(2))), \
-             patch.object(svc.crud, "list_rows", return_value=_rows(2)):
+        case = SimpleNamespace(id=11)
+        rows = _rows(2)
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds(rows)]), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
             with pytest.raises(ValueError, match=r"没有第 9 个 sheet（现有：1\(Sheet1\)、2\(Sheet2\)）"):
                 svc.plan_case_expansion(SimpleNamespace(), case, row_index=9)
 
     def test_zero_rows_rejected(self):
-        """绑定但数据集无数据 → 拒绝执行（先在变量池录入参数值）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        with patch.object(svc.crud, "get_dataset", return_value=_ds([])), \
+        """bound 但数据集无数据 → 拒绝执行（先在数据集页完成入参配置）"""
+        case = SimpleNamespace(id=11)
+        with patch.object(svc.crud, "list_bound_datasets", return_value=[_ds([])]), \
              patch.object(svc.crud, "list_rows", return_value=[]):
-            with pytest.raises(ValueError, match="无数据|变量池"):
+            with pytest.raises(ValueError, match="无数据行"):
                 svc.plan_case_expansion(SimpleNamespace(), case)
+
+    def test_explicit_dataset_ids_override_binding(self):
+        """显式 dataset_ids（执行面板换数据集/方案成员多选）：按名单展开，
+        不读用例绑定"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(2, labels=["A1", "A2"])
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)) as g, \
+             patch.object(svc.crud, "list_bound_datasets") as lb, \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            plan = svc.plan_case_expansion(SimpleNamespace(), case, dataset_ids=[7])
+        assert [p["row"]["label"] for p in plan] == ["A1", "A2"]
+        g.assert_called_once()
+        lb.assert_not_called()
 
     def test_other_case_dataset_rejected(self):
-        """绑定别的用例的数据集 → 拒绝（用例间隔离）"""
-        case = SimpleNamespace(id=11, dataset_id=7)
-        with patch.object(svc.crud, "get_dataset", return_value=_ds(_rows(2), case_id=99)), \
-             patch.object(svc.crud, "list_rows", return_value=_rows(2)):
+        """显式指定的数据集属于别的用例 → 拒（用例间隔离）"""
+        case = SimpleNamespace(id=11)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(_rows(2), case_id=99)):
             with pytest.raises(ValueError, match="不属于该用例|隔离"):
-                svc.plan_case_expansion(SimpleNamespace(), case)
+                svc.plan_case_expansion(SimpleNamespace(), case, dataset_ids=[7])
 
     def test_bound_dataset_missing_rejected(self):
-        """绑定的数据集不存在（防御：正常被删除保护拦住）→ 明确报错而非静默单条"""
-        case = SimpleNamespace(dataset_id=7)
+        """显式指定的数据集不存在（防御）→ 明确报错而非静默单条"""
+        case = SimpleNamespace(id=11)
         with patch.object(svc.crud, "get_dataset", return_value=None):
             with pytest.raises(ValueError, match="数据集不存在"):
-                svc.plan_case_expansion(SimpleNamespace(), case)
+                svc.plan_case_expansion(SimpleNamespace(), case, dataset_ids=[7])
+
+
+class TestSetCaseBinding:
+    """绑定整组替换（PUT /testcases/{id}/dataset-binding 背后）"""
+
+    def _db(self, datasets, case_id=11):
+        """替身 db：query(DataSet).filter(case_id ==).all() 按归属过滤"""
+        return SimpleNamespace(
+            query=lambda m: SimpleNamespace(
+                filter=lambda *a, **k: SimpleNamespace(
+                    all=lambda: [d for d in datasets if d.case_id == case_id])),
+            commit=lambda: None)
+
+    def test_whole_replace_sets_bound_flags(self):
+        """名单内置 True、名单外置 False（整组替换语义）"""
+        ds7, ds8, ds9 = _ds([], ds_id=7), _ds([], ds_id=8), _ds([], ds_id=9)
+        svc.set_case_binding(self._db([ds7, ds8, ds9]), SimpleNamespace(id=11), [7, 9])
+        assert (ds7.bound, ds8.bound, ds9.bound) == (True, False, True)
+
+    def test_empty_list_unbinds_all(self):
+        """空列表 = 全部解绑（用例将不可执行，执行强绑定口径）"""
+        ds7, ds8 = _ds([], ds_id=7), _ds([], ds_id=8)
+        svc.set_case_binding(self._db([ds7, ds8]), SimpleNamespace(id=11), [])
+        assert (ds7.bound, ds8.bound) == (False, False)
+
+    def test_foreign_dataset_rejected(self):
+        """名单含别的用例的数据集 → 拒绝"""
+        ds7 = _ds([], ds_id=7, case_id=99)
+        with pytest.raises(ValueError, match="不属于该用例"):
+            svc.set_case_binding(self._db([ds7]), SimpleNamespace(id=11), [7])
 
 
 class TestRecordSnapshot:

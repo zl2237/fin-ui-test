@@ -2,8 +2,9 @@
 
 数据集 = 各节点入参配置的一套完整取值：行数据 {"nodes": {节点ID: {params}}}。
 用例编排只负责结构（串联顺序/接口绑定/后置提取/断言），入参唯一入口收敛到数据集：
-- 多数据集 = 多场景（复制后改配置，执行时换绑即换全套入参）
-- 执行强绑定：未绑定数据集的用例拒绝执行（2026-09-30 用户定案）
+- 多数据集 = 多场景包（每个内含多 sheet 变体）；绑定多选（bound 标记，
+  2026-11-12 B3 定案），执行按「每个 bound 数据集的每个 sheet」展开
+- 执行强绑定：无 bound 数据集的用例拒绝执行（2026-09-30 用户定案沿用）
 
 职责：
 - 数据集 CRUD（归属用例隔离，复制复用；行 = Excel sheet：label/field_desc/field_order
@@ -204,11 +205,10 @@ def update_dataset(db: Session, dataset_id: int, name: str | None = None,
 
 
 def delete_dataset(db: Session, dataset_id: int) -> None:
-    """删除数据集：被用例绑定时拒绝；成功级联删行。"""
+    """删除数据集：被用例绑定（bound）时拒绝；成功级联删行。"""
     obj = get_dataset(db, dataset_id)
-    n = crud.count_cases_bound_to_dataset(db, dataset_id)
-    if n:
-        raise ValueError(f"数据集被 {n} 个用例绑定，请先在用例中解绑后再删除")
+    if obj.bound:
+        raise ValueError("数据集已被用例绑定（bound），请先在用例「绑定数据集」中取消勾选再删除")
     db.query(models.DataSetRow).filter(models.DataSetRow.dataset_id == dataset_id).delete()
     db.delete(obj)
     db.commit()
@@ -259,77 +259,65 @@ def remove_node_config(db: Session, dataset_id: int, node_id: str,
     return ds
 
 
-# ============ 执行展开（单套语义：每个数据集 = 一套入参配置） ============
+# ============ 执行展开（sheet 语义：每个数据集 = 多 sheet 场景包，绑定多选） ============
 
-def list_case_rows(db: Session, case, dataset_id=None) -> list[dict]:
-    """列出绑定数据集的全部数据行（row 形状与 plan_case_expansion 一致，不带 sheets）。
+def plan_case_expansion(db: Session, case, dataset_ids=None, row_index=None) -> list:
+    """按用例绑定生成执行展开计划（绑定多选 + 全 sheet 展开，2026-11-12 B3 定案）。
 
-    串行链整链轮次取值用：第 r 轮取第 r 个 sheet（不足沿用末个）——
-    校验口径与 plan_case_expansion 完全一致（未绑定/悬空/无数据行均在此报错）。
+    - dataset_ids 传入时临时覆盖用例绑定（执行面板换数据集/方案成员多选，
+      不改绑定本身）；须全部存在且属于该用例
+    - 缺省 = 用例全部 bound 数据集；展开 = 每个数据集的每个 sheet 一条 item
+      （记录数 = Σ(数据集 sheet 数)，多场景由此承接，替代旧链模式「每轮瞬移」）
+    - row_index 传入时选指定 sheet（执行面板单发，值=DataSetRow.row_index；
+      与 dataset_ids 搭配只发该 sheet 一条）
+    - 每个 item 的 sheets = 该 item 所属数据集自己的全部 sheet（不跨数据集混，
+      供引擎以 ${sheet.字段} 命名空间注入，context.py）
+    - 无生效数据集 → ValueError：执行强绑定（2026-09-30 定案沿用）
     """
-    effective = dataset_id if dataset_id is not None else getattr(case, "dataset_id", None)
-    if not effective:
-        raise ValueError("用例未绑定数据集：请先在用例管理绑定，并在数据集页完成入参配置")
-    ds = crud.get_dataset(db, effective)
-    if not ds:
-        raise ValueError(f"用例绑定的数据集不存在: {effective}")
-    if ds.case_id != case.id:
-        raise ValueError("数据集不属于该用例（数据集按用例隔离，请在用例自己的数据集中选择）")
-    rows = crud.list_rows(db, effective)
-    if not rows:
-        raise ValueError("数据集无数据行，请先在数据集页完成入参配置")
-    return [{
-        "row_index": x.row_index,
-        "data": dict(x.data or {}),
-        "label": x.label or (ds.name + (f" 第{x.row_index}行" if len(rows) > 1 else "")),
-    } for x in rows]
-
-
-def plan_case_expansion(db: Session, case, dataset_id=None, row_index=None) -> list:
-    """按用例绑定生成执行展开计划。
-
-    - 未绑定（且未临时指定）→ ValueError：执行强绑定（2026-09-30 定案，
-      「未绑数据集执行放行」的旧语义废止）
-    - 绑定数据集 → 单条：行数据（各节点入参配置）注入执行上下文
-    - dataset_id 传入时临时覆盖用例绑定（执行面板换数据集，不改绑定本身）
-    - row_index 传入时选指定数据行（执行面板换行，值=DataSetRow.row_index，
-      缺省第 1 行；不影响数据集内容）
-    """
-    effective = dataset_id if dataset_id is not None else getattr(case, "dataset_id", None)
-    if not effective:
-        raise ValueError("用例未绑定数据集：请先在用例管理绑定，并在数据集页完成入参配置")
-    ds = crud.get_dataset(db, effective)
-    if not ds:
-        raise ValueError(f"用例绑定的数据集不存在: {effective}")
-    if ds.case_id != case.id:
-        raise ValueError("数据集不属于该用例（数据集按用例隔离，请在用例自己的数据集中选择）")
-    rows = crud.list_rows(db, effective)
-    if not rows:
-        raise ValueError("数据集无数据行，请先在数据集页完成入参配置")
-    if row_index is not None:
-        r = next((x for x in rows if x.row_index == row_index), None)
-        if r is None:
-            avail = "、".join(f"{x.row_index}({x.label or f'Sheet{x.row_index}'})" for x in rows)
-            raise ValueError(f"数据集「{ds.name}」没有第 {row_index} 个 sheet（现有：{avail}）")
+    if dataset_ids:
+        effective = []
+        for ds_id in dataset_ids:
+            ds = crud.get_dataset(db, ds_id)
+            if not ds:
+                raise ValueError(f"数据集不存在: {ds_id}")
+            if ds.case_id != case.id:
+                raise ValueError("数据集不属于该用例（数据集按用例隔离，请在用例自己的数据集中选择）")
+            effective.append(ds)
     else:
-        r = rows[0]
-    # row.label 优先真 sheet 名（历史行无 label 回退旧合成形式）；
-    # sheets 携带全部 sheet 供引擎以 ${sheet.字段} 命名空间注入（context.py）
-    return [{
-        "dataset_id": effective,
-        "row": {
-            "row_index": r.row_index,
-            "data": dict(r.data or {}),
-            "label": r.label or (ds.name + (f" 第{r.row_index}行" if len(rows) > 1 else "")),
-        },
-        "sheets": [
+        effective = crud.list_bound_datasets(db, case.id)
+    if not effective:
+        raise ValueError("用例未绑定数据集：请先在用例列表「绑定数据集」勾选，并在数据集页完成入参配置")
+    out = []
+    for ds in effective:
+        rows = crud.list_rows(db, ds.id)
+        if not rows:
+            raise ValueError(f"数据集「{ds.name}」无数据行，请先在数据集页完成入参配置")
+        # 全部 sheet 清单（每 item 携带自己数据集的全 sheet，${sheet.字段} 引用源）
+        sheets = [
             {"row_index": x.row_index, "label": x.label or f"Sheet{x.row_index}", "data": dict(x.data or {})}
             for x in rows
-        ],
-    }]
+        ]
+        if row_index is not None:
+            picked = [x for x in rows if x.row_index == row_index]
+            if not picked:
+                avail = "、".join(f"{x.row_index}({x.label or f'Sheet{x.row_index}'})" for x in rows)
+                raise ValueError(f"数据集「{ds.name}」没有第 {row_index} 个 sheet（现有：{avail}）")
+            rows = picked
+        for r in rows:
+            # row.label 优先真 sheet 名（历史行无 label 回退旧合成形式）
+            out.append({
+                "dataset_id": ds.id,
+                "row": {
+                    "row_index": r.row_index,
+                    "data": dict(r.data or {}),
+                    "label": r.label or (ds.name + (f" 第{r.row_index}行" if len(sheets) > 1 else "")),
+                },
+                "sheets": sheets,
+            })
+    return out
 
 
-# ============ 绑定校验（执行面板换绑 / 用例保存显式传 dataset_id） ============
+# ============ 绑定校验 / 绑定整组替换（执行面板换绑 / 方案成员多选数据集） ============
 
 def validate_binding(db: Session, case, dataset_id: int | None) -> None:
     if dataset_id is None:
@@ -339,6 +327,25 @@ def validate_binding(db: Session, case, dataset_id: int | None) -> None:
         raise ValueError(f"数据集不存在: {dataset_id}")
     if ds.case_id != case.id:
         raise ValueError("数据集不属于该用例（数据集按用例隔离）")
+
+
+def set_case_binding(db: Session, case, dataset_ids: list[int]) -> list[models.DataSet]:
+    """用例绑定数据集（多选整体替换）：列表内的置 bound=True，其余本用例数据集置 False。
+
+    空列表 = 全部解绑（用例将不可执行，执行强绑定口径）；数据集须全部属于该用例。
+    返回该用例当前的 bound 数据集列表（按 id 稳定序）。
+    """
+    mine = db.query(models.DataSet).filter(models.DataSet.case_id == case.id).all()
+    by_id = {d.id: d for d in mine}
+    wanted: set[int] = set()
+    for ds_id in dataset_ids:
+        if ds_id not in by_id:
+            raise ValueError(f"数据集不属于该用例（id={ds_id}，数据集按用例隔离）")
+        wanted.add(ds_id)
+    for d in mine:
+        d.bound = d.id in wanted
+    db.commit()
+    return [by_id[i] for i in sorted(wanted)]
 
 
 # ============ 保存用例钩子：默认数据集初始化 + 画布节点增量（Q7，2026-10-10 定案） ============
@@ -373,14 +380,15 @@ def _node_initial_params(db: Session, case) -> dict[str, dict]:
 
 def ensure_case_dataset(db: Session, case, user_id: int | None = None,
                         *, allow_create: bool = True) -> None:
-    """保存用例钩子：未绑定 → 自动建「默认数据集」（示例值初始化全部节点）并绑定；
-    已绑定 → 行内缺失的画布节点（新加节点）按接口字段补初始参数。
+    """保存用例钩子：无 bound 数据集 → 自动建「默认数据集」（示例值初始化全部节点）
+    并置 bound；已有 bound → 各 bound 数据集行内缺失的画布节点（新加节点）补初始参数。
     - 已有节点的参数一律不动（契约出入走接口保存/数据集保存的同步弹窗许可）
-    - allow_create=False 用于用户显式解绑数据集的保存：不重建绑定，仅增量
+    - allow_create=False 用于用户显式清空绑定的保存：不重建绑定，仅增量
     - 初始化失败不阻断保存（打印日志，数据集页可见未配置状态）
     """
     try:
-        if not getattr(case, "dataset_id", None):
+        bounds = crud.list_bound_datasets(db, case.id)
+        if not bounds:
             if not allow_create:
                 return
             # 恒带首行（Sheet1）：零行数据集既无法执行也无法在节点配置新增 ${sheet.字段}
@@ -389,24 +397,26 @@ def ensure_case_dataset(db: Session, case, user_id: int | None = None,
             rows_data = [{"nodes": nodes}]
             ds = create_dataset(db, project_id=case.project_id, name="默认数据集",
                                 user_id=user_id, case_id=case.id, rows_data=rows_data)
-            case.dataset_id = ds.id
+            ds.bound = True
             db.commit()
             return
-        bound = crud.get_dataset(db, case.dataset_id)
-        if not bound:
-            return
-        row = _ensure_row(db, bound)
-        data = dict(row.data or {})
-        raw_nodes = data.get("nodes")
-        nodes = dict(raw_nodes) if isinstance(raw_nodes, dict) else {}
-        fresh = False
-        for nid, cfg in _node_initial_params(db, case).items():
-            if nid not in nodes:
-                nodes[nid] = cfg
-                fresh = True
-        if fresh:
-            data["nodes"] = nodes
-            row.data = data
+        fresh_any = False
+        initial = _node_initial_params(db, case)
+        for bound in bounds:
+            row = _ensure_row(db, bound)
+            data = dict(row.data or {})
+            raw_nodes = data.get("nodes")
+            nodes = dict(raw_nodes) if isinstance(raw_nodes, dict) else {}
+            fresh = False
+            for nid, cfg in initial.items():
+                if nid not in nodes:
+                    nodes[nid] = cfg
+                    fresh = True
+            if fresh:
+                data["nodes"] = nodes
+                row.data = data
+                fresh_any = True
+        if fresh_any:
             db.commit()
     except Exception as e:
         print(f"[数据集初始化] 跳过（失败不阻断保存）: {e}")
@@ -450,9 +460,15 @@ def copy_dataset(db: Session, dataset_id: int, name: str | None = None, user_id:
 
 def clone_dataset_to_case(db: Session, src: models.DataSet, target_case_id: int,
                           user_id: int | None = None) -> models.DataSet:
-    """跨用例克隆数据集（行内节点入参配置全量深拷贝，保持原名）：复制/拆分用例的数据资产随迁。"""
-    return create_dataset(
+    """跨用例克隆数据集（行内节点入参配置全量深拷贝，保持原名，bound 随迁）：
+    复制/拆分用例的数据资产与绑定状态一起随迁。"""
+    cloned = create_dataset(
         db, project_id=src.project_id, case_id=target_case_id,
         name=src.name, user_id=user_id, description=src.description,
         rows_data=[sheet_payload_of(r) for r in (src.rows or [])],
     )
+    if src.bound:
+        cloned.bound = True
+        db.commit()
+        db.refresh(cloned)
+    return cloned

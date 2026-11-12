@@ -71,7 +71,7 @@ const guideSteps = [
 ]
 
 const guideCaps = [
-  { title: '执行方案', desc: '跨系统串联用例成串行链：按序执行失败阻断，成员「传下一棒」定向传参；整链可叠轮数×并发批量策略', tab: null },
+  { title: '执行方案', desc: '多条用例打包一次跑完：成员各配「多选数据集 × 全部 sheet × 执行次数」独立并行，可定时触发；跨系统依赖用融合用例串联', tab: null },
   { title: 'UI 动作库', desc: `${builtinActionCount} 个内置浏览器动作 + 项目自定义 JS 模板，事实结构与失败截图口径统一`, tab: 'actions' as const },
   { title: '数据自动生成', desc: '随机单号、日期格式化、唯一 ID：UI 步骤值里 ${func()} 直接调用内置函数', tab: 'expression' as const },
   { title: '17 种结果校验', desc: '页面事实 JSONPath、DB 交叉校验，支持失败重试', tab: 'assertion' as const },

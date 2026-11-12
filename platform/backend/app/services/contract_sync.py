@@ -195,7 +195,8 @@ def _node_label(dag_config: Any, node_id: str) -> str:
 def _api_bindings(db: Session, api_id: int):
     """遍历接口的全部引用点：(case, dataset, node_id, params)。
 
-    只走用例已绑定数据集的链路（未绑定无法执行，也无参数可同步）；
+    只走用例 bound 数据集的链路（未绑定无法执行，也无参数可同步；绑定多选，
+    2026-11-12 B3 定案——每个 bound 数据集都是一条可同步链路）；
     只认画布现存节点——case_node_configs 会残留画布已删节点的结构配置，
     若不过滤：残留节点在数据集行无参数 → 全字段 missing → 影响面永远列出
     （弹窗反复出现）→ 全量同步把参数写进行内 → 产生悬空配置
@@ -218,24 +219,25 @@ def _api_bindings(db: Session, api_id: int):
             if isinstance(n, dict) and n.get("id"):
                 ids.add(str(n["id"]))
         dag_node_ids[c.id] = ids
-    ds_ids = {c.dataset_id for c in cases.values() if getattr(c, "dataset_id", None)}
-    dss = {}
-    if ds_ids:
-        for d in db.query(models.DataSet).filter(models.DataSet.id.in_(ds_ids)).all():
-            dss[d.id] = d
+    bound_by_case: dict[int, list[models.DataSet]] = {}
+    if cases:
+        for d in (db.query(models.DataSet)
+                  .filter(models.DataSet.case_id.in_(case_ids),
+                          models.DataSet.bound.is_(True))
+                  .order_by(models.DataSet.case_id, models.DataSet.id).all()):
+            bound_by_case.setdefault(d.case_id, []).append(d)
     for b in binds:
         if b.case_id is None:
             continue
         if b.node_id not in dag_node_ids.get(b.case_id, set()):
             continue  # 画布已删节点的残留结构配置：不参与影响面/同步
         case = cases.get(b.case_id)
-        ds_id = case.dataset_id if case else None
-        ds = dss.get(ds_id) if ds_id else None
-        if ds is None:
+        if case is None:
             continue
-        nodes = dataset_service.node_configs(dataset_service.row_data(ds))
-        rc = nodes.get(b.node_id) or {}
-        yield api, case, ds, b.node_id, (rc.get("params") or {})
+        for ds in bound_by_case.get(b.case_id, []):
+            nodes = dataset_service.node_configs(dataset_service.row_data(ds))
+            rc = nodes.get(b.node_id) or {}
+            yield api, case, ds, b.node_id, (rc.get("params") or {})
 
 
 def api_contract_impact(db: Session, api_id: int) -> list[dict]:

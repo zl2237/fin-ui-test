@@ -77,32 +77,48 @@ describe('useExecutionRunner', () => {
     await assertion
   })
 
-  it('runWithFeedback：成功路径（进度消息关闭 + 成功提示）', async () => {
-    mockedExecute.mockResolvedValue(rec('running'))
+  it('runWithFeedback：成功路径（单记录保留步骤级明细提示）', async () => {
+    mockedExecute.mockResolvedValue([rec('running')])
     mockedGet.mockResolvedValueOnce(rec('running')).mockResolvedValueOnce(
       rec('success', { passed: 2, total: 3 }))
     const { result } = withSetup(() => useExecutionRunner())
     const p = result.runWithFeedback(1, { interval: 10 })
     await vi.advanceTimersByTimeAsync(20)
-    await expect(p).resolves.toMatchObject({ status: 'success' })
+    await expect(p).resolves.toMatchObject([{ status: 'success' }])
     expect(ElMessage).toHaveBeenCalledTimes(1) // 进度消息
     expect(ElMessage.success).toHaveBeenCalledWith('执行通过：2/3')
   })
 
   it('runWithFeedback：超时提示 + failed 路径带原因', async () => {
-    mockedExecute.mockResolvedValue(rec('running'))
+    mockedExecute.mockResolvedValue([rec('running')])
     mockedGet.mockResolvedValue(rec('running'))
     const { result } = withSetup(() => useExecutionRunner())
     const p1 = result.runWithFeedback(1, { interval: 10, maxPolls: 1 })
     await vi.advanceTimersByTimeAsync(50)
-    await expect(p1).resolves.toMatchObject({ status: 'running' })
+    await expect(p1).resolves.toMatchObject([{ status: 'running' }])
     expect(ElMessage.warning).toHaveBeenCalledWith('执行超时，请到执行记录查看结果')
 
     mockedGet.mockResolvedValue(rec('failed', { failed: 4, error: '登录失败' }))
     const p2 = result.runWithFeedback(1, { interval: 10 })
     await vi.advanceTimersByTimeAsync(50)
-    await expect(p2).resolves.toMatchObject({ status: 'failed' })
+    await expect(p2).resolves.toMatchObject([{ status: 'failed' }])
     expect(ElMessage.warning).toHaveBeenCalledWith('执行失败：4 项未通过（登录失败）')
+  })
+
+  it('runWithFeedback：多记录（数据集 × sheet 展开）逐条轮询后记录级聚合', async () => {
+    mockedExecute.mockResolvedValue([prec(21, 'running'), prec(22, 'running'), prec(23, 'running')])
+    // 21 成功 / 22 失败 / 23 超时（达上限仍 running）
+    mockedGet.mockImplementation(async (id: number) => {
+      if (id === 21) return { id, status: 'success' }
+      if (id === 22) return { id, status: 'failed' }
+      return { id, status: 'running' }
+    })
+    const { result } = withSetup(() => useExecutionRunner())
+    const p = result.runWithFeedback(1, { interval: 10, maxPolls: 2 })
+    await vi.advanceTimersByTimeAsync(100)
+    await expect(p).resolves.toMatchObject([
+      { id: 21, status: 'success' }, { id: 22, status: 'failed' }, { id: 23, status: 'running' }])
+    expect(ElMessage.warning).toHaveBeenCalledWith('执行超时：1/3 通过，其余请到执行记录查看')
   })
 
   it('refreshWhileRunning：fetcher 返回 true 继续 / false 停止 / 抛错静默停止 / stop() 主动终止', async () => {
@@ -139,7 +155,7 @@ describe('useExecutionRunner', () => {
       mockedList.mockResolvedValueOnce(page([
         prec(9, 'success'),   // 旧轮次（id < 基线 11）不计入
         prec(11, 'success'), prec(12, 'success'),
-        prec(13, 'success'),  // 串行链成员行执行中创建（id > 基线）自动纳入
+        prec(13, 'success'),  // 执行中陆续创建的成员行（id > 基线）自动纳入
       ]))
       const { result } = withSetup(() => useExecutionRunner())
       const p = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10 })
@@ -176,19 +192,14 @@ describe('useExecutionRunner', () => {
       expect(mockedList).not.toHaveBeenCalled()
     })
 
-    it('rounds 透传：带覆盖传 { rounds } body（执行弹窗「全部 sheet」），不带传空 body', async () => {
+    it('execute 无 body（B3 删链后整链轮数/模式已随 mode 列退役）', async () => {
       mockedPlanExecute.mockResolvedValue([prec(11, 'success')])
       mockedList.mockResolvedValue(page([prec(11, 'success')]))
       const { result } = withSetup(() => useExecutionRunner())
-      const p = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10, rounds: 5 })
+      const p = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10 })
       await vi.advanceTimersByTimeAsync(20)
       await expect(p).resolves.toHaveLength(1)
-      expect(mockedPlanExecute).toHaveBeenCalledWith(3, { rounds: 5 })
-
-      const p2 = result.runPlanWithFeedback(3, '冒烟方案', { interval: 10 })
-      await vi.advanceTimersByTimeAsync(20)
-      await expect(p2).resolves.toHaveLength(1)
-      expect(mockedPlanExecute).toHaveBeenLastCalledWith(3, {})
+      expect(mockedPlanExecute).toHaveBeenCalledWith(3)
     })
   })
 

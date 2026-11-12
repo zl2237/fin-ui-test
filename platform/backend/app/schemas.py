@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ============ 通用 ============
@@ -488,7 +488,12 @@ class TestCaseUpdate(BaseModel):
     env_id: int | None = None  # 绑定的执行环境；显式传 null 解绑
     dag_config: dict[str, Any] | None = None
     node_configs: list[NodeConfigIn] | None = None
-    dataset_id: int | None = None  # 绑定数据集（数据驱动）；显式传 null 解绑
+
+
+class DatasetBindingIn(BaseModel):
+    """用例绑定数据集（多选整组替换，2026-11-12 B3 定案）：
+    列表内置 bound，其余本用例数据集解绑；空列表 = 全部解绑（用例不可执行）"""
+    dataset_ids: list[int] = []
 
 
 class TestCaseOut(ORMBase):
@@ -502,7 +507,7 @@ class TestCaseOut(ORMBase):
     sort_order: int = 0  # 组内排序（拖拽手序）
     dag_config: dict[str, Any]
     node_configs: list[NodeConfigOut] = []
-    dataset_id: int | None = None  # 绑定的数据集（数据驱动），NULL=普通用例
+    bound_dataset_ids: list[int] = []  # 绑定的数据集（多选，crud.fill_bound_datasets 填充）
     last_exec_at: datetime | None = None  # 最近一次执行开始时间（终结回写；NULL=从未执行）
     last_exec_status: str | None = None   # 最近一次执行终态：success/failed/terminated
     created_at: datetime | None = None
@@ -576,9 +581,10 @@ class ProjectVersionDiff(BaseModel):
 class ExecutionCreate(BaseModel):
     case_id: int
     env_id: int | None = None  # 已废止：环境为用例属性（case.env_id），此处兼容旧客户端忽略
-    dataset_id: int | None = None  # 执行时临时换数据集（不改用例绑定；单套语义，执行一次）
-    # 执行时临时选行（配合 dataset_id 或用例绑定数据集；值=数据行 row_index，
-    # 缺省第 1 行。同样不改数据集内容，只影响本次执行注入的值集）
+    dataset_id: int | None = None  # 执行时临时换数据集（不改用例绑定；不传=bound 集合全 sheet 展开）
+    # 执行时临时选行（配合 dataset_id；值=数据行 row_index。执行面板单发：
+    # dataset_id+dataset_row_index 一起传 = 单套单发一条记录；不传 dataset_id
+    # = 绑定集内每个数据集的每个 sheet 各一条记录）
     dataset_row_index: int | None = None
     # 并发执行数：1=逐个串行（一个结束再下一个，避免并发问题），默认 4
     concurrency: int = 4
@@ -741,13 +747,11 @@ class TestScheduleOut(ORMBase):
 
 # ============ ExecutionPlan 执行方案 ============
 class PlanItemIn(BaseModel):
-    """方案成员提交：dataset 覆盖须属于该成员用例（服务层校验）；
-    pass_vars 为传给下一棒的输出变量名单（chain 相邻定向传参，combo 忽略）"""
+    """方案成员提交：dataset_ids 须全部属于该成员用例（服务层校验）；
+    空 = 用例自身 bound 绑定集。执行展开 = 各选中数据集的全部 sheet × run_count"""
     case_id: int
-    dataset_id: int | None = None
-    dataset_row_index: int | None = None
+    dataset_ids: list[int] = []
     run_count: int = 1
-    pass_vars: list[str] | None = None
     sort_order: int = 0
 
 
@@ -758,26 +762,27 @@ class PlanItemsReplaceIn(BaseModel):
 class PlanItemOut(BaseModel):
     id: int
     case_id: int
-    dataset_id: int | None = None
-    dataset_row_index: int | None = None
+    dataset_ids: list[int] = []
     run_count: int
-    pass_vars: list[str] | None = None
     sort_order: int
     # 展示回填（详情接口填充）
     case_name: str | None = None
-    dataset_name: str | None = None
-    sheet_label: str | None = None  # 选中的 sheet 名（默认第 1 行时也回填）
-    case_dataset_id: int | None = None  # 用例自身绑定（dataset_id 空时实际生效者，前端标记用）
+    dataset_names: list[str] = []   # 选中数据集名（已删的回退「# {id}」标红）
+    case_dataset_ids: list[int] = []  # 用例自身 bound 绑定集（dataset_ids 空时实际生效者）
     case_missing: bool = False      # 防御标记（DB 级联删除正常时不出现）
-    dataset_missing: bool = False   # 覆盖数据集已删：标红交前端，执行预检会精确报错
+    dataset_missing: bool = False   # 选中数据集已删：标红交前端，执行预检会精确报错
+
+    @field_validator("dataset_ids", mode="before")
+    @classmethod
+    def _null_dataset_ids_to_empty(cls, v):
+        """DB 存 NULL（= 用用例自身 bound 集）序列化回 []（前端按空选集渲染）"""
+        return v or []
 
 
 class ExecutionPlanCreate(BaseModel):
     project_id: int | None = None
     name: str
     description: str | None = None
-    mode: Literal["combo", "chain"] = "combo"  # combo 并行组合 / chain 串行链
-    rounds: int = 1  # chain 整链轮数（combo 恒 1）
     concurrency: int = 4
 
 
@@ -785,8 +790,6 @@ class ExecutionPlanUpdate(BaseModel):
     """局部更新；schedule_off=True 显式清除定时（schedule_type=None 表示「未提供」无法区分清除）"""
     name: str | None = None
     description: str | None = None
-    mode: Literal["combo", "chain"] | None = None
-    rounds: int | None = None  # chain 整链轮数（combo 恒 1）
     concurrency: int | None = None
     enabled: bool | None = None
     schedule_type: Literal["interval", "daily"] | None = None
@@ -796,20 +799,11 @@ class ExecutionPlanUpdate(BaseModel):
     schedule_off: bool = False
 
 
-class PlanExecuteIn(BaseModel):
-    """一键执行的可选覆盖（仅本次运行生效，不回写方案配置）。
-    rounds：本次整链轮数（chain 专用；combo 传值 400）——执行弹窗「全部 sheet」
-    用数据集行数作覆盖值，免去手工同步方案 rounds。"""
-    rounds: int | None = None
-
-
 class ExecutionPlanOut(ORMBase):
     id: int
     project_id: int | None = None
     name: str
     description: str | None = None
-    mode: str = "combo"  # combo 并行组合 / chain 串行链
-    rounds: int = 1
     concurrency: int
     enabled: bool
     schedule_type: str | None = None
@@ -1087,8 +1081,8 @@ class DataSetOut(ORMBase, AuditMixin):
     case_id: int
     name: str
     description: str | None = None
-    rows: list[DataSetRowOut] = []  # 多行=多变体（执行面板可选行；缺省第 1 行）
-    case_bound_count: int = 0  # 被引用用例数（列表展示）
+    rows: list[DataSetRowOut] = []  # 多行=多变体（绑定执行=全 sheet 展开；执行面板可单发指定行）
+    bound: bool = False  # 是否在用例执行集内（多选绑定，整组替换）
     updated_at: datetime | None = None
     updated_by: int | None = None
     updated_by_name: str | None = None

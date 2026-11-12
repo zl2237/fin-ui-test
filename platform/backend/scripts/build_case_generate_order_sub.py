@@ -554,10 +554,8 @@ def main():
     edges = [{"id": f"e{i}", "source": b.nodes[i]["id"], "target": b.nodes[i + 1]["id"]}
              for i in range(len(b.nodes) - 1)]
 
-    # 幂等重建：先解绑 dataset 引用（FK RESTRICT），再删旧同名用例与数据集
+    # 幂等重建：删旧同名用例与数据集（绑定多选后无 test_cases.dataset_id 引用）
     for old in db.query(models.TestCase).filter(models.TestCase.name == CASE_NAME).all():
-        old.dataset_id = None
-        db.flush()
         for ds in db.query(models.DataSet).filter(models.DataSet.case_id == old.id).all():
             db.query(models.DataSetRow).filter(models.DataSetRow.dataset_id == ds.id).delete()
             db.delete(ds)
@@ -592,7 +590,7 @@ def main():
     db.add(ds)
     db.commit()
     db.add(models.DataSetRow(dataset_id=ds.id, row_index=1, data=row_data))
-    case.dataset_id = ds.id
+    ds.bound = True
     db.commit()
 
     print(f"用例已创建: id={case.id} name={CASE_NAME}")

@@ -72,8 +72,8 @@
  *  2026-11-04 两项能力：
  *  - 值预览：fields 携带单元格当前值（dvm-val 行内截断 + title 全文），
  *    配置节点时即可看到将执行的实际值，不必切到数据集页。
- *  - 临时新增一行：caseId + boundDatasetId 齐备时，可就地定义 字段=值 →
- *    追加为绑定数据集新 sheet（replaceRows 全量保留既有行）→ 自动插入引用。 */
+ *  - 临时新增一行：caseId + boundDatasetIds 齐备时，可就地定义 字段=值 →
+ *    追加为首个绑定数据集的新 sheet（replaceRows 全量保留既有行）→ 自动插入引用。 */
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
@@ -89,8 +89,8 @@ const props = defineProps<{
   nested?: boolean
   /** 归属用例（新增行需要拉取绑定数据集既有行） */
   caseId?: number
-  /** 用例绑定的数据集 id（新增行的落点；空=不提供新增入口） */
-  boundDatasetId?: number | null
+  /** 用例绑定的数据集 id 集（B3 多选）；新增行落点 = 首个 bound 数据集；空=不提供新增入口 */
+  boundDatasetIds?: number[]
 }>()
 const emit = defineEmits<{
   (e: 'insert', text: string): void
@@ -147,8 +147,10 @@ function onPick(sheet: string, name: string) {
   keyword.value = ''
 }
 
-// ===== 临时新增一行（字段=值 → 绑定数据集追加 sheet → 插入 ${label.字段}） =====
-const canAddRow = computed(() => !!props.caseId && !!props.boundDatasetId)
+// ===== 临时新增一行（字段=值 → 首个绑定数据集追加 sheet → 插入 ${label.字段}） =====
+/** 新增行落点：首个 bound 数据集（多选绑定下就近选一，注释里向用户言明归属） */
+const boundDatasetId = computed(() => props.boundDatasetIds?.[0] ?? null)
+const canAddRow = computed(() => !!props.caseId && boundDatasetId.value != null)
 /** 是否有 sheet：零 sheet 时弹层渲染空态（2026-11-05：新建用例已恒建 Sheet1，此处兜底） */
 const hasSheets = computed(() => !!props.sheets?.length)
 const addMode = ref(false)
@@ -179,13 +181,13 @@ async function onAddRow() {
   if (!field) return ElMessage.warning('请填写字段名')
   if (/[.\s]/.test(field)) return ElMessage.warning('字段名不能包含空格或点（用于 ${行.字段} 引用）')
   if (!addValue.value.trim()) return ElMessage.warning('请填写值')
-  if (!props.caseId || !props.boundDatasetId) return
+  if (!props.caseId || boundDatasetId.value == null) return
   const label = (addLabel.value.trim() || defaultLabel.value).replace(/\s+/g, '')
   addSaving.value = true
   try {
     // 拉取绑定数据集既有行 → 原样保留 + 追加新 sheet（replaceRows 全量替换语义）
     const list = await caseApi.datasets(props.caseId)
-    const bound = list.find((d) => d.id === props.boundDatasetId)
+    const bound = list.find((d) => d.id === boundDatasetId.value)
     if (!bound) throw new Error('绑定数据集不存在（可能已被删除），请在用例列表重新绑定')
     if (bound.rows.some((r) => (r.label || `Sheet${r.row_index}`) === label)) {
       ElMessage.warning(`行标签「${label}」已存在，请换一个（sheet 名即引用命名空间）`)
@@ -199,7 +201,7 @@ async function onAddRow() {
       field_order: r.field_order || null,
     }))
     rows.push({ label, data: { [field]: addValue.value }, field_desc: { [field]: '节点配置页临时新增' }, field_order: null })
-    await datasetApi.replaceRows(props.boundDatasetId, rows)
+    await datasetApi.replaceRows(boundDatasetId.value, rows)
     addMode.value = false
     keyword.value = ''
     ElMessage.success(`已新增行「${label}」并插入引用；数据集其它行未改动`)

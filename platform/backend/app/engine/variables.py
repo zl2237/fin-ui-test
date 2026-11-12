@@ -8,10 +8,11 @@
   （旧引擎「未定义变量保留 ${} 占位符静默放行」的行为已废止）
 - 同名冲突（同名异值 / 同名异型 / 同名嵌套层级不一致）从根上消除：
   不同命名空间互不覆盖，引用永远显式携带命名空间
-- 伪节点：串行链方案上一棒按 pass_vars 名单快照注入 "__prev__"（链式相邻定向传参）；
-  "__dataset__" 仅承载 legacy 平铺行键（如 {"bl_no": ...}）——API 参数模型 v2
-  已退役平铺注入（spec 走 per-node 配置），但 UI 步骤自由文本 ${}（expression.py）
-  的数据来源是平铺池，legacy 数据行由此可达；先于链注入，优先级最低
+- 伪命名空间 "__dataset__" 仅承载 legacy 平铺行键（如 {"bl_no": ...}）——
+  API 参数模型 v2 已退役平铺注入（spec 走 per-node 配置），但 UI 步骤自由文本
+  ${}（expression.py）的数据来源是平铺池，legacy 数据行由此可达，优先级最低
+- 旧 "__prev__"（串行链上一棒快照）已随链模式整体退役（2026-11-12 B3 删链定案）：
+  跨用例传值改由组合/融合用例承接，残留引用在保存期按「引用了不存在的节点」拦下
 
 SQL 占位语法（替代旧 ${xxx}）：{{node_id.var_path}}
 - 与旧语法刻意区分：可静态解析依赖、迁移时可精确扫描
@@ -20,9 +21,6 @@ SQL 占位语法（替代旧 ${xxx}）：{{node_id.var_path}}
 """
 import re
 from typing import Any
-
-# 串行链方案伪命名空间（非画布节点，注入型变量域）
-PREV_NS = "__prev__"
 
 # 数据集伪命名空间：legacy 平铺行键（UI 步骤自由文本 ${} 的数据来源）
 DATASET_NS = "__dataset__"
@@ -40,7 +38,7 @@ class CycleError(Exception):
 
 
 def split_ref(text: str) -> tuple[str, str]:
-    """ '{{n_create.order_id}}' -> ('n_create', 'order_id')；'{{__prev__.bl_no}}' -> ('__prev__', 'bl_no')"""
+    """ '{{n_create.order_id}}' -> ('n_create', 'order_id')；'{{__dataset__.bl_no}}' -> ('__dataset__', 'bl_no')"""
     node_id, _, var_path = text.partition(".")
     return node_id, var_path
 
@@ -58,7 +56,7 @@ class VariableRegistry:
 
     # ---------- 写入 ----------
     def inject(self, ns: str, values: dict[str, Any] | None) -> None:
-        """批量注入（数据集行值 / 串行链白名单 / 断点续跑 seed）。同名后写覆盖先写。"""
+        """批量注入（数据集行值 / 断点续跑 seed）。同名后写覆盖先写。"""
         if values:
             self._ns.setdefault(ns, {}).update(values)
 

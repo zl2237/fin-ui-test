@@ -82,12 +82,12 @@ def create(data: schemas.TestCaseCreate, db: Session = Depends(get_db), user: mo
     _validate_case_orchestration(db, data)
     _validate_case_env(db, data)
     obj = crud.create_testcase(db, data, user.id)
-    # 默认数据集自动初始化（Q7）：新用例自动建「默认数据集」（示例值）并绑定；
-    # 显式绑定数据集时函数内自行跳过
+    # 默认数据集自动初始化（Q7）：新用例自动建「默认数据集」（示例值）并置 bound
     from ..services.dataset_service import ensure_case_dataset
     ensure_case_dataset(db, obj, user.id)
     crud.fill_audit_names(db, obj)
     crud.fill_case_env_names(db, obj)
+    crud.fill_bound_datasets(db, obj)
     crud.log_operation(db, user, "create", "testcase", obj.id, obj.name)
     return obj
 
@@ -97,6 +97,7 @@ def list_all(project_id: int | None = None, created_by: int | None = None, updat
     objs = crud.list_testcases(db, project_id, created_by, updated_by)
     crud.fill_audit_names_batch(db, objs)
     crud.fill_case_env_names(db, objs)
+    crud.fill_bound_datasets(db, objs)
     return objs
 
 
@@ -213,6 +214,7 @@ def get_one(case_id: int, db: Session = Depends(get_db), user: models.User = Dep
         raise HTTPException(404, "用例不存在")
     crud.fill_audit_names(db, obj)
     crud.fill_case_env_names(db, obj)
+    crud.fill_bound_datasets(db, obj)
     return obj
 
 
@@ -232,22 +234,44 @@ def update(case_id: int, data: schemas.TestCaseUpdate, db: Session = Depends(get
     # 环境严格绑定：显式改绑时校验存在（普通用例须绑定环境才能执行，编辑入口必填）
     if "env_id" in data.model_fields_set:
         _validate_case_env(db, data)
-    # 数据集绑定校验（显式传 dataset_id 时）：须存在且与用例同项目
-    if "dataset_id" in data.model_fields_set:
-        from ..services.dataset_service import validate_binding
-        try:
-            validate_binding(db, obj, data.dataset_id)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
     obj = crud.update_testcase(db, obj, data, user.id)
-    # 默认数据集初始化/增量（Q7）：未绑定时自动建+绑定；已绑定时补画布新增节点
-    # 的初始参数（示例值）。用户显式解绑（dataset_id 传 None）不重建绑定
+    # 默认数据集初始化/增量（Q7）：无 bound 数据集时自动建+绑定；有 bound 时补画布
+    # 新增节点的初始参数（示例值）。数据集绑定改走 PUT /{case_id}/dataset-binding
     from ..services.dataset_service import ensure_case_dataset
-    explicit_unbind = "dataset_id" in data.model_fields_set and data.dataset_id is None
-    ensure_case_dataset(db, obj, user.id, allow_create=not explicit_unbind)
+    ensure_case_dataset(db, obj, user.id)
     crud.fill_audit_names(db, obj)
     crud.fill_case_env_names(db, obj)
+    crud.fill_bound_datasets(db, obj)
     crud.log_operation(db, user, "update", "testcase", obj.id, obj.name)
+    return obj
+
+
+@router.put("/{case_id}/dataset-binding", response_model=schemas.TestCaseOut)
+def set_dataset_binding(case_id: int, data: schemas.DatasetBindingIn,
+                        db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """用例绑定数据集（多选整体替换，2026-11-12 B3 定案）。
+
+    dataset_ids 列表内的置 bound，其余本用例数据集解绑；空列表 = 全部解绑。
+    执行强绑定：全部解绑后用例不可执行（保存不自动重建，与旧 dataset_id 语义一致）。
+    """
+    obj = crud.get_testcase(db, case_id)
+    if not obj:
+        raise HTTPException(404, "用例不存在")
+    from ..crud.executions import ensure_case_not_running
+    try:
+        ensure_case_not_running(db, case_id, "绑定数据集")
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    from ..services.dataset_service import set_case_binding
+    try:
+        bound = set_case_binding(db, obj, data.dataset_ids)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    crud.fill_audit_names(db, obj)
+    crud.fill_case_env_names(db, obj)
+    crud.fill_bound_datasets(db, obj)
+    crud.log_operation(db, user, "update", "testcase", obj.id,
+                       f"绑定数据集 ×{len(bound)}")
     return obj
 
 
@@ -280,6 +304,7 @@ def copy(case_id: int, db: Session = Depends(get_db), user: models.User = Depend
     db.refresh(new_obj)
     crud.fill_audit_names(db, new_obj)
     crud.fill_case_env_names(db, new_obj)
+    crud.fill_bound_datasets(db, new_obj)
     crud.log_operation(db, user, "copy", "testcase", new_obj.id, new_obj.name)
     return new_obj
 

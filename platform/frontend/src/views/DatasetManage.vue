@@ -76,7 +76,7 @@
               @dragend="resetDrag"
             >
               <span class="ds-name">{{ d.name }}</span>
-              <span v-if="currentCase.dataset_id === d.id" class="ds-bound">使用中</span>
+              <span v-if="d.bound" class="ds-bound">使用中</span>
               <span class="ds-cnt">{{ d.rows.length }} sheet</span>
             </div>
             <el-button size="small" class="ds-add" :icon="Plus" @click="createDataset()">新建数据集</el-button>
@@ -90,11 +90,11 @@
           <template v-else-if="current">
             <div class="main-head">
               <span class="main-title">{{ current.name }}</span>
-              <span class="row-count">{{ current.rows.length }} 个 sheet · 绑定用例 {{ current.case_bound_count || 0 }}</span>
+              <span class="row-count">{{ current.rows.length }} 个 sheet · {{ current.bound ? '已绑定（缺省执行含全部 sheet）' : '未绑定' }}</span>
               <div class="main-actions">
-                <el-button v-if="current.id !== currentCase.dataset_id" size="small" type="success" plain
-                           @click="bindDataset(current)">设为绑定</el-button>
-                <el-button v-else size="small" plain @click="bindDataset(null)">解绑</el-button>
+                <el-button v-if="!current.bound" size="small" type="success" plain
+                           @click="bindDataset(current)">加入绑定</el-button>
+                <el-button v-else size="small" plain @click="bindDataset(current)">取消绑定</el-button>
                 <el-button size="small" @click="copyDataset">复制</el-button>
                 <el-button size="small" @click="importVisible = true">批量导入</el-button>
                 <el-button size="small" @click="renameDataset">改名</el-button>
@@ -450,11 +450,18 @@ async function removeDataset() {
   }
 }
 
+/** 绑定切换（B3 多选）：目标数据集加入/移出用例 bound 集（setDatasetBinding 整组替换） */
 async function bindDataset(ds: DataSetManage | null) {
-  if (!currentCase.value) return
+  if (!currentCase.value || !ds) return
   try {
-    await caseApi.update(currentCase.value.id, { dataset_id: ds?.id ?? null })
-    ElMessage.success(ds ? `已绑定「${ds.name}」（执行缺省取第 1 个 sheet）` : '已解绑')
+    const cur = currentCase.value.bound_dataset_ids || []
+    const removing = cur.includes(ds.id)
+    const next = removing ? cur.filter((id) => id !== ds.id) : [...cur, ds.id]
+    const updated = await caseApi.setDatasetBinding(currentCase.value.id, next)
+    currentCase.value.bound_dataset_ids = updated.bound_dataset_ids ?? next
+    ElMessage.success(removing
+      ? `已将「${ds.name}」移出绑定`
+      : `已将「${ds.name}」加入绑定（缺省执行含其全部 sheet）`)
     await load()
   } catch (e: any) {
     ElMessage.error(e.message || '绑定失败')

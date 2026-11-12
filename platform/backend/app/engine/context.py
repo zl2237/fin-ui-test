@@ -1,7 +1,6 @@
 """执行上下文 v2：节点命名空间变量注册表（2026-09-30 参数模型定案）。
 
 取代旧「row_vars/suite_vars 双域池 + extracted 统一池 dict.update 覆盖」：
-- 串行链方案上一棒按 pass_vars 名单快照注入 __prev__ 伪命名空间（相邻定向传参）
 - 断点续跑 seed 注入各前缀节点命名空间（报告虚拟上下文）
 - 节点运行时产出（参数解析结果 / 后置提取 / SQL 参数结果）写入各自节点命名空间
 - 同名冲突三场景从根上消除：引用结构化携带 {"node_id", "var_path"}
@@ -10,8 +9,8 @@
   由 DagExecutor 读取作节点入参配置源）
 - UI 自由文本侧：legacy 平铺行键（行数据非 {"nodes"} 包装的剩余键，如
   {"bl_no": ...}）注入 __dataset__ 伪命名空间——UI 步骤 ${} 的数据来源是
-  平铺池（expression.py），无 per-node 通道，平铺键不可静默丢弃；先于
-  串行链方案/续跑注入，优先级最低（运行时产出 > 链注入 > 数据集行）
+  平铺池（expression.py），无 per-node 通道，平铺键不可静默丢弃；优先级
+  最低（运行时产出 > 数据集行）
 - 全 sheet 注入（2026-10-27 sheet 化）：dataset_sheets 各 sheet 以 label 为
   命名空间注入 → ${sheet.字段} 精确引用非选中 sheet 的值（首点切 ns 查法，
   expression.py 零改动）；注入顺序见 __init__ docstring
@@ -20,16 +19,16 @@
   编排层只引用 ${sheet.字段}）。选中 sheet 经 sheets 与 dataset_vars 双通道
   注入，同一单元格只求值一次（按原始数据相等复用），保证 ${label.字段} 与
   裸 ${字段} 取到同一个生成值（generate_bl_no 含随机段，两次求值必不同）
+- 旧 __prev__（串行链上一棒快照注入）已随链模式退役（2026-11-12 B3 删链定案）
 """
 from typing import Any
 
 from .expression import evaluate_dataset_cell
-from .variables import DATASET_NS, PREV_NS, VariableRegistry
+from .variables import DATASET_NS, VariableRegistry
 
 
 class ExecutionContext:
     def __init__(self, dataset_vars: dict[str, Any] | None = None,
-                 prev_vars: dict[str, Any] | None = None,
                  resume_seed: dict[str, dict[str, Any]] | None = None,
                  dataset_sheets: list[dict[str, Any]] | None = None):
         """dataset_vars：选中 sheet 的行数据。{"nodes": {...}} 为节点入参配置源
@@ -42,11 +41,11 @@ class ExecutionContext:
         1. 各 sheet（行序）以 label 为 ns 注入平铺键（除 "nodes"）；
         2. 选中 sheet 平铺注入 __dataset__（数据集类注入的最后）→ 裸 ${字段}
            同名冲突时选中 sheet 胜；
-        3. __prev__（不变，仍压数据集）；4. resume_seed；5. 运行时节点写入
-           最后胜出（不变）。label 与 node_id 撞名时 ns 合并、后写胜——运行时
-           节点产出在注入之后写 → 节点胜（跨域无法预校验，dataset_service 的
-           保留字校验只兜底 expression 硬拦截前缀）。仅含 "nodes" 的 sheet
-           注入空 ns（合法，${label.x} 自然不命中）。
+        3. resume_seed；4. 运行时节点写入最后胜出（不变）。label 与 node_id
+           撞名时 ns 合并、后写胜——运行时节点产出在注入之后写 → 节点胜
+           （跨域无法预校验，dataset_service 的保留字校验只兜底 expression
+           硬拦截前缀）。仅含 "nodes" 的 sheet 注入空 ns（合法，${label.x}
+           自然不命中）。
 
         resume_seed 为嵌套结构 {node_id: {变量名: 值}}（report_context 产出）：
         断点续跑时前缀成功步骤的提取值按原节点命名空间还原，下游 {{节点.变量}}
@@ -72,6 +71,5 @@ class ExecutionContext:
             flat = {k: evaluate_dataset_cell(v) for k, v in self.dataset_vars.items() if k != "nodes"}
         if flat:
             self.registry.inject(DATASET_NS, flat)
-        self.registry.inject(PREV_NS, prev_vars)
         for node_id, vars_ in (resume_seed or {}).items():
             self.registry.inject(node_id, vars_)

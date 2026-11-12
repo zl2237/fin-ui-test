@@ -289,7 +289,12 @@ def build(db) -> None:
         raise SystemExit(f"源用例不存在: {SOURCE_CASE_NAME}")
     src_cfgs = db.query(models.CaseNodeConfig).filter(
         models.CaseNodeConfig.case_id == src.id).all()
-    src_ds = db.get(models.DataSet, src.dataset_id)
+    # 绑定多选（2026-11-12 B3）：取源用例 bound 数据集（种子脚本按单 bound 使用）
+    src_ds = (db.query(models.DataSet)
+              .filter(models.DataSet.case_id == src.id, models.DataSet.bound.is_(True))
+              .order_by(models.DataSet.id).first())
+    if not src_ds:
+        raise SystemExit("源用例无 bound 数据集")
     src_rows = db.query(models.DataSetRow).filter(
         models.DataSetRow.dataset_id == src_ds.id).order_by(
         models.DataSetRow.row_index).all()
@@ -503,8 +508,6 @@ def build(db) -> None:
     for old in db.query(models.TestCase).filter(
             models.TestCase.project_id == PROJECT_ID,
             models.TestCase.name == CASE_NAME).all():
-        old.dataset_id = None
-        db.flush()
         for ds in db.query(models.DataSet).filter(models.DataSet.case_id == old.id).all():
             db.query(models.DataSetRow).filter(
                 models.DataSetRow.dataset_id == ds.id).delete()
@@ -544,7 +547,7 @@ def build(db) -> None:
                                  data={k: (json.dumps(v, ensure_ascii=False)
                                            if isinstance(v, (dict, list)) else v)
                                        for k, v in data.items()}))
-    case.dataset_id = ds.id
+    ds.bound = True
     db.commit()
 
     print(f"用例已创建: id={case.id} name={CASE_NAME}")

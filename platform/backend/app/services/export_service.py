@@ -286,18 +286,22 @@ def export_cases_json(cases: list, group_names: dict[int, str], project_name: st
     """
     datasets_by_case = datasets_by_case or {}
     env_names: dict[int, str] = {}
-    bound_dataset_names: dict[int, str] = {}
+    bound_names_by_case: dict[int, list[str]] = {}
     if db:
         env_ids = {c.env_id for c in cases if getattr(c, "env_id", None)}
         if env_ids:
             for ev in (db.query(models.Environment)
                        .filter(models.Environment.id.in_(env_ids)).all()):
                 env_names[ev.id] = ev.name
-        ds_ids = {c.dataset_id for c in cases if getattr(c, "dataset_id", None)}
-        if ds_ids:
+        # 绑定多选（2026-11-12 B3 定案）：bound 数据集名列表随用例导出，
+        # 导入端按名回放 bound 标记
+        case_ids = [c.id for c in cases]
+        if case_ids:
             for d in (db.query(models.DataSet)
-                      .filter(models.DataSet.id.in_(ds_ids)).all()):
-                bound_dataset_names[d.id] = d.name
+                      .filter(models.DataSet.case_id.in_(case_ids),
+                              models.DataSet.bound.is_(True))
+                      .order_by(models.DataSet.case_id, models.DataSet.id).all()):
+                bound_names_by_case.setdefault(d.case_id, []).append(d.name)
 
     items = []
     used_element_ids: set = set()
@@ -333,11 +337,10 @@ def export_cases_json(cases: list, group_names: dict[int, str], project_name: st
             "group": group_names.get(c.group_id) if c.group_id else None,
             "description": c.description,
             "env": env_names.get(c.env_id) if getattr(c, "env_id", None) else None,
-            "dataset_name": (bound_dataset_names.get(c.dataset_id)
-                             if getattr(c, "dataset_id", None) else None),
+            "bound_dataset_names": bound_names_by_case.get(c.id, []),
             "edges": (c.dag_config or {}).get("edges", []),
             "nodes": nodes_out,
-            # 数据集入参配置全量（绑定数据集优先；多数据集场景全量导出）
+            # 数据集入参配置全量（bound 集合全量随包，导入端按 bound_dataset_names 回放绑定）
             "datasets": [
                 {"name": d.name,
                  "description": getattr(d, "description", None),

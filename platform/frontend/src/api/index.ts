@@ -159,7 +159,7 @@ export interface ParamSpec {
   value?: any          // constant：任意 JSON 值
   func?: string        // func：函数名（见 constants/funcRegistry）
   args?: FuncArgSpec[] // func：按关键字传参
-  node_id?: string     // ref：画布节点 / __dataset__ / __prev__ / 本节点（SQL 参数结果）
+  node_id?: string     // ref：画布节点 / __dataset__ / 本节点（SQL 参数结果）
   var_path?: string    // ref
   as_array?: boolean   // ref/func：单值包成单元素数组
   sql?: string         // sql：{{节点.变量}} 占位引用
@@ -250,7 +250,7 @@ export interface TestCase {
   node_configs: NodeConfig[]; sort_order?: number; created_at?: string; updated_at?: string
   created_by?: number | null; updated_by?: number | null
   created_by_name?: string | null; updated_by_name?: string | null
-  dataset_id?: number | null  // 绑定的数据集（数据驱动），NULL=普通用例
+  bound_dataset_ids?: number[]  // 绑定的数据集（多选；执行 = 每个 bound 数据集全部 sheet 各展开一条）
   last_exec_at?: string | null      // 最近一次执行开始时间（终结回写；NULL=从未执行）
   last_exec_status?: string | null  // 最近一次执行终态：success/failed/terminated
 }
@@ -309,7 +309,7 @@ export interface ExecutionRecord {
   steps: StepRecord[]
   created_by?: number | null; created_by_name?: string | null
   trigger_type?: string
-  plan_id?: number | null       // 非空=执行方案触发（一键/定时/串行链成员行）
+  plan_id?: number | null       // 非空=执行方案触发（一键/定时/方案成员行）
   plan_name?: string | null     // 方案名（尽力回查；方案已删时 null，显示「方案 #id」）
 }
 
@@ -456,10 +456,15 @@ export const caseApi = {
   reorder: (items: { id: number; sort_order: number }[]) =>
     http.post<{ message: string; updated: number }>('/testcases/reorder', { items }).then((r) => r.data),
   // 环境严格绑定：执行环境=用例绑定环境（case.env_id），不再传 env_id。
-  // datasetId/rowIndex 执行时临时换数据集/选行（缺省=绑定数据集第 1 行；不改绑定与数据集内容）
+  // datasetId 临时换数据集（该数据集全部 sheet 各一条）；+rowIndex 单发指定 sheet；
+  // 双缺省 = 用例全部 bound 数据集全 sheet 展开（记录数 = Σ(bound 数据集 sheet 数)）。
+  // 返回本次全部记录（UI 平台语义；面板/列表跳转第一条报告）
   execute: (caseId: number, datasetId?: number, rowIndex?: number) =>
-    http.post<ExecutionRecord>(`/testcases/${caseId}/execute`,
+    http.post<ExecutionRecord[]>(`/testcases/${caseId}/execute`,
       { case_id: caseId, dataset_id: datasetId ?? null, dataset_row_index: rowIndex ?? null }).then((r) => r.data),
+  // 绑定数据集（多选整体替换；空数组=全部解绑，用例将不可执行）
+  setDatasetBinding: (caseId: number, datasetIds: number[]) =>
+    http.put<TestCase>(`/testcases/${caseId}/dataset-binding`, { dataset_ids: datasetIds }).then((r) => r.data),
   // 用例名下数据集及全部数据行（执行面板「换套数据执行」下拉数据源；行=具名 sheet）
   datasets: (caseId: number) =>
     http.get<{ id: number; name: string; rows: DataSetSheetOut[] }[]>(`/testcases/${caseId}/datasets`).then((r) => r.data),
@@ -533,7 +538,7 @@ export interface DataSetManage {
   name: string
   description?: string | null
   rows: DataSetSheetOut[]
-  case_bound_count?: number
+  bound: boolean  // 被归属用例勾选绑定（多选）；bound 数据集删除需先取消勾选
 }
 
 export const datasetApi = {
@@ -574,20 +579,18 @@ export const scheduleApi = {
 }
 
 // ============ ExecutionPlan 执行方案 ============
-/** 方案成员（dataset 覆盖须属于该成员用例；chain 模式按 sort_order 轮内串行） */
+/** 方案成员（并行组合：成员相互独立，各自「选中数据集 × 全部 sheet × run_count」条记录）
+ *  多场景由此承接（原 chain「每轮瞬移」已随 B3 删链退役） */
 export interface PlanItem {
   id?: number
   case_id: number
-  dataset_id?: number | null      // NULL=沿用用例自身绑定
-  dataset_row_index?: number | null  // 值=DataSetRow.row_index；NULL=第 1 行（chain 按轮序取 sheet）
-  run_count?: number              // 1~9999（combo 生效；chain 整链轮数在方案级 rounds，此项忽略）
-  pass_vars?: string[] | null     // chain 专用：传给下一棒的输出变量名单（相邻定向传参；末棒/ combo 恒空）
+  dataset_ids?: number[] | null   // NULL/空=沿用用例自身绑定（全部 bound 数据集）
+  run_count?: number              // 1~9999；记录数 = Σ(选中数据集 sheet 数) × 此值
   sort_order?: number
   // 展示回填（详情接口）
   case_name?: string | null
-  dataset_name?: string | null
-  sheet_label?: string | null
-  case_dataset_id?: number | null   // 用例自身绑定（dataset_id 空时实际生效）
+  dataset_names?: string[] | null  // 选中数据集名（已删的回退「# {id}」标红）
+  case_dataset_ids?: number[]     // 用例自身 bound 绑定集（dataset_ids 空时实际生效）
   case_missing?: boolean
   dataset_missing?: boolean
 }
@@ -595,9 +598,7 @@ export interface PlanItem {
 export interface ExecutionPlan {
   id: number; project_id?: number | null
   name: string; description?: string | null
-  mode: 'combo' | 'chain'          // combo 并行组合 / chain 串行链（按序+相邻定向传参+失败阻断本轮下游）
-  rounds: number                  // chain 整链执行轮数（轮内串行、轮间并行）；combo 恒 1
-  concurrency: number             // 1~16（combo 成员并行 / chain 轮间并行）
+  concurrency: number             // 1~16：统一并发池上限（成员记录平铺进批次线程池；UI 用例 ≤ 浏览器槽位）
   enabled: boolean                // 方案总开关：禁用时定时跳过本轮（手动一键不受限）
   schedule_type?: 'interval' | 'daily' | null  // NULL=未配置定时
   schedule_interval_minutes?: number | null
@@ -618,8 +619,6 @@ export interface ExecutionPlanDetail extends ExecutionPlan {
 export interface PlanUpdatePayload {
   name?: string
   description?: string | null
-  mode?: 'combo' | 'chain'
-  rounds?: number
   concurrency?: number
   enabled?: boolean
   schedule_type?: 'interval' | 'daily' | null
@@ -632,7 +631,7 @@ export interface PlanUpdatePayload {
 export const planApi = {
   list: (params?: { project_id?: number }) =>
     http.get<ExecutionPlan[]>('/plans', { params }).then((r) => r.data),
-  create: (data: { project_id?: number | null; name: string; description?: string; mode?: 'combo' | 'chain'; rounds?: number; concurrency?: number }) =>
+  create: (data: { project_id?: number | null; name: string; description?: string; concurrency?: number }) =>
     http.post<ExecutionPlanDetail>('/plans', data).then((r) => r.data),
   get: (id: number) => http.get<ExecutionPlanDetail>(`/plans/${id}`).then((r) => r.data),
   update: (id: number, data: PlanUpdatePayload) =>
@@ -640,11 +639,9 @@ export const planApi = {
   updateItems: (id: number, items: PlanItem[]) =>
     http.put<ExecutionPlanDetail>(`/plans/${id}/items`, { items }).then((r) => r.data),
   remove: (id: number) => http.delete(`/plans/${id}`),
-  // 一键执行：预检失败 400 零记录；返回本次全部记录
-  // （combo 并行独立轮询到终态 / chain 后台按轮驱动：轮内串行+相邻传参 __prev__+失败阻断本轮下游）
-  // body.rounds=本次整链轮数覆盖（chain 专用，不回写方案配置；执行弹窗「全部 sheet」用数据集行数）
-  execute: (id: number, body?: { rounds?: number }) =>
-    http.post<ExecutionRecord[]>(`/plans/${id}/execute`, body ?? {}).then((r) => r.data),
+  // 一键执行：预检失败 400 零记录；返回本次全部记录（记录数 = Σ(成员选中数据集 sheet 数 × run_count)）
+  execute: (id: number) =>
+    http.post<ExecutionRecord[]>(`/plans/${id}/execute`).then((r) => r.data),
 }
 
 // ============ ProjectVersion 项目版本 ============

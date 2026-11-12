@@ -83,7 +83,7 @@
                     <el-icon class="step-arrow" :class="{ expanded: openIdx === i }"><ArrowDown /></el-icon>
                   </div>
                   <div v-if="openIdx === i" class="step-edit">
-                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :case-id="caseId" :bound-dataset-id="boundDatasetId" :scope-labels="scopeLabels" :node-scope="nodeScope || scopeDraft || undefined" @rows-changed="onDsRowsChanged" />
+                    <UiActionForm :ref="(el: any) => (stepFormRefs[i] = el)" :step="st" :ui-elements="uiElements" :custom-actions="customActions" :action-docs="actionDocs" :ds-sheets="dsSheets" :case-id="caseId" :bound-dataset-ids="boundDatasetIds" :scope-labels="scopeLabels" :node-scope="nodeScope || scopeDraft || undefined" @rows-changed="onDsRowsChanged" />
                   </div>
                 </div>
                 <div v-if="!uiSteps.some(matchStep)" class="steps-empty">没有匹配「{{ filterText }}」的动作</div>
@@ -170,7 +170,7 @@ const props = defineProps<{
   /** 归属用例（UI 动作值的 ${sheet.字段} 插入器懒加载绑定数据集用） */
   caseId?: number
   /** 用例绑定的数据集 id（运行时只注入该数据集的 sheet，选择器不提供其它数据集） */
-  boundDatasetId?: number | null
+  boundDatasetIds?: number[]
 }>()
 const emit = defineEmits<{
   (e: 'update:visible', v: boolean): void
@@ -216,8 +216,9 @@ let customActionsLoaded = false
 // 动作描述覆盖（动作库管理 → 编辑描述；wrapped 动作下拉提示显示覆盖文本）
 const actionDocs = ref<UiActionDoc[]>([])
 let actionDocsLoaded = false
-// 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；只取绑定数据集——
+// 绑定数据集的 sheet 清单（${sheet.字段} 插入器数据源；只取 bound 数据集——
 // 运行时只注入绑定/选中数据集的 sheet，选择器不得提供其它数据集的 label）。
+// B3 多选绑定：全部 bound 数据集的 sheet 并集（运行时每条记录注入其所属数据集的 sheet）。
 // 按 caseId 记忆已加载：换用例重拉，同用例抽屉反复开关不重复请求
 const dsSheets = ref<DsVarSheet[]>([])
 let dsSheetsLoadedCase: number | null = null
@@ -227,11 +228,12 @@ async function loadDsSheets() {
   if (dsSheetsLoadedCase === props.caseId) return
   dsSheetsLoadedCase = props.caseId
   dsSheets.value = []
-  if (!props.boundDatasetId) return  // 未绑定数据集：不提供插入器（不报错，静默无按钮）
+  const ids = props.boundDatasetIds || []
+  if (!ids.length) return  // 未绑定数据集：不提供插入器（不报错，静默无按钮）
   try {
     const list = await caseApi.datasets(props.caseId)
-    const bound = list.find((d) => d.id === props.boundDatasetId)
-    dsSheets.value = (bound?.rows || []).map((r) => ({
+    const boundRows = list.filter((d) => ids.includes(d.id)).flatMap((d) => d.rows || [])
+    dsSheets.value = boundRows.map((r) => ({
       label: r.label || `Sheet${r.row_index}`,
       fields: Object.keys(r.data || {})
         .filter((k) => k !== 'nodes')

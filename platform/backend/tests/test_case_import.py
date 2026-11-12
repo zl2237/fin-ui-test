@@ -103,7 +103,7 @@ def _full_case(db, project_id, env, api, element, action, group_id=None):
             {"action": "fill", "element": {"element_id": element.id}, "value": "BL001"},
             {"action": "custom", "custom_id": action.id},
         ]}))
-    ds = models.DataSet(project_id=project_id, case_id=case.id, name="默认数据集")
+    ds = models.DataSet(project_id=project_id, case_id=case.id, name="默认数据集", bound=True)
     db.add(ds)
     db.commit()
     db.add(models.DataSetRow(dataset_id=ds.id, row_index=1,
@@ -112,8 +112,6 @@ def _full_case(db, project_id, env, api, element, action, group_id=None):
                              field_order=["bl_no", "order_no"]))
     db.add(models.DataSetRow(dataset_id=ds.id, row_index=2,
                              data={"nodes": {"n1": {"order_no": "A2"}}}, label="Sheet2"))
-    db.commit()
-    case.dataset_id = ds.id
     db.commit()
     db.refresh(case)
     return case
@@ -277,7 +275,7 @@ class TestImport:
         assert len(rows) == 2
         assert rows[0].label == "Sheet1" and rows[0].field_desc == {"bl_no": "提单号"}
         assert rows[0].field_order == ["bl_no", "order_no"] and rows[1].label == "Sheet2"
-        assert new_case.dataset_id == dss[0].id
+        assert dss[0].bound is True  # 绑定回放：bound 标志随导入重建
 
     def test_api_snapshot_rebuild_with_fields_and_code(self, db):
         """目标项目无同 path 接口：用快照重建（字段全量、code 自动生成）"""
@@ -301,7 +299,7 @@ class TestImport:
 
         a, b = payload["items"][0], payload2["items"][0]
         assert b["name"] == a["name"] and b["description"] == a["description"]
-        assert b["env"] == a["env"] and b["dataset_name"] == a["dataset_name"]
+        assert b["env"] == a["env"] and b["bound_dataset_names"] == a["bound_dataset_names"]
         assert b["edges"] == a["edges"]
         assert [n["id"] for n in b["nodes"]] == [n["id"] for n in a["nodes"]]
         # api_snapshot（快照重建路径下由目标库再生成）与源一致

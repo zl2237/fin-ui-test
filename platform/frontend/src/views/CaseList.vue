@@ -194,7 +194,7 @@
                 <el-tooltip content="编排" placement="top">
                   <el-button link type="primary" size="small" :icon="EditPen" aria-label="编排用例" @click="goDesign(row)" />
                 </el-tooltip>
-                <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                <el-tooltip content="执行本行用例（= 全部绑定数据集 × 全部 sheet 各一条）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" :icon="VideoPlay" aria-label="执行本行用例" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
@@ -211,8 +211,8 @@
                   </template>
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页） -->
-                <el-tooltip :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
+                <el-tooltip :content="(row.bound_dataset_ids || []).length ? `已绑定 ${row.bound_dataset_ids.length} 个数据集（可多选），点击调整` : '绑定数据集（可多选）启用数据集执行'" placement="top">
+                  <el-button link :type="(row.bound_dataset_ids || []).length ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
                 </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除；tooltip 须在 dropdown 外层，嵌进默认插槽会破坏 click 触发器 -->
                 <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
@@ -338,7 +338,7 @@
                 <el-tooltip content="编排" placement="top">
                   <el-button link type="primary" size="small" :icon="EditPen" aria-label="编排用例" @click="goDesign(row)" />
                 </el-tooltip>
-                <el-tooltip content="执行本行用例（绑定数据集第 1 个 sheet）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
+                <el-tooltip content="执行本行用例（= 全部绑定数据集 × 全部 sheet 各一条）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" :icon="VideoPlay" aria-label="执行本行用例" @click="runCase(row)" />
                 </el-tooltip>
                 <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
@@ -355,8 +355,8 @@
                   </template>
                 </el-dropdown>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页） -->
-                <el-tooltip :content="row.dataset_id ? '已绑定数据集，点击更换/解绑' : '绑定数据集，执行缺省取第 1 行'" placement="top">
-                  <el-button link :type="row.dataset_id ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
+                <el-tooltip :content="(row.bound_dataset_ids || []).length ? `已绑定 ${row.bound_dataset_ids.length} 个数据集（可多选），点击调整` : '绑定数据集（可多选）启用数据集执行'" placement="top">
+                  <el-button link :type="(row.bound_dataset_ids || []).length ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
                 </el-tooltip>
                 <!-- 低频操作收纳：报告/定时/复制/删除；tooltip 须在 dropdown 外层，嵌进默认插槽会破坏 click 触发器 -->
                 <el-tooltip content="更多操作（报告/定时/复制/删除）" placement="top">
@@ -503,12 +503,12 @@
       @changed="loadSchedules"
     />
 
-    <!-- 绑定数据集（只切绑定关系；数据集编辑集中在数据集管理页，口径对齐 API 平台用例列表） -->
+    <!-- 绑定数据集（多选：bound 集整体替换；执行 = 每个勾选数据集全部 sheet 各一条） -->
     <el-dialog v-model="bindVisible" title="绑定数据集" width="480px">
       <div class="bind-tip">
-        绑定后缺省取第 1 行（执行旁 ▾ 可临时换套/换行）；数据集按用例隔离，多场景去数据集页复制
+        勾选后缺省执行 = 每个勾选数据集的全部 sheet 各一条（执行旁 ▾ 可临时单发某套/某 sheet）；数据集按用例隔离，多场景直接勾多个
       </div>
-      <el-select v-model="bindDatasetId" placeholder="选择数据集（空=不绑定）" clearable :loading="bindLoading" style="width: 100%">
+      <el-select v-model="bindDatasetIds" multiple collapse-tags collapse-tags-tooltip placeholder="勾选数据集（可多选）" :loading="bindLoading" style="width: 100%">
         <el-option v-for="d in bindDatasets" :key="d.id" :label="`${d.name}（${d.rows.length} 个 sheet）`" :value="d.id" />
       </el-select>
       <div v-if="!bindLoading && !bindDatasets.length" class="bind-empty">
@@ -877,7 +877,7 @@ async function onCreate() {
   })
 }
 
-// 编排入口：进 DAG 编排页（接口请求串联 + 提取 + 断言；跨用例编排收口到执行方案串行链）
+// 编排入口：进 DAG 编排页（接口请求串联 + 提取 + 断言；跨用例编排收口到执行方案成员并行组合）
 function goDesign(row: TestCase) {
   router.push(`/cases/designer/${row.id}`)
 }
@@ -888,16 +888,17 @@ async function runCase(row: TestCase, dataOpt?: RunDataOpt) {
     return ElMessage.warning(`用例「${row.name}」未绑定执行环境，请先在列表「执行环境」列选择`)
   }
   try {
-    // 执行→进度消息→轮询→三态 favicon→结果提示（超时返回 running 态记录，同样跳报告页）
-    // dataOpt：执行时临时换数据集/选行（下拉选择；缺省=绑定数据集第 1 行）
+    // 执行→进度消息→逐条轮询→三态 favicon→聚合结果提示（超时含 running 态记录，同样跳报告页）
+    // dataOpt：执行时临时单发某数据集/某 sheet（下拉选择；缺省=全部 bound 数据集全 sheet 展开）
     const suffix = dataOpt ? `（${dataOpt.label}）` : ''
-    const cur = await runner.runWithFeedback(row.id, {
+    const recs = await runner.runWithFeedback(row.id, {
       runningMsg: `用例「${row.name}」执行中...${suffix}`,
       maxPolls: 150,
       datasetId: dataOpt?.datasetId,
       rowIndex: dataOpt?.rowIndex,
     })
-    router.push(`/reports/${cur.id}`)
+    // 多记录（数据集 × sheet 展开）跳首条报告，其余在执行记录列表查看
+    if (recs[0]) router.push(`/reports/${recs[0].id}`)
   } catch (e: any) {
     favicon.reset()
     ElMessage.error(e.message || '轮询执行状态失败')
@@ -931,10 +932,11 @@ async function loadDataOptions(row: TestCase) {
         continue
       }
       for (const r of ds.rows) {
-        const isDefault = ds.id === row.dataset_id && r.row_index === ds.rows[0].row_index
+        // bound 数据集的全部 sheet 都在缺省执行范围内（「缺省含」标注；其余为临时单发）
+        const inDefault = (row.bound_dataset_ids || []).includes(ds.id)
         opts.push({
           key: `ds-${ds.id}-r-${r.row_index}`,
-          label: `${ds.name} · ${r.label || `Sheet${r.row_index}`}${isDefault ? '（默认）' : ''}`,
+          label: `${ds.name} · ${r.label || `Sheet${r.row_index}`}${inDefault ? '（缺省含）' : ''}`,
           datasetId: ds.id,
           rowIndex: r.row_index,
         })
@@ -1088,18 +1090,18 @@ function openSchedule(row: TestCase) {
   scheduleVisible.value = true  // 有无配置决定列表/表单首屏，由弹窗组件打开时自判
 }
 
-// ===== 数据集绑定（只切换绑定关系；编辑集中在数据集管理页，口径对齐 API 平台用例列表）=====
+// ===== 数据集绑定（多选整组替换；编辑集中在数据集管理页，口径对齐 API 平台用例列表）=====
 type BindDs = { id: number; name: string; rows: { row_index: number; label: string; data: Record<string, any> }[] }
 const bindVisible = ref(false)
 const bindSaving = ref(false)
 const bindLoading = ref(false)
 const bindCase = ref<TestCase | null>(null)
-const bindDatasetId = ref<number | null>(null)
+const bindDatasetIds = ref<number[]>([])
 const bindDatasets = ref<BindDs[]>([])
 
 async function openBind(row: TestCase) {
   bindCase.value = row
-  bindDatasetId.value = row.dataset_id ?? null
+  bindDatasetIds.value = row.bound_dataset_ids ? [...row.bound_dataset_ids] : []
   bindVisible.value = true
   bindLoading.value = true
   try {
@@ -1115,10 +1117,10 @@ async function saveBind() {
   if (!bindCase.value) return
   bindSaving.value = true
   try {
-    await caseApi.update(bindCase.value.id, { dataset_id: bindDatasetId.value ?? null })
-    bindCase.value.dataset_id = bindDatasetId.value ?? null
-    ElMessage.success(bindDatasetId.value ? '已绑定数据集（执行缺省取第 1 个 sheet）' : '已解绑')
-    delete dataOptionsMap.value[bindCase.value.id]  // 执行下拉的「（默认）」标注随绑定关系失效
+    const updated = await caseApi.setDatasetBinding(bindCase.value.id, bindDatasetIds.value)
+    bindCase.value.bound_dataset_ids = updated.bound_dataset_ids ?? [...bindDatasetIds.value]
+    ElMessage.success(bindDatasetIds.value.length ? `已绑定 ${bindDatasetIds.value.length} 个数据集` : '已全部解绑')
+    delete dataOptionsMap.value[bindCase.value.id]  // 执行下拉的「（缺省含）」标注随绑定关系失效
     bindVisible.value = false
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败')

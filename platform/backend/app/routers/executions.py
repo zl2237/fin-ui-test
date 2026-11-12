@@ -23,13 +23,14 @@ def _validate_concurrency(concurrency: int) -> None:
         raise HTTPException(400, f"并发数须在 1~{MAX_CONCURRENCY} 之间")
 
 
-@router.post("/testcases/{case_id}/execute", response_model=schemas.ExecutionRecordOut)
+@router.post("/testcases/{case_id}/execute", response_model=list[schemas.ExecutionRecordOut])
 def execute(case_id: int, data: schemas.ExecutionCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """触发用例执行（异步）：立即创建 running 状态的执行记录并返回，后台线程池执行。
     前端通过 GET /executions/{id} 轮询执行状态。
     环境严格绑定：一律用用例绑定的环境（case.env_id），请求里的 env_id 兼容忽略。
-    数据驱动：绑定数据集的用例用其单套数据执行（dataset_id 可临时换数据集，
-    dataset_row_index 可临时选行；均不改用例绑定与数据集内容）。"""
+    数据驱动（2026-11-12 B3 定案）：缺省 = bound 绑定集全 sheet 展开（每个 sheet
+    一条记录，多场景由此承接）；执行面板单发可传 dataset_id+dataset_row_index
+    只发指定数据集的指定 sheet 一条（均不改用例绑定与数据集内容）。"""
     if data.case_id != case_id:
         raise HTTPException(400, "case_id 不一致")
     case = crud.get_testcase(db, case_id)
@@ -38,13 +39,13 @@ def execute(case_id: int, data: schemas.ExecutionCreate, db: Session = Depends(g
 
     try:
         plan = build_launch_plan(db, case, user.id,
-                                 dataset_id=data.dataset_id,
+                                 dataset_ids=[data.dataset_id] if data.dataset_id else None,
                                  dataset_row_index=data.dataset_row_index)
     except ValueError as e:
         raise HTTPException(400, str(e))
     _validate_concurrency(data.concurrency)
     commit_launch([plan], concurrency=data.concurrency)
-    return plan.records[0]
+    return plan.records
 
 
 @router.post("/testcases/batch-execute", response_model=list[schemas.ExecutionRecordOut])
@@ -53,7 +54,7 @@ def batch_execute(data: schemas.BatchExecutionCreate, db: Session = Depends(get_
     后台线程池执行，并发数可配（concurrency=1 逐个串行，一个结束再下一个；
     缺省 4 并行，同环境共享登录 token 防互踢）。前端可轮询各 record 状态。
     环境严格绑定：每个用例各自用绑定环境（case.env_id），批次可混环境。
-    绑定数据集的用例按该数据集的单套值展开为一条执行记录，与其他条目一并平铺提交。
+    绑定数据集的用例按 bound 集「每个数据集的每个 sheet」展开，与其他条目一并平铺提交。
     执行次数：counts 与 case_ids 一一对应（缺省全 1），如 A×3、B×1、C×2 共 6 轮。"""
     if not data.case_ids:
         raise HTTPException(400, "请至少选择一个用例")

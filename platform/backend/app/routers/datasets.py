@@ -36,15 +36,15 @@ def _owned_dataset(db: Session, dataset_id: int) -> models.DataSet:
 
 
 def _fill_out(db: Session, ds: models.DataSet) -> schemas.DataSetOut:
-    out = schemas.DataSetOut.model_validate(ds)
-    out.case_bound_count = crud.count_cases_bound_to_dataset(db, ds.id)
-    return out
+    """bound 为 ORM 列直读（绑定多选标记，2026-11-12 B3 定案）；
+    行数据由调用方按需挂载（列表页不带行）。"""
+    return schemas.DataSetOut.model_validate(ds)
 
 
 @router.get("", response_model=list[schemas.DataSetOut])
 def list_datasets(project_id: int, db: Session = Depends(get_db),
                   user: models.User = Depends(get_current_user)):
-    """项目级数据集清单（独立数据集管理页）：按归属用例过滤，含绑定计数。"""
+    """项目级数据集清单（独立数据集管理页）：按归属用例过滤，含 bound 绑定标记。"""
     return [_fill_out(db, ds) for ds in svc.list_by_project(db, project_id)]
 
 
@@ -97,7 +97,7 @@ def copy_dataset(dataset_id: int, db: Session = Depends(get_db),
 @router.delete("/{dataset_id}", response_model=schemas.MessageOut)
 def delete_dataset(dataset_id: int, db: Session = Depends(get_db),
                    user: models.User = Depends(get_current_user)):
-    """删除数据集（级联删行；被用例绑定时拒绝，先在用例上解绑）。"""
+    """删除数据集（级联删行；bound 绑定中拒绝，先在用例「绑定数据集」取消勾选）。"""
     ds = _owned_dataset(db, dataset_id)
     try:
         svc.delete_dataset(db, dataset_id)

@@ -40,7 +40,6 @@
             <el-link type="primary" :underline="false" @click="router.push(`/plans/edit/${row.id}`)">
               {{ row.name }}
             </el-link>
-            <el-tag v-if="row.mode === 'chain'" size="small" effect="plain" type="warning" class="mode-mark">串行链</el-tag>
             <span v-if="row.description" class="plan-desc" :title="row.description">· {{ row.description }}</span>
           </template>
         </el-table-column>
@@ -56,11 +55,9 @@
         </el-table-column>
         <el-table-column label="批量策略" width="90" align="center">
           <template #default="{ row }">
-            <!-- combo：成员并行上限；chain：整链轮数×轮间并发（轮内恒串行） -->
-            <el-tooltip v-if="row.mode === 'chain'" :content="`默认 ${row.rounds} 轮（轮内按序串行+相邻传参+失败阻断），轮间最多 ${row.concurrency} 轮并行`" placement="top" popper-class="app-tip">
-              <span class="app-data">{{ row.rounds }}轮×{{ row.concurrency }}</span>
+            <el-tooltip content="成员并行提交上限（成员相互独立并行执行，失败互不影响）" placement="top" popper-class="app-tip">
+              <span class="app-data">并发{{ row.concurrency }}</span>
             </el-tooltip>
-            <span v-else class="app-data">并发{{ row.concurrency }}</span>
           </template>
         </el-table-column>
         <el-table-column label="定时" min-width="150">
@@ -97,7 +94,7 @@
         </el-table-column>
         <el-table-column label="操作" width="170" fixed="right" align="center">
           <template #default="{ row }">
-            <el-tooltip :content="row.mode === 'chain' ? '一键执行（整链按轮驱动，轮内串行+传参）' : '一键执行（成员独立并行）'" placement="top">
+            <el-tooltip content="一键执行（成员独立并行，先弹执行确认）" placement="top">
               <el-button link type="success" size="small" :icon="VideoPlay" aria-label="一键执行方案" :loading="runningId === row.id" @click="onRun(row)" />
             </el-tooltip>
             <el-tooltip content="查看执行记录" placement="top">
@@ -139,7 +136,7 @@
       </template>
     </el-dialog>
 
-    <!-- 执行确认：chain=轮数选择（全部 sheet/自定义，覆盖仅本次）；combo=成员/记录数摘要 -->
+    <!-- 执行确认：成员/记录数摘要 -->
     <PlanExecuteDialog v-model="executeDialogVisible" :plan="executePlan" @confirm="onExecuteConfirm" />
   </div>
 </template>
@@ -173,7 +170,7 @@ const uiSlots = ref(2)
 // 一键执行防抖（同方案执行中不允许重复点击）
 const runningId = ref<number | null>(null)
 
-// chain 执行弹窗（全部 sheet / 自定义轮数）
+// 执行确认弹窗（成员/记录数摘要）
 const executeDialogVisible = ref(false)
 const executePlan = ref<ExecutionPlan | null>(null)
 
@@ -208,24 +205,23 @@ async function onToggleEnabled(row: ExecutionPlan) {
   }
 }
 
-// 一键执行：两模式统一弹执行确认（chain=全部 sheet/自定义轮数，覆盖仅本次生效；
-// combo=成员/记录数摘要），行为可预期
+// 一键执行：统一弹执行确认（成员/记录数摘要），行为可预期
 async function onRun(row: ExecutionPlan) {
   if (!row.item_count) return ElMessage.warning('方案未配置成员，请先编辑添加用例')
   executePlan.value = row
   executeDialogVisible.value = true
 }
 
-// 执行弹窗确认：chain 带 rounds=本次覆盖（全部 sheet=成员数据集最大行数 / 自定义）；combo 不带
-async function onExecuteConfirm({ rounds }: { rounds?: number }) {
+// 执行弹窗确认：直接执行（无本次覆盖参数）
+async function onExecuteConfirm() {
   if (!executePlan.value) return
-  await startRun(executePlan.value, rounds)
+  await startRun(executePlan.value)
 }
 
-async function startRun(row: ExecutionPlan, rounds?: number) {
+async function startRun(row: ExecutionPlan) {
   runningId.value = row.id
   try {
-    await runner.runPlanWithFeedback(row.id, row.name, rounds != null ? { rounds } : {})
+    await runner.runPlanWithFeedback(row.id, row.name)
     router.push({ path: '/executions', query: { plan_id: String(row.id) } })
   } catch (e: any) {
     ElMessage.error(e.message || '执行失败')
@@ -325,10 +321,6 @@ watch(currentProjectId, (newId) => {
   margin-left: 6px;
   font-size: 12px;
   color: var(--app-text-muted);
-}
-/* 串行链模式徽标（方案名称列） */
-.mode-mark {
-  margin-left: 6px;
 }
 .next-run {
   margin-left: 6px;

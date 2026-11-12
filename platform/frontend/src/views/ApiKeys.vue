@@ -97,7 +97,7 @@
           <el-button type="primary" size="small" @click="copyKey">复制</el-button>
         </div>
         <div class="curl-example">
-          <div class="curl-title">curl 触发用例执行示例：</div>
+          <div class="curl-title">curl 触发用例执行示例（缺省 = 全部 bound 数据集全 sheet 展开；返回本次全部记录）：</div>
           <pre class="mono">curl -X POST "{{ baseApiUrl }}/testcases/{case_id}/execute" \
   -H "X-API-Key: {{ createdKey?.api_key }}" \
   -H "Content-Type: application/json" \
