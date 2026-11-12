@@ -158,6 +158,76 @@ class TestPlanCaseExpansion:
                 svc.plan_case_expansion(SimpleNamespace(), case, dataset_ids=[7])
 
 
+class TestRowMapExpansion:
+    """row_map 子集展开（执行面板「按 sheet 选择执行」弹窗，2026-11-12）：
+    {dataset_id: [row_index...]} 圈定哪几个数据集的哪几个 sheet，临时生效"""
+
+    def test_multi_dataset_sheet_subset(self):
+        """两个数据集各选部分 sheet → 只展开所选；sheets 仍携带该数据集全量
+        （${sheet.字段} 引用不因圈定而缺命名空间）"""
+        case = SimpleNamespace(id=11)
+        ds7 = _ds(_rows(3, labels=["A1", "A2", "A3"], ds_id=7), ds_id=7, name="场景A")
+        ds8 = _ds(_rows(2, labels=["B1", "B2"], ds_id=8), ds_id=8, name="场景B")
+        rows_by_ds = {7: ds7.rows, 8: ds8.rows}
+        ds_by_id = {7: ds7, 8: ds8}
+        with patch.object(svc.crud, "get_dataset",
+                          side_effect=lambda db, did: ds_by_id[did]), \
+             patch.object(svc.crud, "list_rows",
+                          side_effect=lambda db, did: rows_by_ds[did]), \
+             patch.object(svc.crud, "list_bound_datasets") as lb:
+            plan = svc.plan_case_expansion(SimpleNamespace(), case,
+                                           row_map={7: [1, 3], 8: [2]})
+        assert [(p["dataset_id"], p["row"]["label"]) for p in plan] == \
+            [(7, "A1"), (7, "A3"), (8, "B2")]
+        assert [s["label"] for s in plan[0]["sheets"]] == ["A1", "A2", "A3"]
+        lb.assert_not_called()  # 圈定即选择集，不读绑定
+
+    def test_unbound_dataset_picks_work(self):
+        """圈定未 bound 的数据集也合法（临时跑非绑定数据，与旧单发口径一致）"""
+        case = SimpleNamespace(id=11)
+        ds8 = _ds(_rows(1, labels=["B1"], ds_id=8), ds_id=8, name="场景B")
+        with patch.object(svc.crud, "get_dataset", return_value=ds8), \
+             patch.object(svc.crud, "list_rows", return_value=ds8.rows), \
+             patch.object(svc.crud, "list_bound_datasets") as lb:
+            plan = svc.plan_case_expansion(SimpleNamespace(), case, row_map={8: [1]})
+        assert [p["row"]["label"] for p in plan] == ["B1"]
+        lb.assert_not_called()
+
+    def test_pick_misses_all_rows_rejected(self):
+        """某数据集名单内的 row_index 全不存在 → 报错列出现有 sheet"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(2)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            with pytest.raises(ValueError, match=r"所选 sheet 无一存在（现有：1\(Sheet1\)、2\(Sheet2\)）"):
+                svc.plan_case_expansion(SimpleNamespace(), case, row_map={7: [9]})
+
+    def test_empty_row_indexes_rejected(self):
+        """某数据集给了空名单 → 同样按选不到报错（防手滑清空后误发全量）"""
+        case = SimpleNamespace(id=11)
+        rows = _rows(2)
+        with patch.object(svc.crud, "get_dataset", return_value=_ds(rows)), \
+             patch.object(svc.crud, "list_rows", return_value=rows):
+            with pytest.raises(ValueError, match="所选 sheet 无一存在"):
+                svc.plan_case_expansion(SimpleNamespace(), case, row_map={7: []})
+
+    def test_foreign_dataset_rejected(self):
+        """圈定了别的用例的数据集 → 拒（用例间隔离）"""
+        case = SimpleNamespace(id=11)
+        with patch.object(svc.crud, "get_dataset",
+                          return_value=_ds(_rows(2), case_id=99)):
+            with pytest.raises(ValueError, match="不属于该用例|隔离"):
+                svc.plan_case_expansion(SimpleNamespace(), case, row_map={7: [1]})
+
+    def test_empty_map_rejected(self):
+        """row_map 为空 dict → 未选择任何数据集/sheet（显式报错，不回落绑定全量）"""
+        case = SimpleNamespace(id=11)
+        with patch.object(svc.crud, "list_bound_datasets") as lb:
+            with pytest.raises(ValueError, match="未选择任何数据集/sheet"):
+                svc.plan_case_expansion(SimpleNamespace(), case, row_map={})
+        lb.assert_not_called()
+
+
 class TestSetCaseBinding:
     """绑定整组替换（PUT /testcases/{id}/dataset-binding 背后）"""
 

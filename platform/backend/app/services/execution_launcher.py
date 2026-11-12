@@ -36,6 +36,7 @@ def build_launch_plan(db: Session, case, user_id: int, *,
                       trigger_type: str = "manual",
                       dataset_ids: list[int] | None = None,
                       dataset_row_index: int | None = None,
+                      row_map: dict[int, list[int]] | None = None,
                       run_count: int = 1,
                       plan_id: int | None = None) -> LaunchPlan:
     """规划一个用例的一次发射：展开 → 建记录 → 组装 specs。
@@ -43,13 +44,14 @@ def build_launch_plan(db: Session, case, user_id: int, *,
     数据集不可执行（无数据/不存在）或用例未绑定环境抛 ValueError，由调用方决定 4xx 或跳过。
     展开语义（2026-11-12 B3 定案）：缺省 = 用例 bound 数据集全部 sheet，
     每条 = 一个 sheet 的单套值；dataset_ids 临时覆盖选择集；dataset_row_index
-    进一步收窄为指定 sheet（执行面板单发）。run_count>1 时整套展开重复提交。"""
+    进一步收窄为指定 sheet（执行面板单发）；row_map 按 {dataset_id: [row_index]}
+    多选圈定（执行面板按 sheet 选择弹窗）。run_count>1 时整套展开重复提交。"""
     if not getattr(case, "env_id", None):
         raise ValueError(f"用例「{case.name}」未绑定执行环境，请先在用例编辑中选择")
     if not crud.get_environment(db, case.env_id):
         raise ValueError(f"用例「{case.name}」绑定的环境已不存在（id={case.env_id}），请重新绑定")
     plan_items = dataset_service.plan_case_expansion(
-        db, case, dataset_ids=dataset_ids, row_index=dataset_row_index)
+        db, case, dataset_ids=dataset_ids, row_index=dataset_row_index, row_map=row_map)
 
     # 执行记录与 spec 的环境：用例绑定环境
     launch_env_id = case.env_id

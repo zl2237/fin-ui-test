@@ -197,19 +197,12 @@
                 <el-tooltip content="执行本行用例（= 全部绑定数据集 × 全部 sheet 各一条）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" :icon="VideoPlay" aria-label="执行本行用例" @click="runCase(row)" />
                 </el-tooltip>
-                <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
-                <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
-                  <el-button link type="success" size="small" class="run-data-caret" title="换套数据/数据行执行（临时生效）">
+                <!-- 按 sheet 选择执行：弹窗圈定哪几个数据集的哪几个 sheet（临时生效，不改用例绑定） -->
+                <el-tooltip content="按 sheet 选择执行（圈定数据集/sheet 子集，临时生效）" placement="top">
+                  <el-button link type="success" size="small" class="run-data-caret" aria-label="按 sheet 选择执行" @click="openSheetRun(row)">
                     <el-icon><ArrowDown /></el-icon>
                   </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item v-for="opt in dataOptionsFor(row)" :key="opt.key" :command="opt" :disabled="opt.disabled">
-                        {{ opt.label }}
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                </el-tooltip>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页） -->
                 <el-tooltip :content="(row.bound_dataset_ids || []).length ? `已绑定 ${row.bound_dataset_ids.length} 个数据集（可多选），点击调整` : '绑定数据集（可多选）启用数据集执行'" placement="top">
                   <el-button link :type="(row.bound_dataset_ids || []).length ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
@@ -341,19 +334,12 @@
                 <el-tooltip content="执行本行用例（= 全部绑定数据集 × 全部 sheet 各一条）；勾选多行后按 Ctrl+Enter 从第一个勾选项开始执行" placement="top">
                   <el-button link type="success" size="small" :icon="VideoPlay" aria-label="执行本行用例" @click="runCase(row)" />
                 </el-tooltip>
-                <!-- 换套数据执行：数据集/数据行下拉（临时生效，不改用例绑定与数据集内容） -->
-                <el-dropdown trigger="click" @command="(opt: RunDataOpt) => runCase(row, opt)" @visible-change="(v: boolean) => v && loadDataOptions(row)">
-                  <el-button link type="success" size="small" class="run-data-caret" title="换套数据/数据行执行（临时生效）">
+                <!-- 按 sheet 选择执行：弹窗圈定哪几个数据集的哪几个 sheet（临时生效，不改用例绑定） -->
+                <el-tooltip content="按 sheet 选择执行（圈定数据集/sheet 子集，临时生效）" placement="top">
+                  <el-button link type="success" size="small" class="run-data-caret" aria-label="按 sheet 选择执行" @click="openSheetRun(row)">
                     <el-icon><ArrowDown /></el-icon>
                   </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item v-for="opt in dataOptionsFor(row)" :key="opt.key" :command="opt" :disabled="opt.disabled">
-                        {{ opt.label }}
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                </el-tooltip>
                 <!-- 数据：只切换绑定数据集（编辑去数据集管理页） -->
                 <el-tooltip :content="(row.bound_dataset_ids || []).length ? `已绑定 ${row.bound_dataset_ids.length} 个数据集（可多选），点击调整` : '绑定数据集（可多选）启用数据集执行'" placement="top">
                   <el-button link :type="(row.bound_dataset_ids || []).length ? 'warning' : 'primary'" size="small" :icon="Grid" aria-label="数据集绑定" @click="openBind(row)" />
@@ -449,6 +435,9 @@
     <!-- 批量执行配置弹窗：逐用例设置执行次数 + 并发数（配置 UI 收敛在组件，执行编排在父视图） -->
     <BatchRunDialog v-model="batchRunVisible" :items="batchRunItems" @confirm="confirmBatchRun" />
 
+    <!-- 按 sheet 选择执行弹窗：数据集分组 + sheet 复选（缺省=bound 全勾），确认后走统一执行链 -->
+    <SheetRunDialog v-model="sheetRunVisible" :case-item="sheetRunCase" @confirm="onSheetRunConfirm" />
+
     <!-- 用例导入弹窗：上传/粘贴导出 JSON → 预演 → 确认（资产按业务键复用，缺则补建） -->
     <CaseImportDialog
       v-model="importVisible"
@@ -530,7 +519,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import Sortable from 'sortablejs'
 import { Rank, Folder, CaretRight, Search, WarningFilled, Timer, ArrowDown, EditPen, VideoPlay, Grid, MoreFilled } from '@element-plus/icons-vue'
-import { caseApi, caseGroupApi, userApi, scheduleApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule } from '@/api'
+import { caseApi, caseGroupApi, userApi, scheduleApi, type TestCase, type CaseGroup, type SimpleUser, type TestSchedule, type SheetSelectionIn } from '@/api'
 import { useAppStore } from '@/stores'
 import { formatTime, formatRelativeTime, execStatusText, execStatusType, fileTimestamp } from '@/utils/format'
 import { useGroupedTable, setGroupSwitchNotifier } from '@/composables/useGroupedTable'
@@ -540,6 +529,7 @@ import BatchMoveDialog from '@/components/BatchMoveDialog.vue'
 import CaseImportDialog from '@/components/CaseImportDialog.vue'
 import ScheduleDialog from '@/components/ScheduleDialog.vue'
 import BatchRunDialog from '@/components/BatchRunDialog.vue'
+import SheetRunDialog from '@/components/SheetRunDialog.vue'
 import { useFaviconStatus } from '@/composables/useFaviconStatus'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
 import { debounce } from '@/utils/ui'
@@ -882,20 +872,19 @@ function goDesign(row: TestCase) {
   router.push(`/cases/designer/${row.id}`)
 }
 
-async function runCase(row: TestCase, dataOpt?: RunDataOpt) {
+async function runCase(row: TestCase, sheetSelection?: SheetSelectionIn[]) {
   // 环境严格绑定：须已绑定环境（后端同口径校验兜底）
   if (!row.env_id) {
     return ElMessage.warning(`用例「${row.name}」未绑定执行环境，请先在列表「执行环境」列选择`)
   }
   try {
     // 执行→进度消息→逐条轮询→三态 favicon→聚合结果提示（超时含 running 态记录，同样跳报告页）
-    // dataOpt：执行时临时单发某数据集/某 sheet（下拉选择；缺省=全部 bound 数据集全 sheet 展开）
-    const suffix = dataOpt ? `（${dataOpt.label}）` : ''
+    // sheetSelection：执行弹窗圈定的「哪几个数据集的哪几个 sheet」子集（缺省=全部 bound 数据集全 sheet 展开）
+    const picked = sheetSelection?.reduce((n, s) => n + s.row_indexes.length, 0) || 0
     const recs = await runner.runWithFeedback(row.id, {
-      runningMsg: `用例「${row.name}」执行中...${suffix}`,
+      runningMsg: `用例「${row.name}」执行中...${picked ? `（按 sheet 选择 ${picked} 套）` : ''}`,
       maxPolls: 150,
-      datasetId: dataOpt?.datasetId,
-      rowIndex: dataOpt?.rowIndex,
+      sheetSelection,
     })
     // 多记录（数据集 × sheet 展开）跳首条报告，其余在执行记录列表查看
     if (recs[0]) router.push(`/reports/${recs[0].id}`)
@@ -905,47 +894,19 @@ async function runCase(row: TestCase, dataOpt?: RunDataOpt) {
   }
 }
 
-// ============ 换套数据执行（执行按钮旁 ▾ 下拉） ============
-interface RunDataOpt {
-  key: string
-  label: string
-  datasetId?: number
-  rowIndex?: number
-  disabled?: boolean
+// ============ 按 sheet 选择执行（执行按钮旁 ▾ 弹窗） ============
+// 数据集分组 + sheet 复选（缺省=bound 数据集全勾，未 bound 不勾），确认后走统一执行链
+const sheetRunVisible = ref(false)
+const sheetRunCase = ref<TestCase | null>(null)
+
+function openSheetRun(row: TestCase) {
+  sheetRunCase.value = row
+  sheetRunVisible.value = true
 }
 
-const dataOptionsMap = ref<Record<number, RunDataOpt[]>>({})
-
-function dataOptionsFor(row: TestCase): RunDataOpt[] {
-  return dataOptionsMap.value[row.id] || [{ key: 'loading', label: '加载中...', disabled: true }]
-}
-
-// 下拉展开时按用例懒加载一次（数据集按用例 1:N 隔离；行多时列表可能较长，Element 自带滚动）
-async function loadDataOptions(row: TestCase) {
-  if (dataOptionsMap.value[row.id]) return
-  try {
-    const list = await caseApi.datasets(row.id)
-    const opts: RunDataOpt[] = []
-    for (const ds of list) {
-      if (!ds.rows.length) {
-        opts.push({ key: `ds-${ds.id}`, label: `${ds.name}（无 sheet）`, datasetId: ds.id, disabled: true })
-        continue
-      }
-      for (const r of ds.rows) {
-        // bound 数据集的全部 sheet 都在缺省执行范围内（「缺省含」标注；其余为临时单发）
-        const inDefault = (row.bound_dataset_ids || []).includes(ds.id)
-        opts.push({
-          key: `ds-${ds.id}-r-${r.row_index}`,
-          label: `${ds.name} · ${r.label || `Sheet${r.row_index}`}${inDefault ? '（缺省含）' : ''}`,
-          datasetId: ds.id,
-          rowIndex: r.row_index,
-        })
-      }
-    }
-    dataOptionsMap.value[row.id] = opts.length ? opts : [{ key: 'none', label: '暂无数据集/数据行', disabled: true }]
-  } catch {
-    dataOptionsMap.value[row.id] = [{ key: 'err', label: '数据集加载失败', disabled: true }]
-  }
+// 弹窗确认 → 携 sheetSelection 走 runCase（环境校验/轮询/跳报告与直跑同路径）
+function onSheetRunConfirm(selection: SheetSelectionIn[]) {
+  if (sheetRunCase.value) runCase(sheetRunCase.value, selection)
 }
 
 // 批量执行入口：先弹配置窗（每个用例可设执行次数），确认后由 confirmBatchRun 提交
@@ -1120,7 +1081,6 @@ async function saveBind() {
     const updated = await caseApi.setDatasetBinding(bindCase.value.id, bindDatasetIds.value)
     bindCase.value.bound_dataset_ids = updated.bound_dataset_ids ?? [...bindDatasetIds.value]
     ElMessage.success(bindDatasetIds.value.length ? `已绑定 ${bindDatasetIds.value.length} 个数据集` : '已全部解绑')
-    delete dataOptionsMap.value[bindCase.value.id]  // 执行下拉的「（缺省含）」标注随绑定关系失效
     bindVisible.value = false
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败')

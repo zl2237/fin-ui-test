@@ -261,7 +261,8 @@ def remove_node_config(db: Session, dataset_id: int, node_id: str,
 
 # ============ 执行展开（sheet 语义：每个数据集 = 多 sheet 场景包，绑定多选） ============
 
-def plan_case_expansion(db: Session, case, dataset_ids=None, row_index=None) -> list:
+def plan_case_expansion(db: Session, case, dataset_ids=None, row_index=None,
+                        row_map: dict[int, list[int]] | None = None) -> list:
     """按用例绑定生成执行展开计划（绑定多选 + 全 sheet 展开，2026-11-12 B3 定案）。
 
     - dataset_ids 传入时临时覆盖用例绑定（执行面板换数据集/方案成员多选，
@@ -270,11 +271,28 @@ def plan_case_expansion(db: Session, case, dataset_ids=None, row_index=None) -> 
       （记录数 = Σ(数据集 sheet 数)，多场景由此承接，替代旧链模式「每轮瞬移」）
     - row_index 传入时选指定 sheet（执行面板单发，值=DataSetRow.row_index；
       与 dataset_ids 搭配只发该 sheet 一条）
+    - row_map 传入时按 {dataset_id: [row_index...]} 子集展开（执行面板按 sheet
+      多选临时圈定：哪几个数据集的哪几个 sheet；键须存在且属于该用例，某数据集
+      的名单选不到任何 sheet 即报错。与 dataset_ids/row_index 互斥，路由层校验）
     - 每个 item 的 sheets = 该 item 所属数据集自己的全部 sheet（不跨数据集混，
       供引擎以 ${sheet.字段} 命名空间注入，context.py）
     - 无生效数据集 → ValueError：执行强绑定（2026-09-30 定案沿用）
     """
-    if dataset_ids:
+    picks: dict[int, set[int]] | None = None
+    if row_map is not None:
+        effective = []
+        picks = {}
+        for ds_id, idxs in row_map.items():
+            ds = crud.get_dataset(db, ds_id)
+            if not ds:
+                raise ValueError(f"数据集不存在: {ds_id}")
+            if ds.case_id != case.id:
+                raise ValueError("数据集不属于该用例（数据集按用例隔离，请在用例自己的数据集中选择）")
+            effective.append(ds)
+            picks[ds_id] = set(idxs)
+        if not effective:
+            raise ValueError("未选择任何数据集/sheet：请至少勾选一个 sheet")
+    elif dataset_ids:
         effective = []
         for ds_id in dataset_ids:
             ds = crud.get_dataset(db, ds_id)
@@ -297,6 +315,13 @@ def plan_case_expansion(db: Session, case, dataset_ids=None, row_index=None) -> 
             {"row_index": x.row_index, "label": x.label or f"Sheet{x.row_index}", "data": dict(x.data or {})}
             for x in rows
         ]
+        if picks is not None:
+            wanted = picks.get(ds.id, set())
+            picked = [x for x in rows if x.row_index in wanted]
+            if not picked:
+                avail = "、".join(f"{x.row_index}({x.label or f'Sheet{x.row_index}'})" for x in rows)
+                raise ValueError(f"数据集「{ds.name}」所选 sheet 无一存在（现有：{avail}）")
+            rows = picked
         if row_index is not None:
             picked = [x for x in rows if x.row_index == row_index]
             if not picked:

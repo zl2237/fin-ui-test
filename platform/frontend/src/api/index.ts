@@ -457,11 +457,20 @@ export const caseApi = {
     http.post<{ message: string; updated: number }>('/testcases/reorder', { items }).then((r) => r.data),
   // 环境严格绑定：执行环境=用例绑定环境（case.env_id），不再传 env_id。
   // datasetId 临时换数据集（该数据集全部 sheet 各一条）；+rowIndex 单发指定 sheet；
-  // 双缺省 = 用例全部 bound 数据集全 sheet 展开（记录数 = Σ(bound 数据集 sheet 数)）。
+  // sheetSelection 按「哪几个数据集的哪几个 sheet」多选圈定（执行弹窗）；
+  // 三者全缺省 = 用例全部 bound 数据集全 sheet 展开（记录数 = Σ(bound 数据集 sheet 数)）。
   // 返回本次全部记录（UI 平台语义；面板/列表跳转第一条报告）
-  execute: (caseId: number, datasetId?: number, rowIndex?: number) =>
-    http.post<ExecutionRecord[]>(`/testcases/${caseId}/execute`,
-      { case_id: caseId, dataset_id: datasetId ?? null, dataset_row_index: rowIndex ?? null }).then((r) => r.data),
+  execute: (caseId: number, opts: {
+    datasetId?: number
+    rowIndex?: number
+    sheetSelection?: SheetSelectionIn[]
+  } = {}) =>
+    http.post<ExecutionRecord[]>(`/testcases/${caseId}/execute`, {
+      case_id: caseId,
+      dataset_id: opts.datasetId ?? null,
+      dataset_row_index: opts.rowIndex ?? null,
+      sheet_selection: opts.sheetSelection ?? null,
+    }).then((r) => r.data),
   // 绑定数据集（多选整体替换；空数组=全部解绑，用例将不可执行）
   setDatasetBinding: (caseId: number, datasetIds: number[]) =>
     http.put<TestCase>(`/testcases/${caseId}/dataset-binding`, { dataset_ids: datasetIds }).then((r) => r.data),
@@ -521,6 +530,13 @@ export interface DataSetSheetOut {
   label: string
   field_desc?: Record<string, string> | null
   field_order?: string[] | null
+}
+
+/** 执行时按 sheet 子集圈定（执行弹窗多选）：dataset_id 数据集内 row_indexes 名单
+ *  的 sheet 各一条记录；临时生效，不改用例绑定 */
+export interface SheetSelectionIn {
+  dataset_id: number
+  row_indexes: number[]
 }
 
 /** 保存载荷：label/data 必带，field_desc/field_order 可选（空则不落） */

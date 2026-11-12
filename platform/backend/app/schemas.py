@@ -578,6 +578,13 @@ class ProjectVersionDiff(BaseModel):
 
 
 # ============ Execution ============
+class SheetPick(BaseModel):
+    """执行时按 sheet 子集圈定（执行面板多选）：dataset_id 数据集内 row_indexes
+    名单的 sheet 各一条记录；与 dataset_id/dataset_row_index 单发口径互斥"""
+    dataset_id: int
+    row_indexes: list[int]
+
+
 class ExecutionCreate(BaseModel):
     case_id: int
     env_id: int | None = None  # 已废止：环境为用例属性（case.env_id），此处兼容旧客户端忽略
@@ -586,6 +593,9 @@ class ExecutionCreate(BaseModel):
     # dataset_id+dataset_row_index 一起传 = 单套单发一条记录；不传 dataset_id
     # = 绑定集内每个数据集的每个 sheet 各一条记录）
     dataset_row_index: int | None = None
+    # 执行时按数据集×sheet 多选圈定（执行面板「按 sheet 选择执行」弹窗）：
+    # 临时生效不改绑定；与 dataset_id/dataset_row_index 互斥
+    sheet_selection: list[SheetPick] | None = None
     # 并发执行数：1=逐个串行（一个结束再下一个，避免并发问题），默认 4
     concurrency: int = 4
 

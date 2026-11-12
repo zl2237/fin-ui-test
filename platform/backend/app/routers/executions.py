@@ -30,17 +30,23 @@ def execute(case_id: int, data: schemas.ExecutionCreate, db: Session = Depends(g
     环境严格绑定：一律用用例绑定的环境（case.env_id），请求里的 env_id 兼容忽略。
     数据驱动（2026-11-12 B3 定案）：缺省 = bound 绑定集全 sheet 展开（每个 sheet
     一条记录，多场景由此承接）；执行面板单发可传 dataset_id+dataset_row_index
-    只发指定数据集的指定 sheet 一条（均不改用例绑定与数据集内容）。"""
+    只发指定数据集的指定 sheet 一条；sheet_selection 按「哪几个数据集的哪几个
+    sheet」多选圈定（临时生效，均不改用例绑定与数据集内容）。"""
     if data.case_id != case_id:
         raise HTTPException(400, "case_id 不一致")
     case = crud.get_testcase(db, case_id)
     if not case:
         raise HTTPException(404, f"用例不存在: {case_id}")
+    if data.sheet_selection is not None and (data.dataset_id or data.dataset_row_index):
+        raise HTTPException(400, "sheet_selection 与 dataset_id/dataset_row_index 不可同时传")
 
     try:
+        row_map = ({p.dataset_id: p.row_indexes for p in data.sheet_selection}
+                   if data.sheet_selection is not None else None)
         plan = build_launch_plan(db, case, user.id,
                                  dataset_ids=[data.dataset_id] if data.dataset_id else None,
-                                 dataset_row_index=data.dataset_row_index)
+                                 dataset_row_index=data.dataset_row_index,
+                                 row_map=row_map)
     except ValueError as e:
         raise HTTPException(400, str(e))
     _validate_concurrency(data.concurrency)

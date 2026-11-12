@@ -14,7 +14,7 @@
  */
 import { onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { caseApi, execApi, planApi, type ExecutionRecord, type ExecutionSummary } from '@/api'
+import { caseApi, execApi, planApi, type ExecutionRecord, type ExecutionSummary, type SheetSelectionIn } from '@/api'
 import { useFaviconStatus } from '@/composables/useFaviconStatus'
 
 export interface ExecRecordLike {
@@ -78,13 +78,23 @@ export function useExecutionRunner() {
    * 关闭进度消息、复位 favicon 后原样抛出。
    * 环境严格绑定：执行环境=用例绑定环境，此处不再接收 envId。
    * datasetId：临时换数据集（该数据集全部 sheet 各一条）；+rowIndex 单发指定 sheet；
-   * 双缺省 = 用例全部 bound 数据集全 sheet 展开。
+   * sheetSelection：按「哪几个数据集的哪几个 sheet」多选圈定（执行弹窗）；
+   * 三者全缺省 = 用例全部 bound 数据集全 sheet 展开。
    */
   async function runWithFeedback(
     caseId: number,
-    opts: PollOptions & { runningMsg?: string; datasetId?: number; rowIndex?: number } = {},
+    opts: PollOptions & {
+      runningMsg?: string
+      datasetId?: number
+      rowIndex?: number
+      sheetSelection?: SheetSelectionIn[]
+    } = {},
   ): Promise<ExecRecordLike[]> {
-    const started: ExecutionRecord[] = await caseApi.execute(caseId, opts.datasetId, opts.rowIndex)
+    const started: ExecutionRecord[] = await caseApi.execute(caseId, {
+      datasetId: opts.datasetId,
+      rowIndex: opts.rowIndex,
+      sheetSelection: opts.sheetSelection,
+    })
     favicon.running()
     const msg = ElMessage({ message: opts.runningMsg ?? '执行中...', type: 'info', duration: 0 })
     try {
