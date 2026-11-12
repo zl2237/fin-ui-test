@@ -45,11 +45,11 @@
               <span class="strip-label">默认轮数</span>
               <el-input-number v-model="rounds" :min="1" :max="9999" size="small" controls-position="right" style="width: 100px" @change="dirty = true" />
               <span class="strip-label">轮间并发</span>
-              <el-input-number v-model="concurrency" :min="1" :max="16" size="small" controls-position="right" style="width: 92px" @change="dirty = true" />
+              <el-input-number v-model="concurrency" :min="1" :max="uiSlots" size="small" controls-position="right" style="width: 92px" @change="dirty = true" />
             </template>
             <template v-else>
               <span class="strip-label">并发上限</span>
-              <el-input-number v-model="concurrency" :min="1" :max="16" size="small" controls-position="right" style="width: 92px" @change="dirty = true" />
+              <el-input-number v-model="concurrency" :min="1" :max="uiSlots" size="small" controls-position="right" style="width: 92px" @change="dirty = true" />
             </template>
             <el-input v-model="description" class="strip-desc" placeholder="方案描述（可选）" maxlength="500" @input="dirty = true" />
           </div>
@@ -58,7 +58,7 @@
               轮内按序串行 · 成功输出可传下一棒（下一棒以 __prev__.变量名 引用） · 上游失败阻断本轮下游 · 第 r 轮各成员取数据集第 r 行（不足沿用末行）
             </template>
             <template v-else>
-              成员相互独立并行执行 · 失败互不影响 · 并发为提交上限（成员含 UI 用例时上限 2 = 同时存活的浏览器槽位）
+              成员相互独立并行执行 · 失败互不影响 · 并发上限 {{ uiSlots }} = 同时存活的浏览器槽位
             </template>
           </div>
 
@@ -95,7 +95,7 @@
                       :key="d.id"
                       :value="d.id"
                       :label="dsLabel(m, d)"
-                      :disabled="!d.rows.length"
+                      :disabled="!d.rows.length && !d.seeded"
                     />
                   </el-select>
                   <el-button v-if="dsError[m.case_id]" link type="danger" size="small" @click="loadDsInfo(m, true)">
@@ -220,7 +220,7 @@ import Sortable from 'sortablejs'
 import { ArrowDown, ArrowLeft, Plus, QuestionFilled, Rank, WarningFilled } from '@element-plus/icons-vue'
 import DrawCheck from '@/components/DrawCheck.vue'
 import { useTransientFlag } from '@/composables/useTransientFlag'
-import { caseApi, planApi, type TestCase } from '@/api'
+import { caseApi, envApi, planApi, type TestCase } from '@/api'
 import { useAppStore } from '@/stores'
 import { useTabStore } from '@/stores/tabs'
 import { useExecutionRunner } from '@/composables/useExecutionRunner'
@@ -249,6 +249,9 @@ const addVisible = ref(false)     // 添加成员弹窗
 
 const name = ref('')
 const description = ref('')
+/** 浏览器槽位上限（UI_BROWSER_CONCURRENCY）：并发/轮间并发输入框动态 max；
+ *  后端三入口（保存/替换成员/执行预检含定时）强校验兜底，此处仅为输入侧即时收敛 */
+const uiSlots = ref(2)
 const concurrency = ref(4)
 // 方案模式：combo 并行组合 / chain 串行链（按序+相邻定向传参+失败阻断本轮下游）
 const mode = ref<'combo' | 'chain'>('combo')
@@ -319,13 +322,15 @@ function projectName(pid: number | null): string {
 }
 
 // ===== 数据集选项（成员加载/添加时并行预取；数据集与取行两个控件共享） =====
-interface DsInfo { id: number; name: string; rows: { row_index: number; label: string }[] }
+interface DsInfo { id: number; name: string; rows: { row_index: number; label: string }[]; seeded?: boolean }
 const dsInfo = ref<Record<number, DsInfo[]>>({})
 const dsError = ref<Record<number, boolean>>({})
+// 已拉全量的用例集合：与「详情预置的种子选项」区分——种子存在但预取照常进行并覆盖
+const dsFetchedCaseIds = new Set<number>()
 
 async function loadDsInfo(m: ItemRow, force = false) {
   if (m.case_missing) return
-  if (!force && (dsInfo.value[m.case_id] || dsError.value[m.case_id])) return
+  if (!force && dsFetchedCaseIds.has(m.case_id)) return
   dsError.value[m.case_id] = false
   try {
     const list = await caseApi.datasets(m.case_id)
@@ -334,8 +339,10 @@ async function loadDsInfo(m: ItemRow, force = false) {
       name: d.name,
       rows: d.rows.map((r) => ({ row_index: r.row_index, label: r.label || '' })),
     }))
+    dsFetchedCaseIds.add(m.case_id)
   } catch {
-    dsInfo.value[m.case_id] = []
+    // 失败保留详情预置的种子选项（若有），避免选中值显示成裸 dataset_id；未记已拉取，重试自动重拉
+    if (!dsInfo.value[m.case_id]?.some((d) => d.seeded)) dsInfo.value[m.case_id] = []
     dsError.value[m.case_id] = true
   }
 }
@@ -349,6 +356,7 @@ function memberRows(m: ItemRow): { row_index: number; label: string }[] {
 
 /** 选项直接带行数（选中后闭着也能看到数据量；空数据集不可选） */
 function dsLabel(m: ItemRow, d: DsInfo): string {
+  if (d.seeded) return d.name // 详情预置种子：行数未知，仅保住名称显示（预取成功后被全量覆盖）
   if (!d.rows.length) return `${d.name}（空）`
   const bound = d.id === m.case_dataset_id ? ' · 用例绑定' : ''
   return `${d.name} · ${d.rows.length} 行${bound}`
@@ -393,10 +401,17 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    plan.value = await planApi.get(planId)
+    // 槽位上限与方案详情并行拉取（失败回落默认 2；后端保存/执行仍强校验兜底）
+    const [detail, cap] = await Promise.all([
+      planApi.get(planId),
+      envApi.browserCapabilities().catch(() => null),
+    ])
+    if (cap?.browser_slots) uiSlots.value = Math.max(1, cap.browser_slots)
+    plan.value = detail
     name.value = plan.value.name
     description.value = plan.value.description || ''
-    concurrency.value = plan.value.concurrency
+    // 超槽位的存量值收敛到槽位（后端本就拒绝超限，避免一次注定 400 的保存）
+    concurrency.value = Math.min(plan.value.concurrency || 1, uiSlots.value)
     mode.value = plan.value.mode || 'combo'
     rounds.value = plan.value.rounds || 1
     scheduleType.value = plan.value.schedule_type || 'interval'
@@ -424,6 +439,12 @@ async function load() {
         base.env_id = c.env_id ?? null
         base.case_dataset_id = c.dataset_id ?? null
       } catch { /* 用例详情取失败不阻塞编辑（执行预检兜底） */ }
+      // 覆盖数据集选项立即用详情预置种子（name 保住显示）：
+      // 预取返回前的窗口期/预取失败时，el-select 值无匹配 option 会直接显示裸 dataset_id
+      if (base.dataset_id != null && !base.dataset_missing && it.dataset_name
+          && !dsInfo.value[base.case_id]?.length) {
+        dsInfo.value[base.case_id] = [{ id: base.dataset_id, name: it.dataset_name, rows: [], seeded: true }]
+      }
       return base
     }))
     dirty.value = false

@@ -129,8 +129,8 @@
           <el-input v-model="createForm.description" placeholder="方案用途说明（可选）" maxlength="500" />
         </el-form-item>
         <el-form-item label="执行并发">
-          <el-input-number v-model="createForm.concurrency" :min="1" :max="16" />
-          <span class="concurrency-tip">成员并行提交上限（1=串行）</span>
+          <el-input-number v-model="createForm.concurrency" :min="1" :max="uiSlots" />
+          <span class="concurrency-tip">成员并行提交上限（=浏览器槽位 {{ uiSlots }}）</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -149,7 +149,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, VideoPlay, DataAnalysis, Edit, Delete, WarningFilled } from '@element-plus/icons-vue'
-import { planApi, type ExecutionPlan } from '@/api'
+import { envApi, planApi, type ExecutionPlan } from '@/api'
 import { useAppStore } from '@/stores'
 import { storeToRefs } from 'pinia'
 import { formatTime, formatRelativeTime } from '@/utils/format'
@@ -167,6 +167,9 @@ const loading = ref(false)
 const loadError = ref('')
 const filterProjectId = ref<number | null>(currentProjectId.value)
 
+/** 浏览器槽位上限（UI_BROWSER_CONCURRENCY）：新建方案并发输入框动态 max（后端保存强校验兜底） */
+const uiSlots = ref(2)
+
 // 一键执行防抖（同方案执行中不允许重复点击）
 const runningId = ref<number | null>(null)
 
@@ -180,6 +183,10 @@ function scheduleText(row: ExecutionPlan): string {
 }
 
 async function load() {
+  // 槽位上限随列表首拉取（失败回落默认 2，后端保存强校验兜底）
+  envApi.browserCapabilities()
+    .then((cap) => { uiSlots.value = Math.max(1, cap.browser_slots || 1) })
+    .catch(() => {})
   loading.value = true
   loadError.value = ''
   try {
@@ -260,7 +267,7 @@ function openCreate() {
   createForm.project_id = currentProjectId.value
   createForm.name = ''
   createForm.description = ''
-  createForm.concurrency = 4
+  createForm.concurrency = Math.min(4, uiSlots.value)
   createVisible.value = true
 }
 

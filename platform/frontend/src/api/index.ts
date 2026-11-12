@@ -432,7 +432,7 @@ export const envApi = {
   reorder: (items: { id: number; sort_order: number }[]) =>
     http.post<{ message: string; updated: number }>('/environments/reorder', { items }).then((r) => r.data),
   browserCapabilities: () =>
-    http.get<{ headed_supported: boolean; reason: string }>('/environments/browser-capabilities').then((r) => r.data),
+    http.get<{ headed_supported: boolean; reason: string; browser_slots: number }>('/environments/browser-capabilities').then((r) => r.data),
 }
 
 // ============ CaseGroup ============

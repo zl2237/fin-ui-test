@@ -76,3 +76,14 @@ def test_ui_case_at_cap_passes(cap2):
 def test_serial_concurrency_always_passes(cap2):
     db = FakeDb([1])
     validate_concurrency_for_cases(db, 1, [1])  # 串行无槽位竞争
+
+
+def test_browser_capabilities_exposes_slots():
+    """browser-capabilities 端点透出槽位数：前端据此动态限制并发输入框（2026-11-12）。"""
+    from types import SimpleNamespace
+
+    from app.routers.environments import browser_capabilities
+
+    resp = browser_capabilities(user=SimpleNamespace())
+    assert resp["browser_slots"] == max(1, ui_runtime_mod.UI_BROWSER_CONCURRENCY)
+    assert isinstance(resp["headed_supported"], bool)
