@@ -108,7 +108,8 @@ describe('useExecutionRunner', () => {
   it('runWithFeedback：多记录（数据集 × sheet 展开）逐条轮询后记录级聚合', async () => {
     mockedExecute.mockResolvedValue([prec(21, 'running'), prec(22, 'running'), prec(23, 'running')])
     // 21 成功 / 22 失败 / 23 超时（达上限仍 running）
-    mockedGet.mockImplementation(async (id: number) => {
+    // any：测试替身不逐字段构造 ExecutionRecord（与 rec()/prec() 同口径）
+    mockedGet.mockImplementation(async (id: number): Promise<any> => {
       if (id === 21) return { id, status: 'success' }
       if (id === 22) return { id, status: 'failed' }
       return { id, status: 'running' }
