@@ -274,20 +274,28 @@ class DagExecutor:
             if self._contract_gaps:
                 record.summary = {**record.summary, "contract_gaps": self._contract_gaps}
         finally:
-            # UI 运行时收尾先行：关浏览器并把录屏收进文件中心（video 开启时），
-            # video_file_id 并入 summary 随本次 commit 一并落库（报告页据此出回放入口）
+            # UI 运行时收尾先行：关浏览器并把录屏/trace 收进文件中心（按 browser_config），
+            # video_file_id/trace_file_id 并入 summary 随本次 commit 一并落库（报告页据此出入口）
             if self._ui_runtime is not None:
                 try:
+                    # 终态先注入：trace 的 on_failure 模式按此决定保留/丢弃
+                    self._ui_runtime.final_status = record.status
                     self._ui_runtime.close()
                 except Exception as e:
                     print(f"[资源清理] UI runtime 关闭失败（忽略）: {e}")
                 video_file_id = getattr(self._ui_runtime, "video_file_id", None)
-                if video_file_id:
+                trace_file_id = getattr(self._ui_runtime, "trace_file_id", None)
+                if video_file_id or trace_file_id:
                     # 必须「拷贝新 dict 再整体赋值」：record.summary 取出的就是映射
                     # 属性里的原 dict，原地加键后赋回同一对象，SQLAlchemy identity
                     # 比较判定属性未变 → summary 列不进 UPDATE，video_file_id 静默
                     # 丢失（exec1069：webm 已落库 2984，summary 却没有回放入口）
-                    record.summary = {**(record.summary or {}), "video_file_id": video_file_id}
+                    extra = {**(record.summary or {})}
+                    if video_file_id:
+                        extra["video_file_id"] = video_file_id
+                    if trace_file_id:
+                        extra["trace_file_id"] = trace_file_id
+                    record.summary = extra
             record.ended_at = datetime.now()
             self.db.commit()
             # 用例列表「最近执行」回写（统计列，失败静默不影响收尾）
@@ -303,8 +311,11 @@ class DagExecutor:
                     self.http_client.session.close()
                 except Exception as e:
                     print(f"[资源清理] HTTP session 关闭失败（忽略）: {e}")
-            # 发送企微通知（执行人/项目名取数与门控都在 notifier，见其模块注释）
-            if self.suppress_notify:
+            # 发送执行通知（取数与门控都在 notifier，见其模块注释）
+            if getattr(record, "plan_id", None):
+                # 方案成员不逐条通知：plan_executor 收尾发一条方案聚合通知（combo 看门狗/chain 链尾）
+                print("[通知发送] 跳过逐条通知：方案执行由方案聚合通知汇总发送")
+            elif self.suppress_notify:
                 print("[通知发送] 跳过逐条通知：数据驱动批量执行由聚合器汇总发送")
             else:
                 send_notify(self.db, self.env, self.case, record)

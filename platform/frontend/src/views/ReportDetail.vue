@@ -112,6 +112,17 @@
           >
             <el-icon style="margin-right: 4px"><VideoPlay /></el-icon>录屏回放
           </el-button>
+          <!-- Playwright trace 包下载：环境 trace=on_failure/always 时 summary 带 trace_file_id -->
+          <template v-if="traceFileId">
+            <el-button size="small" type="primary" plain :loading="traceLoading" @click="downloadTrace">
+              <el-icon style="margin-right: 4px"><Download /></el-icon>下载 Trace
+            </el-button>
+            <el-tooltip content="Trace 文件怎么打开、怎么看" placement="top">
+              <el-button size="small" text @click="traceHelpVisible = true">
+                <el-icon><QuestionFilled /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </template>
           <el-button text @click="router.back()">返回</el-button>
         </div>
       </div>
@@ -130,6 +141,40 @@
         <video v-if="videoUrl" :src="videoUrl" controls autoplay class="exec-video" />
         <div v-else-if="!videoLoading" class="video-empty">录屏加载失败，可到文件中心「UI执行录屏」分类下载原文件</div>
       </div>
+    </el-dialog>
+
+    <!-- Trace 查看指引：trace 是本地 CLI 工具回放，给出可复制的命令与操作说明 -->
+    <el-dialog v-model="traceHelpVisible" title="Trace 回放指引" width="560px" align-center>
+      <el-steps :active="3" align-center style="margin-bottom: 16px">
+        <el-step title="下载 Trace" />
+        <el-step title="命令行打开" />
+        <el-step title="逐帧回放" />
+      </el-steps>
+      <ol class="trace-help-list">
+        <li>
+          点「下载 Trace」保存 <code>{{ traceFileName }}</code>（浏览器默认下载目录）。
+        </li>
+        <li>
+          在 zip 所在目录打开命令行执行（本机需装有 Playwright）：
+          <div class="trace-cmd-row">
+            <code>{{ traceCmd }}</code>
+            <el-button size="small" text @click="copyTraceCmd(traceCmd)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </div>
+          <div class="trace-cmd-row">
+            <code>{{ traceCmdNpx }}</code>
+            <el-button size="small" text @click="copyTraceCmd(traceCmdNpx)">
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </div>
+          <div class="trace-help-tip">（装了 Node 但没装 Playwright 时用第二条；命令里的文件名换成完整路径也行）</div>
+        </li>
+        <li>
+          查看器打开后：上方时间轴拖动逐帧，点每一步看右侧 <b>动作 / DOM 快照 / 网络 / 控制台</b>，
+          定位「点错了哪一下、当时页面长什么样」比录屏精确。
+        </li>
+      </ol>
     </el-dialog>
 
     <!-- 失败摘要卡：与导出 HTML 报告同构（仅失败时渲染，点击跳转对应步骤） -->
@@ -484,7 +529,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Search, CircleCloseFilled, WarningFilled, VideoPlay } from '@element-plus/icons-vue'
+import { Loading, Search, CircleCloseFilled, WarningFilled, VideoPlay, Download, QuestionFilled, CopyDocument } from '@element-plus/icons-vue'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
 import EmptyState from '@/components/EmptyState.vue'
@@ -665,6 +710,43 @@ function closeVideo() {
   }
 }
 onUnmounted(closeVideo)
+
+// ===== Playwright trace 包下载（summary.trace_file_id → 文件中心 zip，a[download] 落地）=====
+const traceFileId = computed<number | null>(() =>
+  (record.value?.summary as any)?.trace_file_id ?? null)
+const traceLoading = ref(false)
+const traceFileName = computed(() => `trace_exec_${record.value?.id ?? traceFileId.value}.zip`)
+async function downloadTrace() {
+  if (!traceFileId.value || traceLoading.value) return
+  traceLoading.value = true
+  try {
+    const { url } = await fileApi.fetchBlob(traceFileId.value, false)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = traceFileName.value
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 30_000) // 下载触发后延迟释放
+    // 下载完成顺手弹查看指引：trace 是本地 CLI 工具回放，不引导大概率不知道怎么看
+    traceHelpVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.message || 'Trace 下载失败')
+  } finally {
+    traceLoading.value = false
+  }
+}
+
+// ===== Trace 查看指引（playwright show-trace 本地回放，命令可复制）=====
+const traceHelpVisible = ref(false)
+const traceCmd = computed(() => `playwright show-trace ${traceFileName.value}`)
+const traceCmdNpx = computed(() => `npx playwright show-trace ${traceFileName.value}`)
+async function copyTraceCmd(cmd: string) {
+  try {
+    await navigator.clipboard.writeText(cmd)
+    ElMessage.success('命令已复制，到 zip 所在目录执行')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择命令文本复制')
+  }
+}
 
 // UI/API 步骤切换时详情 tab 联动：页面详情 ↔ 请求，避免停留在已隐藏的 tab 上
 watch(currentStep, (s) => {
@@ -1444,6 +1526,34 @@ onUnmounted(stopPolling)
 .video-empty {
   color: var(--app-text-2nd, #909399);
   font-size: 13px;
+}
+/* Trace 回放指引弹窗 */
+.trace-help-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.trace-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.trace-cmd-row code {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+  word-break: break-all;
+}
+.trace-help-tip {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--app-text-2nd, #909399);
 }
 /* UI 动作 tag：与 DAG UI 节点同源的紫罗兰语义 */
 .ui-action-tag {

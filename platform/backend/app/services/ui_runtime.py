@@ -328,6 +328,16 @@ def save_video_file(db, project_id: int | None, video_bytes: bytes, name: str,
                                "UI执行录屏", user_id=user_id, category_id=category_id)
 
 
+def save_trace_file(db, project_id: int | None, zip_bytes: bytes, name: str,
+                    user_id: int | None = None, category_id: int | None = None) -> int | None:
+    """Playwright trace 包（zip）落文件中心；归「UI执行Trace」分类。
+
+    下载后 `playwright show-trace trace.zip` 本地回放（DOM 快照逐帧、
+    控制台/网络/操作流水），排障粒度远高于录屏。"""
+    return _persist_media_file(db, project_id, zip_bytes, name, "application/zip",
+                               "UI执行Trace", user_id=user_id, category_id=category_id)
+
+
 class UiRuntime:
     """单条用例的浏览器运行时：一个 Chromium + 一个 Page 贯穿全 DAG。"""
 
@@ -355,6 +365,14 @@ class UiRuntime:
         self.video_file_id: int | None = None
         # 录屏归档的执行人（execution_record.created_by，由 dag_executor 注入）
         self.video_user_id: int | None = None
+        # Playwright trace（browser_config.trace：off/on_failure/always）：
+        # 开启即随 context 启动（trace 不能事后补录），close() 按终态决定落盘或丢弃
+        self._trace_mode = str(self.config.get("trace") or "off").lower()
+        self._trace_dir: str | None = None
+        self._trace_collected = False
+        self.trace_file_id: int | None = None
+        # 本次执行终态（dag_executor 收尾前注入，on_failure 判定用；None=未注入视作失败保留）
+        self.final_status: str | None = None
         self._login_check_done = False
 
     # ---------- 浏览器生命周期 ----------
@@ -437,6 +455,9 @@ class UiRuntime:
                 }
             browser_context = self._browser.new_context(**context_kwargs)
             self._context = browser_context
+            if self._trace_mode in ("on_failure", "always"):
+                # trace 必须在产生动作前开启（无法事后补录）；结束收尾在 close()
+                browser_context.tracing.start(screenshots=True, snapshots=True, sources=True)
             self._inject_session_cookies(browser_context)
             self._page = browser_context.new_page()
             if self._video_dir is not None:
@@ -490,8 +511,11 @@ class UiRuntime:
             return None
 
     def close(self):
-        """收尾：关浏览器 + 收录屏 + 停 playwright + 释放并发闸门（幂等，失败安全）。"""
+        """收尾：收 trace + 关浏览器 + 收录屏 + 停 playwright + 释放并发闸门（幂等，失败安全）。"""
         video = self._video
+        # trace 收尾先行：tracing.stop(path) 必须在 context.close() 之前，
+        # context 关掉后 tracing 句柄失效（zip 也就写不出来了）
+        self._collect_trace()
         for target in (self._page, self._context, self._browser):
             if target is not None:
                 try:
@@ -529,6 +553,51 @@ class UiRuntime:
                 print(f"[UI清理] playwright 停止失败（忽略）: {e}")
         self._page = self._browser = self._context = self._playwright = None
         self._release()
+
+    def _collect_trace(self):
+        """trace 收尾（close() 开头调用，须先于 context.close()）。
+
+        保留判定：always 无条件保留；on_failure 仅 failed/terminated 保留——
+        final_status 未注入（None，异常兜底路径）也保留（无法证明成功，宁留勿丢）；
+        成功且 on_failure → stop 不带 path 直接丢弃。
+        trace 与录屏同为附加产物：收集失败只打日志不阻断收尾。
+        """
+        if self._trace_mode not in ("on_failure", "always"):
+            return
+        if self._trace_collected:
+            return  # 已收过（close 幂等，二次调用不重复 stop）
+        ctx = self._context
+        if ctx is None:
+            return  # 浏览器未启动或已收尾，无 trace 可收
+        keep = (self._trace_mode == "always"
+                or self.final_status in (None, "failed", "terminated"))
+        try:
+            if keep:
+                import tempfile
+                self._trace_dir = tempfile.mkdtemp(prefix="uitrace_")
+                zip_path = os.path.join(self._trace_dir, "trace.zip")
+                ctx.tracing.stop(path=zip_path)
+                if os.path.exists(zip_path):
+                    with open(zip_path, "rb") as fh:
+                        data = fh.read()
+                    if data:
+                        name = f"exec_{self.execution_id or 'ui'}.zip"
+                        self.trace_file_id = save_trace_file(
+                            self.db, self.project_id, data, name,
+                            user_id=self.video_user_id)
+            else:
+                ctx.tracing.stop()  # 成功且 on_failure：丢弃不落盘
+        except Exception as e:  # noqa: BLE001
+            print(f"[UI Trace] 收集失败（忽略）: {e}")
+        finally:
+            self._trace_collected = True
+            if self._trace_dir:
+                try:
+                    import shutil
+                    shutil.rmtree(self._trace_dir, ignore_errors=True)
+                except Exception:  # pragma: no cover
+                    pass
+                self._trace_dir = None
 
     def _release(self):
         # 只在确实持锁后释放（ensure_browser 成功拿到信号量后任意路径都要归还）

@@ -169,7 +169,7 @@ class TestExportCasesJson:
         edges = [{"id": "e1", "source": "n1", "target": "n2"}]
         cases = [_case(1, nodes=nodes, edges=edges, configs=[_nc("n1", api_id=7)])]
         data = json.loads(svc.export_cases_json(cases, GROUPS, "物流系统"))
-        assert data["type"] == "cases" and data["count"] == 1
+        assert data["type"] == "cases" and data["count"] == 1 and data["version"] == 2
         item = data["items"][0]
         assert item["edges"] == edges
         n1, n2 = item["nodes"]
@@ -177,3 +177,16 @@ class TestExportCasesJson:
         assert n1["config"]["wait_after_ms"] == 100
         # 无配置节点：config 为 None 不报错
         assert n2["config"] is None and n2["api_id"] is None
+
+    def test_v2_structure_without_db(self):
+        """无 db（纯替身）时 v2 结构完整：step_type 默认 api、ui_params/api_snapshot 为空、
+        资产快照空列表（v1 兼容字段不炸）"""
+        cases = [_case(1, nodes=[{"id": "n1"}], configs=[
+            _nc("n1", api_id=3),
+        ])]
+        data = json.loads(svc.export_cases_json(cases, GROUPS, "p"))
+        node = data["items"][0]["nodes"][0]
+        assert node["step_type"] == "api" and node["ui_params"] is None
+        assert node["api_snapshot"] is None
+        assert data["elements"] == [] and data["custom_actions"] == []
+        assert data["page_scope_labels"] == []

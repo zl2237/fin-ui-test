@@ -9,6 +9,9 @@ import json
 from datetime import datetime
 
 from openpyxl import Workbook
+from sqlalchemy.orm import Session
+
+from .. import models
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -203,46 +206,161 @@ def export_cases_excel(cases: list, group_names: dict[int, str]) -> bytes:
     return buf.getvalue()
 
 
+# ===== 用例导出 v2：跨项目迁移包（UI 节点 + 依赖资产快照） =====
+# v1（无 version 字段）只含 api 节点的提取/断言，UI 节点参数、数据集行元数据、
+# 元素/动作/接口定义快照全部缺失——同库迁移会丢步骤。v2 补齐为自包含迁移包，
+# 导入端（case_import_service）按 (method,path)/(page_scope,element_key)/name
+# 匹配复用目标项目已有资产，未命中用快照重建。
+
+def _api_snapshot(db: Session | None, api_id: int | None) -> dict | None:
+    """节点引用接口的定义快照：字段表全量（导入按 method+path 匹配，未命中重建）。"""
+    if not db or not api_id:
+        return None
+    a = db.query(models.ApiDefinition).get(api_id)
+    if not a:
+        return None
+    return {
+        "name": a.name, "method": (a.method or "POST").upper(), "path": a.path,
+        "description": a.description,
+        "fields": [
+            {"key": f.key, "label": f.label, "field_type": f.field_type,
+             "required": f.required, "default_value": f.default_value,
+             "remark": f.remark, "sort_order": f.sort_order}
+            for f in (a.fields or [])
+        ],
+    }
+
+
+def _collect_ui_refs(obj, element_ids: set, custom_ids: set) -> None:
+    """递归收集 ui_params 中的 element_id / custom_id 引用（键可出现在任意嵌套层级，
+    含动作组 steps 子步骤；element.element_id 与 custom 动作的 custom_id）。"""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in ("element_id", "custom_id") and v is not None:
+                try:
+                    (element_ids if k == "element_id" else custom_ids).add(int(v))
+                except (TypeError, ValueError):
+                    pass
+            else:
+                _collect_ui_refs(v, element_ids, custom_ids)
+    elif isinstance(obj, list):
+        for v in obj:
+            _collect_ui_refs(v, element_ids, custom_ids)
+
+
+def _snapshot_ui_assets(db: Session | None, element_ids: set, custom_ids: set) -> tuple[list, list, list]:
+    """引用资产快照：元素（含源 id 供 ui_params 重映射）、自定义动作、涉及页面域标签。"""
+    elements: list[dict] = []
+    actions: list[dict] = []
+    labels: list[dict] = []
+    if not db:
+        return elements, actions, labels
+    if element_ids:
+        for e in (db.query(models.UiElement)
+                  .filter(models.UiElement.id.in_(element_ids)).all()):
+            elements.append({
+                "id": e.id, "page_scope": e.page_scope, "element_key": e.element_key,
+                "strategies": e.strategies or {}, "description": e.description,
+            })
+    if custom_ids:
+        for a in (db.query(models.CustomAction)
+                  .filter(models.CustomAction.id.in_(custom_ids)).all()):
+            actions.append({"id": a.id, "name": a.name,
+                            "description": a.description, "script": a.script})
+    scopes = sorted({e["page_scope"] for e in elements})
+    if scopes:
+        for lb in (db.query(models.PageScopeLabel)
+                   .filter(models.PageScopeLabel.page_scope.in_(scopes)).all()):
+            labels.append({"page_scope": lb.page_scope, "label": lb.label})
+    return elements, actions, labels
+
+
 def export_cases_json(cases: list, group_names: dict[int, str], project_name: str,
-                      datasets_by_case: dict[int, list] | None = None) -> bytes:
-    """用例全量 JSON：含 DAG 结构、节点结构配置（提取/断言）与数据集入参配置，用于备份/迁移。"""
+                      datasets_by_case: dict[int, list] | None = None, *,
+                      db: Session | None = None) -> bytes:
+    """用例全量 JSON（v2 迁移包）：DAG + 节点配置（api/ui 双类型）+ 数据集全量行 +
+    引用资产快照（接口定义/元素/自定义动作/页面域标签），供导入端无损重建。
+
+    db 传入时（路由层实际路径）补齐 env 名、绑定数据集名与资产快照；
+    缺省 None 供纯函数测试（SimpleNamespace 替身无库可查）。
+    """
     datasets_by_case = datasets_by_case or {}
+    env_names: dict[int, str] = {}
+    bound_dataset_names: dict[int, str] = {}
+    if db:
+        env_ids = {c.env_id for c in cases if getattr(c, "env_id", None)}
+        if env_ids:
+            for ev in (db.query(models.Environment)
+                       .filter(models.Environment.id.in_(env_ids)).all()):
+                env_names[ev.id] = ev.name
+        ds_ids = {c.dataset_id for c in cases if getattr(c, "dataset_id", None)}
+        if ds_ids:
+            for d in (db.query(models.DataSet)
+                      .filter(models.DataSet.id.in_(ds_ids)).all()):
+                bound_dataset_names[d.id] = d.name
+
     items = []
+    used_element_ids: set = set()
+    used_custom_ids: set = set()
     for c in cases:
         cfg_map = {nc.node_id: nc for nc in (c.node_configs or [])}
         nodes_out = []
         for n in (c.dag_config or {}).get("nodes", []):
             nc = cfg_map.get(n.get("id"))
+            step_type = (getattr(nc, "step_type", None) or "api") if nc else "api"
+            ui_params = (getattr(nc, "ui_params", None) or None) if nc else None
+            if ui_params:
+                _collect_ui_refs(ui_params, used_element_ids, used_custom_ids)
             nodes_out.append({
                 "id": n.get("id"),
                 "label": (n.get("data") or {}).get("label"),
                 "api_id": nc.api_id if nc else None,
                 "position": n.get("position"),
+                "step_type": step_type,
+                # ui 节点参数原样快照（含动作组 steps 嵌套；element_id/custom_id
+                # 保持源库编号，导入端按快照重映射）
+                "ui_params": ui_params,
+                "api_snapshot": _api_snapshot(db, nc.api_id if nc else None),
                 "config": {
-                    "post_extract": (nc.post_extract or []) if nc else [],
-                    "assertions": (nc.assertions or []) if nc else [],
-                    "wait_after_ms": (nc.wait_after_ms or 0) if nc else 0,
+                    "pre_process": (getattr(nc, "pre_process", None) or []) if nc else [],
+                    "post_extract": (getattr(nc, "post_extract", None) or []) if nc else [],
+                    "assertions": (getattr(nc, "assertions", None) or []) if nc else [],
+                    "wait_after_ms": (getattr(nc, "wait_after_ms", None) or 0) if nc else 0,
                 } if nc else None,
             })
         items.append({
             "id": c.id, "name": c.name,
             "group": group_names.get(c.group_id) if c.group_id else None,
             "description": c.description,
+            "env": env_names.get(c.env_id) if getattr(c, "env_id", None) else None,
+            "dataset_name": (bound_dataset_names.get(c.dataset_id)
+                             if getattr(c, "dataset_id", None) else None),
             "edges": (c.dag_config or {}).get("edges", []),
             "nodes": nodes_out,
-            # 数据集入参配置（绑定数据集优先；多数据集场景全量导出）
+            # 数据集入参配置全量（绑定数据集优先；多数据集场景全量导出）
             "datasets": [
                 {"name": d.name,
-                 "rows": [{"row_index": r.row_index, "data": r.data or {}} for r in (d.rows or [])]}
+                 "description": getattr(d, "description", None),
+                 "rows": [{
+                     "row_index": r.row_index, "data": r.data or {},
+                     "label": getattr(r, "label", None),
+                     "field_desc": getattr(r, "field_desc", None),
+                     "field_order": getattr(r, "field_order", None),
+                 } for r in (d.rows or [])]}
                 for d in datasets_by_case.get(c.id, [])
             ],
             "updated_at": _fmt(c.updated_at),
         })
+    elements, actions, labels = _snapshot_ui_assets(db, used_element_ids, used_custom_ids)
     data = {
         "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "type": "cases",
+        "version": 2,
         "project": project_name,
         "count": len(items),
         "items": items,
+        "elements": elements,
+        "custom_actions": actions,
+        "page_scope_labels": labels,
     }
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")

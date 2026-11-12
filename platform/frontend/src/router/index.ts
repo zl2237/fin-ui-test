@@ -26,6 +26,7 @@ const routes = [
       { path: 'elements', name: 'ElementLibrary', component: () => import('@/views/ElementLibrary.vue'), meta: { title: '元素库' } },
       { path: 'actions', name: 'ActionLibrary', component: () => import('@/views/ActionLibrary.vue'), meta: { title: '动作库' } },
       { path: 'files', name: 'FileCenter', component: () => import('@/views/FileCenter.vue'), meta: { title: '文件中心' } },
+      { path: 'api-keys', name: 'ApiKeys', component: () => import('@/views/ApiKeys.vue'), meta: { title: 'API 密钥' } },
       { path: 'users', name: 'UserManage', component: () => import('@/views/UserManage.vue'), meta: { title: '用户管理', requireAdmin: true } },
       { path: 'operation-logs', name: 'OperationLog', component: () => import('@/views/OperationLog.vue'), meta: { title: '操作日志', requireAdmin: true } },
     ],
