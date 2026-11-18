@@ -13,7 +13,7 @@
 用法（在 platform/backend 目录下，目标库由 backend/.env 或环境变量决定）：
     python scripts/remap_element_refs.py                     # 默认 dry-run：只列改动
     python scripts/remap_element_refs.py --apply             # 实际写库
-    DB_HOST=192.168.x.x DB_PORT=20001 DB_USER=redacted-user DB_PASSWORD=*** \\
+    DB_HOST=<线上库host> DB_PORT=<线上库port> DB_USER=<线上库user> DB_PASSWORD=*** \\
         python scripts/remap_element_refs.py --apply         # 指向线上库
 
 幂等：已指向现存元素的引用跳过；重复执行无副作用。

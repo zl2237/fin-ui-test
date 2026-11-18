@@ -5,6 +5,8 @@
 """
 import io
 import json
+import os
+import sys
 
 import pymysql
 
@@ -17,11 +19,19 @@ def L(*a):
 
 
 def conn(local_):
-    if local_:
-        return pymysql.connect(host="127.0.0.1", port=3306, user="root",
-                               password="123456", database="fin_ui_test", charset="utf8mb4")
-    return pymysql.connect(host="192.168.x.x", port=20001, user="redacted-user",
-                           password="***REDACTED***", database="fin_ui_test", charset="utf8mb4")
+    """连接信息一律走环境变量（本地 LOCAL_DB_*，线上 ONLINE_DB_*），不写死在脚本里（2026-11-18 脱敏）。"""
+    prefix = "LOCAL_DB_" if local_ else "ONLINE_DB_"
+    missing = [prefix + k for k in ("HOST", "PASSWORD") if not os.environ.get(prefix + k)]
+    if missing:
+        sys.exit("缺少环境变量: %s（本地 LOCAL_DB_*，线上 ONLINE_DB_*）" % ", ".join(missing))
+    return pymysql.connect(
+        host=os.environ[prefix + "HOST"],
+        port=int(os.environ.get(prefix + "PORT", "3306")),
+        user=os.environ.get(prefix + "USER", "root"),
+        password=os.environ[prefix + "PASSWORD"],
+        database=os.environ.get(prefix + "NAME", "fin_ui_test"),
+        charset="utf8mb4",
+    )
 
 
 def rows(cur, sql, args=None):

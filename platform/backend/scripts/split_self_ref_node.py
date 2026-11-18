@@ -14,7 +14,7 @@
 存在则跳过。dry-run 默认，APPLY=1 落库。
 
 用法（platform/backend 目录下）：
-    API_BASE=http://192.168.x.x:8002/api APPLY=1 \
+    API_BASE=http://<内网平台地址>:8002/api APPLY=1 \
         python scripts/split_self_ref_node.py 287 rc_n5 rc_n5b
 """
 import json

@@ -17,7 +17,7 @@
 用法（platform/backend 目录下）：
     python scripts/merge_adjacent_scope_nodes.py                 # 默认 dry-run
     python scripts/merge_adjacent_scope_nodes.py --apply         # 实际写库
-    API_BASE=http://192.168.x.x:8002/api python scripts/merge_adjacent_scope_nodes.py --apply
+    API_BASE=http://<内网平台地址>:8002/api python scripts/merge_adjacent_scope_nodes.py --apply
 """
 import argparse
 import json

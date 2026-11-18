@@ -3,7 +3,7 @@
 # 结构沿用 fin-api-test：lint → build → deploy → 企微通知，仅 main 触发
 # -----------------------------------------------------------------------------
 # 前置准备（GitLab 项目 → Settings → CI/CD → Variables，2026-10-26 已配置）：
-#   SSH_PRIVATE_KEY   : 服务器 SSH 私钥（root@192.168.x.x -p 13692）
+#   SSH_PRIVATE_KEY   : 服务器 SSH 私钥（目标机器 host/端口 = DEPLOY_SSH_HOST / DEPLOY_SSH_PORT）
 #   WECOM_WEBHOOK     : 企微群机器人 webhook
 #   JWT_SECRET_KEY    : 后端 JWT 密钥（生产）
 #   DB_HOST/DB_PORT/DB_USER/DB_PASSWORD : MySQL 连接（同 fin-api-test 实例）
@@ -26,8 +26,10 @@ stages:
   - notify
 
 variables:
-  SSH_HOST: "192.168.x.x"
-  SSH_PORT: "13692"
+  # 服务器连接（真实 host/端口 2026-11-18 起不再入库：在 GitLab Settings → CI/CD → Variables
+  # 配置 DEPLOY_SSH_HOST / DEPLOY_SSH_PORT。合并本改动前务必先配置，否则 deploy 连不上）
+  SSH_HOST: "$DEPLOY_SSH_HOST"
+  SSH_PORT: "$DEPLOY_SSH_PORT"
   SSH_USER: "root"
   DEPLOY_DIR: "/opt/fin-ui-test"
   FRONTEND_DIST: "/opt/fin-ui-test/platform/frontend/dist"
@@ -197,7 +199,7 @@ deploy:
     - if: $CI_COMMIT_BRANCH == "main"
   environment:
     name: production
-    url: http://192.168.x.x:8090
+    url: http://$SSH_HOST:8090
 
 # ===========================================================================
 # 4. 企微通知（成功/失败双任务；when 必须写在 rules 内——job 级 when 会被忽略）
@@ -218,7 +220,7 @@ notify-success:
       MARKDOWN="${MARKDOWN}> **提交者**：${GITLAB_USER_NAME}${NL}"
       MARKDOWN="${MARKDOWN}> **时间**：$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')${NL}"
       MARKDOWN="${MARKDOWN}> **流水线**：[查看详情](${CI_PIPELINE_URL})${NL}"
-      MARKDOWN="${MARKDOWN}> **线上**：http://192.168.x.x:8090${NL}"
+      MARKDOWN="${MARKDOWN}> **线上**：http://${SSH_HOST}:8090${NL}"
       PAYLOAD=$(jq -n --arg md "$MARKDOWN" '{msgtype:"markdown",markdown:{content:$md}}')
       curl -s -X POST "$WECOM_WEBHOOK" -H 'Content-Type: application/json' -d "$PAYLOAD"
   rules:

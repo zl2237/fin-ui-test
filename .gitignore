@@ -56,3 +56,6 @@ record.py_*_report.txt
 *.swo
 .DS_Store
 Thumbs.db
+
+# ---- 平台本地数据库不入库（历史曾泄漏，2026-11-18 防复发）----
+platform/backend/platform.db

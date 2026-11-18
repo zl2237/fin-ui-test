@@ -1,6 +1,6 @@
 {
  "form_id": "system_user_pwd",
- "proven": "已实证（2026-11-03~04 exec1090/1091 空心绿 + exec1092 平台插桩定案）：根因是确认框竞速而非水合——提交按钮（确 定）触发 $confirm 二次确认弹窗（渲染需 250~500ms），录制里紧跟的弹窗「确定」若成裸 click_text 会在弹窗渲染前落回底栏按钮，弹窗永远无人确认、userEdit 从未发出，十余步全绿但零落库（行戳不动）。修复=提交按钮挂 confirm_watchdog（click+wait800+confirm 自适应+watchdog 断言「修改成功」）+ 导入器同元素回声吸收 + 运行时 click_text 弹窗内候选优先。row_button 跨页后 wait 2000 保留（userDetail 异步水合，表单没水合时必填校验拦提交、confirm 拿不到弹窗会 fail-loud）。荣洋密码=***REDACTED***!（幂等重置）。",
+ "proven": "已实证（2026-11-03~04 exec1090/1091 空心绿 + exec1092 平台插桩定案）：根因是确认框竞速而非水合——提交按钮（确 定）触发 $confirm 二次确认弹窗（渲染需 250~500ms），录制里紧跟的弹窗「确定」若成裸 click_text 会在弹窗渲染前落回底栏按钮，弹窗永远无人确认、userEdit 从未发出，十余步全绿但零落库（行戳不动）。修复=提交按钮挂 confirm_watchdog（click+wait800+confirm 自适应+watchdog 断言「修改成功」）+ 导入器同元素回声吸收 + 运行时 click_text 弹窗内候选优先。row_button 跨页后 wait 2000 保留（userDetail 异步水合，表单没水合时必填校验拦提交、confirm 拿不到弹窗会 fail-loud）。重置口令为本地配置值（2026-11-18 脱敏：真实口令不再入库，导入后把 __RESET_PWD__ 步骤值改为本地实际口令，或导入前临时本地改回）。",
  "detect": {
   "nav_link_texts": ["用户管理"]
  },
@@ -39,7 +39,7 @@
  },
  "textbox_fills": {
   "请输入用户名称@0": ["username", "username_query_input", "荣洋"],
-  "请输入密码@0": ["new_password", "user_edit_password_input", "***REDACTED***!"]
+  "请输入密码@0": ["new_password", "user_edit_password_input", "__RESET_PWD__"]
  },
  "query": {
   "text": "查询",

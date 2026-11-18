@@ -22,7 +22,7 @@ dag_config 节点 data 增加 scope + 域中文名 label。存量节点无 scope
 用法（platform/backend 目录下，目标库由 backend/.env 或环境变量决定）：
     python scripts/migrate_scope_nodes.py                # dry-run：只报告
     python scripts/migrate_scope_nodes.py --apply        # 实际写库
-    DB_HOST=192.168.x.x DB_PORT=20001 DB_USER=redacted-user DB_PASSWORD=*** \\
+    DB_HOST=<线上库host> DB_PORT=<线上库port> DB_USER=<线上库user> DB_PASSWORD=*** \\
         python scripts/migrate_scope_nodes.py --apply    # 指向线上库
 
 幂等：已带 scope 的节点跳过；重复执行无副作用。

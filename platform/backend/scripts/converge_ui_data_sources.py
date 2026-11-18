@@ -14,7 +14,7 @@
 用法（platform/backend 目录下；HTTP 走平台 API，目标由 API_BASE 决定）：
     python scripts/converge_ui_data_sources.py                       # 默认 dry-run
     python scripts/converge_ui_data_sources.py --apply               # 实际写库
-    API_BASE=http://192.168.x.x:8002/api python scripts/converge_ui_data_sources.py --apply
+    API_BASE=http://<内网平台地址>:8002/api python scripts/converge_ui_data_sources.py --apply
         （线上须先部署含单元格求值的后端代码，否则规则单元格只会被当字面量填出）
 """
 import argparse

@@ -12,7 +12,7 @@
 幂等：已无 autotest-playwright 残留时直接跳过。dry-run 默认，APPLY=1 落库。
 用法：
     python scripts/fix_stale_upload_paths.py                     # dry-run（本地库）
-    DB_HOST=192.168.x.x DB_PORT=20001 DB_USER=redacted-user DB_PASSWORD=... \
+    DB_HOST=<线上库host> DB_PORT=<线上库port> DB_USER=<线上库user> DB_PASSWORD=... \
         APPLY=1 python scripts/fix_stale_upload_paths.py         # 线上库
 """
 import json

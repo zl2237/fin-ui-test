@@ -7,6 +7,7 @@ A) 线上库写入（单事务）：
 B) 线上平台 API：admin 登录 → POST /api/files/upload?project_id=1 ×2（中文名）
 """
 import json
+import os
 import sys
 
 import pymysql
@@ -27,11 +28,23 @@ DS_PATCH = {
 
 
 def conn(local_):
-    if local_:
-        return pymysql.connect(host="127.0.0.1", port=3306, user="root",
-                               password="123456", database="fin_ui_test", charset="utf8mb4")
-    return pymysql.connect(host="192.168.x.x", port=20001, user="redacted-user",
-                           password="***REDACTED***", database="fin_ui_test", charset="utf8mb4")
+    """连接信息一律走环境变量（本地 LOCAL_DB_*，线上 ONLINE_DB_*），不写死在脚本里。
+
+    2026-11-18 起脱敏：线上/本地 host、账号、口令不再入库（此前明文口令已公开过，
+    必须轮换后用新口令配置环境变量）。缺变量时 fail-fast 提示。
+    """
+    prefix = "LOCAL_DB_" if local_ else "ONLINE_DB_"
+    missing = [prefix + k for k in ("HOST", "PASSWORD") if not os.environ.get(prefix + k)]
+    if missing:
+        sys.exit("缺少环境变量: %s（本地 LOCAL_DB_*，线上 ONLINE_DB_*）" % ", ".join(missing))
+    return pymysql.connect(
+        host=os.environ[prefix + "HOST"],
+        port=int(os.environ.get(prefix + "PORT", "3306")),
+        user=os.environ.get(prefix + "USER", "root"),
+        password=os.environ[prefix + "PASSWORD"],
+        database=os.environ.get(prefix + "NAME", "fin_ui_test"),
+        charset="utf8mb4",
+    )
 
 
 def jload(x):
